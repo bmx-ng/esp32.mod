@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.22)
+
+if (NOT DEFINED BLITZMAX_ESP32_ARENA_SIZE)
+    message(FATAL_ERROR "BLITZMAX_ESP32_ARENA_SIZE must be supplied by bmk")
+elseif (BLITZMAX_ESP32_ARENA_SIZE LESS_EQUAL 0)
+    message(FATAL_ERROR "The BlitzMax ESP32 managed arena must be larger than zero")
+endif()
+math(EXPR BLITZMAX_ESP32_ARENA_REMAINDER "${BLITZMAX_ESP32_ARENA_SIZE} % 16")
+if (NOT BLITZMAX_ESP32_ARENA_REMAINDER EQUAL 0)
+    message(FATAL_ERROR "The BlitzMax ESP32 managed arena must be a multiple of 16 bytes")
+endif()
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+idf_build_set_property(MINIMAL_BUILD ON)
+project(${BLITZMAX_OUTPUT_NAME})
