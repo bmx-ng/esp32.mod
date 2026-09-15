@@ -52,29 +52,32 @@ Print "Hello from BlitzMax on ESP32"
 Build and upload it to a connected Baguette S3:
 
 ```sh
-bmk makeapp -a -r -l esp32 -g xtensa -board baguette_s3 -heap 64k -x hello.bmx
+bmk makeapp -a -r -board baguette_s3 -heap 64k -x hello.bmx
 ```
 
-For a Baguette C3, select the RISC-V architecture instead:
+For a Baguette C3, select its board profile instead:
 
 ```sh
-bmk makeapp -a -r -l esp32 -g riscv32 -board baguette_c3 -heap 64k -x hello.bmx
+bmk makeapp -a -r -board baguette_c3 -heap 64k -x hello.bmx
 ```
 
-The ESP32-C6 SuperMini uses the same compiler architecture with its own board
-profile:
+The ESP32-C6 SuperMini likewise has its own board profile:
 
 ```sh
-bmk makeapp -a -r -l esp32 -g riscv32 -board esp32_c6_supermini -heap 64k -x hello.bmx
+bmk makeapp -a -r -board esp32_c6_supermini -heap 64k -x hello.bmx
 ```
+
+For recognised profiles, `bmk` infers the ESP32 platform, compiler
+architecture, and ESP-IDF target from `-board`. Explicit `-l` and `-g` options
+remain available for scripts and are checked against the selected profile.
 
 The important options are:
 
 | Option | Meaning |
 | --- | --- |
-| `-l esp32` | Build for the ESP32 platform |
-| `-g xtensa` | Use the original ESP32/ESP32-S3 architecture |
-| `-g riscv32` | Use a supported RISC-V ESP32 architecture, such as ESP32-C3 or ESP32-C6 |
+| `-l esp32` | Explicitly select ESP32; inferred from a recognised `-board` profile |
+| `-g xtensa` | Explicitly select the original ESP32/ESP32-S3 architecture |
+| `-g riscv32` | Explicitly select a RISC-V ESP32 architecture, such as ESP32-C3 or ESP32-C6 |
 | `-board <name>` | Select a board profile |
 | `-heap auto` | Use the default managed heap; currently 64 KiB in internal SRAM |
 | `-heap <size>` | Set the managed heap in bytes or with `k`, `KiB`, `m`, or `MiB` |
@@ -357,8 +360,8 @@ filesystem inaccessible.
 
 ## Troubleshooting
 
-- **Architecture mismatch:** use `-g xtensa` for the original ESP32 and S3, or
-  `-g riscv32` for C3.
+- **Architecture mismatch:** omit `-g` and let the board profile select it, or
+  use `-g xtensa` for the original ESP32 and S3 and `-g riscv32` for C3/C6.
 - **More than one serial device:** set `ESPPORT` or `esp32.port`.
 - **Uncertain board configuration:** compare `boardinfo` with `deviceinfo`.
 - **Application does not fit:** inspect the reported image size and the selected
