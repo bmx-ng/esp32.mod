@@ -16,11 +16,13 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32 | Xtensa | `esp32` | Generic original ESP32 profile |
 | ESP32-S3 | Xtensa | `baguette_s3` | 8 MiB flash, MicroSD slot, no PSRAM |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
+| ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 
-The Baguette S3 and C3 profiles have been tested on their respective physical
-boards. Additional generic profiles describe other ESP-IDF target families for
-inspection and future validation; their presence does not by itself mean that
-the complete BlitzMax implementation has been tested on that target.
+The Baguette S3, Baguette C3, and ESP32-C6 SuperMini profiles have been tested
+on their respective physical boards. Additional generic profiles describe
+other ESP-IDF target families for inspection and future validation; their
+presence does not by itself mean that the complete BlitzMax implementation has
+been tested on that target.
 
 ## Requirements
 
@@ -50,22 +52,32 @@ Print "Hello from BlitzMax on ESP32"
 Build and upload it to a connected Baguette S3:
 
 ```sh
-bmk makeapp -a -r -l esp32 -g xtensa -board baguette_s3 -heap 64k -x hello.bmx
+bmk makeapp -a -r -board baguette_s3 -heap 64k -x hello.bmx
 ```
 
-For a Baguette C3, select the RISC-V architecture instead:
+For a Baguette C3, select its board profile instead:
 
 ```sh
-bmk makeapp -a -r -l esp32 -g riscv32 -board baguette_c3 -heap 64k -x hello.bmx
+bmk makeapp -a -r -board baguette_c3 -heap 64k -x hello.bmx
 ```
+
+The ESP32-C6 SuperMini likewise has its own board profile:
+
+```sh
+bmk makeapp -a -r -board esp32_c6_supermini -heap 64k -x hello.bmx
+```
+
+For recognised profiles, `bmk` infers the ESP32 platform, compiler
+architecture, and ESP-IDF target from `-board`. Explicit `-l` and `-g` options
+remain available for scripts and are checked against the selected profile.
 
 The important options are:
 
 | Option | Meaning |
 | --- | --- |
-| `-l esp32` | Build for the ESP32 platform |
-| `-g xtensa` | Use the original ESP32/ESP32-S3 architecture |
-| `-g riscv32` | Use the ESP32-C3 architecture |
+| `-l esp32` | Explicitly select ESP32; inferred from a recognised `-board` profile |
+| `-g xtensa` | Explicitly select the original ESP32/ESP32-S3 architecture |
+| `-g riscv32` | Explicitly select a RISC-V ESP32 architecture, such as ESP32-C3 or ESP32-C6 |
 | `-board <name>` | Select a board profile |
 | `-heap auto` | Use the default managed heap; currently 64 KiB in internal SRAM |
 | `-heap <size>` | Set the managed heap in bytes or with `k`, `KiB`, `m`, or `MiB` |
@@ -348,8 +360,8 @@ filesystem inaccessible.
 
 ## Troubleshooting
 
-- **Architecture mismatch:** use `-g xtensa` for the original ESP32 and S3, or
-  `-g riscv32` for C3.
+- **Architecture mismatch:** omit `-g` and let the board profile select it, or
+  use `-g xtensa` for the original ESP32 and S3 and `-g riscv32` for C3/C6.
 - **More than one serial device:** set `ESPPORT` or `esp32.port`.
 - **Uncertain board configuration:** compare `boardinfo` with `deviceinfo`.
 - **Application does not fit:** inspect the reported image size and the selected
