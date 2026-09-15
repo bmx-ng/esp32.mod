@@ -90,11 +90,13 @@ Tool locations and persistent defaults can be set in `bin/custom.bmk` within
 the BlitzMax installation:
 
 ```bmk
-#addoption esp32.idf "/path/to/esp-idf"
-#addoption esp32.target "baguette_s3"
-#addoption esp32.port "/dev/cu.usbmodem101"
-#addoption esp32.board.dirs "/path/to/custom/board/profiles"
-#addoption esp32.heap.region "psram"
+addoption esp32.idf "/path/to/esp-idf"
+addoption esp32.tools "/path/to/.espressif"
+addoption esp32.python "/path/to/.espressif/python_env/idf6.1_py3.10_env"
+addoption esp32.target "baguette_s3"
+addoption esp32.port "/dev/cu.usbmodem101"
+addoption esp32.board.dirs "/path/to/custom/board/profiles"
+addoption esp32.heap.region "psram"
 ```
 
 The corresponding environment variables are:
@@ -102,6 +104,8 @@ The corresponding environment variables are:
 | `custom.bmk` key | Environment variable | Purpose |
 | --- | --- | --- |
 | `esp32.idf` | `IDF_PATH` | ESP-IDF root containing `tools/idf.py` |
+| `esp32.tools` | `IDF_TOOLS_PATH` | ESP-IDF's downloaded-tools root |
+| `esp32.python` | `IDF_PYTHON_ENV_PATH` | Matching Python environment directory or executable |
 | `esp32.port` | `ESPPORT` | Serial or USB device used for inspection and upload |
 | `esp32.board.dirs` | `ESP32_BOARD_DIRS` | Additional board-profile roots |
 | `esp32.target` | — | Default board profile when `-board` is omitted |
@@ -114,10 +118,15 @@ exactly matching single connected device automatically.
 
 An installation created by Espressif's installer normally needs no entries in
 `custom.bmk`. If `esp32.idf` and `IDF_PATH` are both absent, `bmk` searches
-`~/.espressif/v*/esp-idf` and selects the newest recognized version. It then
-derives the matching Python environment, tools directory, and Xtensa or RISC-V
-toolchain from that installation. Those derived paths should not normally be
-configured separately.
+`~/.espressif/v*/esp-idf` and selects the newest recognized version.
+
+A manual installation may keep the ESP-IDF checkout elsewhere while retaining
+downloaded tools under `~/.espressif/tools` and versioned Python environments
+under `~/.espressif/python_env`. `bmk` honours `IDF_TOOLS_PATH` and
+`IDF_PYTHON_ENV_PATH` when they are set by ESP-IDF's `export.sh`. When they are
+unset, it recognizes both the manual layout and Espressif's installer-managed
+layout, and selects a Python environment whose `idf_version.txt` matches the
+selected ESP-IDF checkout.
 
 On Windows, separate multiple `esp32.board.dirs` or `ESP32_BOARD_DIRS` entries
 with semicolons. On macOS and Linux, use colons.
