@@ -7,7 +7,7 @@ bmk="${ESP32_TEST_BMK:-$sdk/bin/bmk}"
 target="${ESP32_TEST_TARGET:-esp32}"
 case "$target" in
 	esp32|esp32s2|esp32s3|esp32s3_n8r8|baguette_s3) architecture=xtensa ;;
-	esp32c2|esp32c3|esp32c5|esp32c6|esp32h2|esp32p4|baguette_c3) architecture=riscv32 ;;
+	esp32c2|esp32c3|esp32c5|esp32c6|esp32h2|esp32p4|baguette_c3|esp32_c6_supermini) architecture=riscv32 ;;
 	*) echo "Unknown ESP32 smoke-test target: $target" >&2; exit 1 ;;
 esac
 work_dir="$(mktemp -d)"
