@@ -31,9 +31,9 @@ the complete BlitzMax implementation has been tested on that target.
 - ESP-IDF 6.1 and its target toolchains.
 - A data-capable USB connection for one-command upload.
 
-`bmk` locates ESP-IDF using, in order, the `IDF_PATH` environment variable, the
-`esp32.idf` option in `custom.bmk`, or an installation beneath
-`~/.espressif`.
+`bmk` locates ESP-IDF using, in order, the `esp32.idf` option in `custom.bmk`,
+the `IDF_PATH` environment variable, or the newest recognized installation
+beneath `~/.espressif`.
 
 ## Quick start
 
@@ -67,9 +67,14 @@ The important options are:
 | `-g xtensa` | Use the original ESP32/ESP32-S3 architecture |
 | `-g riscv32` | Use the ESP32-C3 architecture |
 | `-board <name>` | Select a board profile |
-| `-heap 64k` | Reserve a 64 KiB BlitzMax managed heap |
+| `-heap auto` | Use the default managed heap; currently 64 KiB in internal SRAM |
+| `-heap <size>` | Set the managed heap in bytes or with `k`, `KiB`, `m`, or `MiB` |
+| `-heap-region sram` | Place the managed heap in internal SRAM; this is the default |
+| `-heap-region psram` | Place the managed heap in profile-declared external PSRAM |
 | `-x` | Build, upload, reset, and start the application |
 | `-o <name>` | Choose the output name |
+| `-d` | Build with source-level GDB information |
+| `-r` | Build optimised release firmware |
 
 Without `-x`, the build produces an ELF image, flashable BIN image, and link
 map. ESP-IDF's bootloader, partition table, flash arguments, and generated
@@ -78,6 +83,51 @@ configuration remain in the source file's `.bmx` build directory.
 When exactly one compatible board is connected, upload selects it
 automatically. Set `ESPPORT` or `esp32.port` in `custom.bmk` when more than one
 device is available.
+
+## Tool configuration
+
+Tool locations and persistent defaults can be set in `bin/custom.bmk` within
+the BlitzMax installation:
+
+```bmk
+#addoption esp32.idf "/path/to/esp-idf"
+#addoption esp32.target "baguette_s3"
+#addoption esp32.port "/dev/cu.usbmodem101"
+#addoption esp32.board.dirs "/path/to/custom/board/profiles"
+#addoption esp32.heap.region "psram"
+```
+
+The corresponding environment variables are:
+
+| `custom.bmk` key | Environment variable | Purpose |
+| --- | --- | --- |
+| `esp32.idf` | `IDF_PATH` | ESP-IDF root containing `tools/idf.py` |
+| `esp32.port` | `ESPPORT` | Serial or USB device used for inspection and upload |
+| `esp32.board.dirs` | `ESP32_BOARD_DIRS` | Additional board-profile roots |
+| `esp32.target` | — | Default board profile when `-board` is omitted |
+| `esp32.heap.region` | — | Default managed-heap region, `sram` or `psram` |
+| — | `IDF_TOOLS_PATH` | ESP-IDF's downloaded-tools root |
+| — | `IDF_PYTHON_ENV_PATH` | Python virtual environment created for this ESP-IDF version |
+
+A command-line `-board` or `-heap-region` overrides the applicable persistent
+default. For settings with both forms, the `custom.bmk` option takes precedence
+over its environment variable. If no port is configured, `bmk` can select an
+exactly matching single connected device automatically.
+
+An installation created by Espressif's installer normally needs no entries in
+`custom.bmk`. If `esp32.idf` and `IDF_PATH` are both absent, `bmk` searches
+`~/.espressif/v*/esp-idf` and selects the newest recognized version.
+
+A manual installation may keep the ESP-IDF checkout elsewhere while retaining
+downloaded tools under `~/.espressif/tools` and versioned Python environments
+under `~/.espressif/python_env`. `bmk` honours `IDF_TOOLS_PATH` and
+`IDF_PYTHON_ENV_PATH` when they are set by ESP-IDF's `export.sh`. When they are
+unset, it recognizes both the manual layout and Espressif's installer-managed
+layout, and selects a Python environment whose `idf_version.txt` matches the
+selected ESP-IDF checkout.
+
+On Windows, separate multiple `esp32.board.dirs` or `ESP32_BOARD_DIRS` entries
+with semicolons. On macOS and Linux, use colons.
 
 ## Boards and device inspection
 
