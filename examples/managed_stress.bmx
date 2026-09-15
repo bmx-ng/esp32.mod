@@ -3,6 +3,11 @@ SuperStrict
 Framework BRL.StandardIO
 Import Embedded.Runtime.Memory
 Import ESP32.Runtime
+Import "managed_task_probe.c"
+
+Extern "C"
+	Function ManagedTaskIsolationProbe:Int() = "bmx_esp32_runtime_task_isolation_probe"
+End Extern
 
 Type TPayload
 	Field identifier:Int
@@ -38,8 +43,15 @@ End Function
 
 Local capacity:UInt = ArenaCapacity()
 If capacity = 0 Or ManagedArenaReserved() <> capacity Or RuntimeCore() <> 0 Or ..
-	Not ManagedArenaValid() Then
+	Not ManagedArenaValid() Or Not ManagedTaskBound() Or Not ManagedContextValid() Or ..
+	ManagedContextViolationCount() <> 0 Then
 	RuntimeError "ESP32 managed arena reservation failed"
+End If
+
+If Not ManagedTaskIsolationProbe() Or ManagedContextViolationCount() <> 2 Or ..
+	ManagedCallbackDispatchCount() <> 1 Or ManagedCallbackRejectionCount() <> 1 Or ..
+	ArenaFailureCount() <> 1 Or Not HeapIntegrityValid() Then
+	RuntimeError "ESP32 managed runtime task isolation failed"
 End If
 
 Local retained:TNode = NewNode(42)
@@ -64,15 +76,18 @@ For Local cycle:Int = 0 Until 80
 	If retained.identifier <> 42 Or retained.label <> "node-42" Or ..
 		retained.samples[0] <> 42 Or retained.samples[retained.samples.Length - 1] <> 126 Or ..
 		retained.nextNode.identifier <> 84 Or retained.children[0] <> retained.nextNode Or ..
-		InvalidReferenceCount() <> 0 Then
+		InvalidReferenceCount() <> 0 Or Not HeapIntegrityValid() Then
 		RuntimeError "ESP32 retained graph was corrupted"
 	End If
 Next
 
 ReachabilityAudit()
 If reclaimedTotal = 0 Or CollectionCount() < 80 Or HeapReusableBytes() = 0 Or ..
+	Not HeapIntegrityValid() Or ..
 	InvalidReferenceCount() <> 0 Or ObjectFailureCount() <> 0 Or ..
-	ArrayFailureCount() <> 0 Or StringFailureCount() <> 0 Or ArenaFailureCount() <> 0 Then
+	ArrayFailureCount() <> 0 Or StringFailureCount() <> 0 Or ArenaFailureCount() <> 1 Or ..
+	ManagedContextViolationCount() <> 2 Or ManagedCallbackDispatchCount() <> 1 Or ..
+	ManagedCallbackRejectionCount() <> 1 Then
 	RuntimeError "ESP32 managed runtime stress test failed"
 End If
 
