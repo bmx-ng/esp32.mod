@@ -15,14 +15,15 @@ The currently validated targets use ESP-IDF 6.1:
 | --- | --- | --- | --- |
 | ESP32 | Xtensa | `esp32` | Generic original ESP32 profile |
 | ESP32-S3 | Xtensa | `baguette_s3` | 8 MiB flash, MicroSD slot, no PSRAM |
+| ESP32-S3 | Xtensa | `esp32s3_44pin_n16r8` | 16 MiB flash, 8 MiB PSRAM, dual USB-C |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 
-The Baguette S3, Baguette C3, and ESP32-C6 SuperMini profiles have been tested
-on their respective physical boards. Additional generic profiles describe
-other ESP-IDF target families for inspection and future validation; their
-presence does not by itself mean that the complete BlitzMax implementation has
-been tested on that target.
+The Baguette S3, ESP32-S3 44-pin N16R8, Baguette C3, and ESP32-C6 SuperMini
+profiles have been tested on their respective physical boards. Additional
+generic profiles describe other ESP-IDF target families for inspection and
+future validation; their presence does not by itself mean that the complete
+BlitzMax implementation has been tested on that target.
 
 ## Requirements
 
@@ -65,6 +66,16 @@ The ESP32-C6 SuperMini likewise has its own board profile:
 
 ```sh
 bmk makeapp -a -r -board esp32_c6_supermini -heap 64k -x hello.bmx
+```
+
+The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
+upload, reset, and console output. Its separate `USB` socket is wired directly
+to the ESP32-S3 native USB/OTG interface. To use its external PSRAM-backed
+managed heap:
+
+```sh
+bmk makeapp -a -r -board esp32s3_44pin_n16r8 \
+    -heap-region psram -heap auto -x hello.bmx
 ```
 
 For recognised profiles, `bmk` infers the ESP32 platform, compiler
@@ -237,8 +248,9 @@ bmk makeapp -a -r -l esp32 -g xtensa -board esp32s3_n8r8 \
 ```
 
 The selected profile must declare a fixed PSRAM capacity and supply the required
-ESP-IDF settings. Unsupported combinations fail before compilation. `-heap auto`
-reserves all but 64 KiB of the profile's declared PSRAM. Use
+ESP-IDF settings. Unsupported combinations fail before compilation. With a
+PSRAM heap, `-heap auto` keeps one eighth of the declared capacity available to
+ESP-IDF and native services, with a minimum reserve of 256 KiB. Use
 `ESP32.Hardware.PSRAM` to inspect capacity, free space, and managed-arena
 placement.
 
