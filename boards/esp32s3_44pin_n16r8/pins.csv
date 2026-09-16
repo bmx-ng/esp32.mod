@@ -31,7 +31,8 @@ IO35,35,right,13
 BOOT,0,right,14
 IO45,45,right,15
 IO48,48,right,16
-RGB_LED,47,right,17
+IO47,47,right,17
+RGB_LED,48,,
 IO21,21,right,18
 USB_DP,20,right,19
 USB_DM,19,right,20

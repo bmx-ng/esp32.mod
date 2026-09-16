@@ -218,6 +218,7 @@ power, Wi-Fi, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
+| Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
 | Watchdog and identity | `Embedded.Hardware.Watchdog`, `Embedded.System.Device`, ESP32 facades | [`watchdog_device.bmx`](examples/watchdog_device.bmx) |
@@ -233,6 +234,15 @@ API provides them and consult `boardinfo` before choosing pins. For example,
 the Baguette C3 profile reports that its documented I2C and SPI clocks share
 GPIO6, and that GPIO2, GPIO8, and GPIO9 are strapping pins. The number of UARTs,
 ADC channels, and other peripherals is likewise target-dependent.
+
+`ESP32.Hardware.RMT` owns transmit and receive channels for precisely timed
+GPIO pulse sequences. It supports packed symbols, byte-to-pulse encoding,
+optional carrier modulation/demodulation, and nonblocking receive with a
+native buffer. Transmit calls complete before returning; an RMT interrupt
+never calls BlitzMax or retains a managed array. The WS2812 example shows how
+to build an LED protocol on this general API, using the 44-pin S3 board's
+GPIO48 LED. Change the pin and color order for other boards.
+The loopback example tests reception with a jumper from GPIO4 to GPIO5.
 
 ## Managed memory and PSRAM
 
