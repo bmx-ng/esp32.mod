@@ -380,6 +380,29 @@ bootloader, partition table, application, and initial OTA metadata together.
 Back up persistent data first because changing partition offsets makes the old
 filesystem inaccessible.
 
+## Hardware regression tests
+
+The hardware runner builds, flashes, and checks self-verifying examples on a
+connected board. Its first suite targets `baguette_s3` and
+`esp32s3_44pin_n16r8`; the complete suite has been verified on the Baguette S3.
+It checks the detected chip and flash against the board profile before
+flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
+alter OTA partitions beyond the normal application upload.
+
+Set the serial port for the connected board and run the basic suite:
+
+```sh
+ESP32_TEST_BOARD=baguette_s3 ESP32_TEST_PORT=/dev/cu.usbmodem101 \
+    ./tests/run_hardware.sh basic
+```
+
+For the RMT receive/transmit loopback, connect GPIO4 to GPIO5 and run
+`./tests/run_hardware.sh loopback` with the same variables. `all` runs both
+suites. On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
+Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
+your system Python does not have it. Test output is checked after an automatic
+board reset, and the runner stops on the first missing pass result.
+
 ## Troubleshooting
 
 - **Architecture mismatch:** omit `-g` and let the board profile select it, or

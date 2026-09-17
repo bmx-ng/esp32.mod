@@ -23,5 +23,5 @@ Next
 If passed Then
 	Print "ESP32 random checks passed"
 Else
-	Print "ESP32 random checks failed"
+	RuntimeError "ESP32 random checks failed"
 End If
