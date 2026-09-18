@@ -54,18 +54,18 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, and XIAO C6." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != waveshare_h2_dev_kit_n4 ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, and Waveshare H2 Dev Kit N4." >&2
 	exit 2
 fi
 
-if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 ]]; then
+if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
 	reset=usb-jtag
 else
 	reset=uart
 fi
 
-if [[ ( "$board" == baguette_s3 || "$board" == xiao_esp32c6 ) && " ${tests[*]} " == *" psram_info "* ]]; then
+if [[ ( "$board" == baguette_s3 || "$board" == xiao_esp32c6 || "$board" == waveshare_h2_dev_kit_n4 ) && " ${tests[*]} " == *" psram_info "* ]]; then
 	echo "The selected board has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
 	exit 2
 fi
@@ -108,7 +108,7 @@ for test_name in "${tests[@]}"; do
 		tail -n 35 "$work_dir/$test_name.build.log" >&2
 		exit 1
 	fi
-	if [[ "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 ]]; then
+	if [[ "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
 		# XIAO native USB Serial/JTAG can take a moment to settle after flashing.
 		sleep 1
 	fi

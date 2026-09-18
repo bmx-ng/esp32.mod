@@ -20,9 +20,10 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
+| ESP32-H2 | 32-bit RISC-V | `waveshare_h2_dev_kit_n4` | 4 MiB flash, native USB and CH343 UART bridge, no Wi-Fi or PSRAM |
 
 The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
-ESP32-C6 SuperMini, and XIAO ESP32-C6 profiles have been tested on their
+ESP32-C6 SuperMini, XIAO ESP32-C6, and Waveshare H2 Dev Kit N4 profiles have been tested on their
 respective physical boards. Additional generic profiles describe other ESP-IDF
 target families for inspection and
 future validation; their presence does not by itself mean that the complete
@@ -76,6 +77,15 @@ identifies the D0–D10 header pins, onboard LED on GPIO15, and the GPIO3/GPIO14
 antenna switch. The switch defaults to the ceramic antenna; selecting the
 external antenna requires enabling the switch with GPIO3 low, then setting
 GPIO14 high. Consult `bmk boardinfo -board xiao_esp32c6` before assigning pins.
+
+For the Waveshare ESP32-H2 Dev Kit N4, use `-board waveshare_h2_dev_kit_n4`.
+The single USB-C connection exposes both the H2's native USB Serial/JTAG port
+and an onboard CH343 UART bridge. Select the native USB port for `bmk -x` and
+the console (on macOS, it appears as a `cu.usbmodem` device with USB vendor ID
+`303A`). After upload, press the board's Reset button to start the new app.
+If a subsequent upload cannot connect through native USB, press Reset and
+retry. The CH343 bridge is a separate serial port, not the default console.
+The H2 supports Bluetooth LE and IEEE 802.15.4, but not Wi-Fi.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
@@ -393,8 +403,10 @@ filesystem inaccessible.
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
 connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
-`xiao_esp32s3_plus`, and `xiao_esp32c6`; the complete suite has been verified
-on the Baguette S3 and XIAO C6.
+`xiao_esp32s3_plus`, `xiao_esp32c6`, and `waveshare_h2_dev_kit_n4`; the
+complete suite has been verified on the Baguette S3 and XIAO C6. The `basic`
+and `loopback` suites have each been verified on the Waveshare H2 Dev Kit N4;
+its native USB port required a physical Reset between those suite runs.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
