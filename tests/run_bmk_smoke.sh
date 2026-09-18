@@ -7,13 +7,13 @@ bmk="${ESP32_TEST_BMK:-$sdk/bin/bmk}"
 target="${ESP32_TEST_TARGET:-esp32}"
 case "$target" in
 	esp32|esp32s2|esp32s3|esp32s3_n8r8|baguette_s3|xiao_esp32s3_plus) architecture=xtensa ;;
-	esp32c2|esp32c3|esp32c5|esp32c6|esp32h2|esp32p4|baguette_c3|esp32_c6_supermini) architecture=riscv32 ;;
+	esp32c2|esp32c3|esp32c5|esp32c6|esp32h2|esp32p4|baguette_c3|esp32_c6_supermini|xiao_esp32c6) architecture=riscv32 ;;
 	*) echo "Unknown ESP32 smoke-test target: $target" >&2; exit 1 ;;
 esac
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
-for example in scalar_smoke managed_smoke managed_stress managed_fault_safety managed_oom hello_world time_alarm calendar power gpio_mirrored gpio_events uart_controller buffered_uart i2c_controller spi_controller rmt_pulses rmt_loopback random_esp32 adc_pwm watchdog_device watchdog_reset psram_info storage_smoke nvs_storage partition_info ota_from_storage ota_network_receiver wifi_scan wifi_esp32 wifi_live network_failure socket_loopback ble_scan ble_peripheral ble_client ble_gatt_long_client ble_indication_peripheral ble_secure_peripheral ble_passkey_peripheral ble_connection_management; do
+for example in scalar_smoke managed_smoke managed_stress managed_fault_safety managed_oom hello_world time_alarm calendar power gpio_mirrored gpio_events uart_controller buffered_uart i2c_controller spi_controller rmt_pulses rmt_loopback rmt_loopback_xiao_c6 random_esp32 adc_pwm watchdog_device watchdog_reset psram_info storage_smoke nvs_storage partition_info ota_from_storage ota_network_receiver wifi_scan wifi_esp32 wifi_live network_failure socket_loopback ble_scan ble_peripheral ble_client ble_gatt_long_client ble_indication_peripheral ble_secure_peripheral ble_connection_management; do
 	"$bmk" makeapp \
 		-a -r \
 		-l esp32 -g "$architecture" -board "$target" -heap 64k \

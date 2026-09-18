@@ -19,11 +19,12 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S3 | Xtensa | `xiao_esp32s3_plus` | 16 MiB flash, 8 MiB PSRAM, native USB, no onboard SD slot |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
+| ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
 
-The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3, and
-ESP32-C6 SuperMini profiles have been tested on their respective physical
-boards. Additional
-generic profiles describe other ESP-IDF target families for inspection and
+The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
+ESP32-C6 SuperMini, and XIAO ESP32-C6 profiles have been tested on their
+respective physical boards. Additional generic profiles describe other ESP-IDF
+target families for inspection and
 future validation; their presence does not by itself mean that the complete
 BlitzMax implementation has been tested on that target.
 
@@ -69,6 +70,12 @@ The ESP32-C6 SuperMini likewise has its own board profile:
 ```sh
 bmk makeapp -a -r -board esp32_c6_supermini -heap 64k -x hello.bmx
 ```
+
+For the Seeed Studio XIAO ESP32-C6, use `-board xiao_esp32c6`. Its profile
+identifies the D0–D10 header pins, onboard LED on GPIO15, and the GPIO3/GPIO14
+antenna switch. The switch defaults to the ceramic antenna; selecting the
+external antenna requires enabling the switch with GPIO3 low, then setting
+GPIO14 high. Consult `bmk boardinfo -board xiao_esp32c6` before assigning pins.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
@@ -385,8 +392,9 @@ filesystem inaccessible.
 ## Hardware regression tests
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
-connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`, and
-`xiao_esp32s3_plus`; the complete suite has been verified on the Baguette S3.
+connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
+`xiao_esp32s3_plus`, and `xiao_esp32c6`; the complete suite has been verified
+on the Baguette S3 and XIAO C6.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
@@ -400,7 +408,9 @@ ESP32_TEST_BOARD=baguette_s3 ESP32_TEST_PORT=/dev/cu.usbmodem101 \
 
 For the RMT receive/transmit loopback, connect GPIO4 to GPIO5 and run
 `./tests/run_hardware.sh loopback` with the same variables. `all` runs both
-suites. On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
+suites. On the XIAO C6, connect D3/GPIO21 to D4/GPIO22 instead; the runner
+selects its board-specific loopback example automatically.
+On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
 Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
 your system Python does not have it. Test output is checked after an automatic
 board reset, and the runner stops on the first missing pass result.

@@ -54,19 +54,19 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, and XIAO S3 Plus." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, and XIAO C6." >&2
 	exit 2
 fi
 
-if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus ]]; then
+if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 ]]; then
 	reset=usb-jtag
 else
 	reset=uart
 fi
 
-if [[ "$board" == baguette_s3 && " ${tests[*]} " == *" psram_info "* ]]; then
-	echo "The Baguette S3 has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
+if [[ ( "$board" == baguette_s3 || "$board" == xiao_esp32c6 ) && " ${tests[*]} " == *" psram_info "* ]]; then
+	echo "The selected board has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
 	exit 2
 fi
 
@@ -94,18 +94,22 @@ for test_name in "${tests[@]}"; do
 		psram_info) expected='Managed arena in PSRAM: 1' ;;
 	esac
 	echo "Building and flashing $test_name on $board..."
+	source_name="$test_name"
+	if [[ "$board" == xiao_esp32c6 && "$test_name" == rmt_loopback ]]; then
+		source_name=rmt_loopback_xiao_c6
+	fi
 	build_args=(-a -r -x -board "$board" -heap 64k)
 	if [[ "$test_name" == psram_info ]]; then
 		build_args=(-a -r -x -board "$board" -heap-region psram -heap 1m)
 	fi
 	if ! ESPPORT="$port" "$bmk" makeapp "${build_args[@]}" \
-		-o "$work_dir/$test_name" "$module_root/examples/$test_name.bmx" \
+		-o "$work_dir/$test_name" "$module_root/examples/$source_name.bmx" \
 		>"$work_dir/$test_name.build.log" 2>&1; then
 		tail -n 35 "$work_dir/$test_name.build.log" >&2
 		exit 1
 	fi
-	if [[ "$board" == xiao_esp32s3_plus ]]; then
-		# Its native USB Serial/JTAG port can take a moment to settle after flashing.
+	if [[ "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 ]]; then
+		# XIAO native USB Serial/JTAG can take a moment to settle after flashing.
 		sleep 1
 	fi
 	"$python" "$module_root/tests/serial_expect.py" \
