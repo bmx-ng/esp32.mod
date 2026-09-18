@@ -16,11 +16,13 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32 | Xtensa | `esp32` | Generic original ESP32 profile |
 | ESP32-S3 | Xtensa | `baguette_s3` | 8 MiB flash, MicroSD slot, no PSRAM |
 | ESP32-S3 | Xtensa | `esp32s3_44pin_n16r8` | 16 MiB flash, 8 MiB PSRAM, dual USB-C |
+| ESP32-S3 | Xtensa | `xiao_esp32s3_plus` | 16 MiB flash, 8 MiB PSRAM, native USB, no onboard SD slot |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 
-The Baguette S3, ESP32-S3 44-pin N16R8, Baguette C3, and ESP32-C6 SuperMini
-profiles have been tested on their respective physical boards. Additional
+The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3, and
+ESP32-C6 SuperMini profiles have been tested on their respective physical
+boards. Additional
 generic profiles describe other ESP-IDF target families for inspection and
 future validation; their presence does not by itself mean that the complete
 BlitzMax implementation has been tested on that target.
@@ -383,8 +385,8 @@ filesystem inaccessible.
 ## Hardware regression tests
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
-connected board. Its first suite targets `baguette_s3` and
-`esp32s3_44pin_n16r8`; the complete suite has been verified on the Baguette S3.
+connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`, and
+`xiao_esp32s3_plus`; the complete suite has been verified on the Baguette S3.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
@@ -402,6 +404,10 @@ suites. On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
 Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
 your system Python does not have it. Test output is checked after an automatic
 board reset, and the runner stops on the first missing pass result.
+
+On the PSRAM-equipped XIAO S3 Plus or 44-pin S3, run
+`./tests/run_hardware.sh psram` to verify that a managed arena can be placed
+in PSRAM. The XIAO S3 Plus uses its native USB Serial/JTAG port.
 
 ## Troubleshooting
 
