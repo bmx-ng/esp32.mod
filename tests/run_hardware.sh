@@ -39,27 +39,35 @@ case "$suite" in
 	loopback)
 		tests=(rmt_loopback)
 		;;
+	psram)
+		tests=(psram_info)
+		;;
 	all)
 		tests=(random_esp32 time_alarm gpio_mirrored adc_pwm rmt_loopback)
 		;;
-	random_esp32|time_alarm|gpio_mirrored|adc_pwm|rmt_loopback)
+	random_esp32|time_alarm|gpio_mirrored|adc_pwm|rmt_loopback|psram_info)
 		tests=("$suite")
 		;;
 	*)
-		echo "Unknown suite '$suite' (choose basic, loopback, all, or an example name)." >&2
+		echo "Unknown suite '$suite' (choose basic, loopback, psram, all, or an example name)." >&2
 		exit 2
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3 and 44-pin S3." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, and XIAO S3 Plus." >&2
 	exit 2
 fi
 
-if [[ "$board" == baguette_s3 ]]; then
+if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus ]]; then
 	reset=usb-jtag
 else
 	reset=uart
+fi
+
+if [[ "$board" == baguette_s3 && " ${tests[*]} " == *" psram_info "* ]]; then
+	echo "The Baguette S3 has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
+	exit 2
 fi
 
 echo "Checking connected device against $board before flashing..."
@@ -83,13 +91,22 @@ for test_name in "${tests[@]}"; do
 		gpio_mirrored) expected='ESP32 mirrored GPIO checks passed' ;;
 		adc_pwm) expected='ESP32 ADC and PWM checks passed' ;;
 		rmt_loopback) expected='RMT loopback passed' ;;
+		psram_info) expected='Managed arena in PSRAM: 1' ;;
 	esac
 	echo "Building and flashing $test_name on $board..."
-	if ! ESPPORT="$port" "$bmk" makeapp -a -r -x -board "$board" -heap 64k \
+	build_args=(-a -r -x -board "$board" -heap 64k)
+	if [[ "$test_name" == psram_info ]]; then
+		build_args=(-a -r -x -board "$board" -heap-region psram -heap 1m)
+	fi
+	if ! ESPPORT="$port" "$bmk" makeapp "${build_args[@]}" \
 		-o "$work_dir/$test_name" "$module_root/examples/$test_name.bmx" \
 		>"$work_dir/$test_name.build.log" 2>&1; then
 		tail -n 35 "$work_dir/$test_name.build.log" >&2
 		exit 1
+	fi
+	if [[ "$board" == xiao_esp32s3_plus ]]; then
+		# Its native USB Serial/JTAG port can take a moment to settle after flashing.
+		sleep 1
 	fi
 	"$python" "$module_root/tests/serial_expect.py" \
 		--port "$port" --project "$test_name" --expect "$expected" \
