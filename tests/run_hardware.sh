@@ -54,19 +54,24 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, and XIAO S3 Plus." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, and XIAO C6." >&2
 	exit 2
 fi
 
-if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus ]]; then
+if [[ "$board" == xiao_esp32c6 && " ${tests[*]} " == *" rmt_loopback "* ]]; then
+	echo "The RMT loopback example uses GPIO4/GPIO5, which are not XIAO C6 header pins; use the basic suite for this board." >&2
+	exit 2
+fi
+
+if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 ]]; then
 	reset=usb-jtag
 else
 	reset=uart
 fi
 
-if [[ "$board" == baguette_s3 && " ${tests[*]} " == *" psram_info "* ]]; then
-	echo "The Baguette S3 has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
+if [[ ( "$board" == baguette_s3 || "$board" == xiao_esp32c6 ) && " ${tests[*]} " == *" psram_info "* ]]; then
+	echo "The selected board has no PSRAM; choose a PSRAM-equipped board for this suite." >&2
 	exit 2
 fi
 
