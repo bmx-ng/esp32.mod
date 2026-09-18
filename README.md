@@ -22,13 +22,14 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C5 | 32-bit RISC-V | `xiao_esp32c5` | 8 MiB flash, 8 MiB PSRAM, native USB |
 | ESP32-H2 | 32-bit RISC-V | `waveshare_h2_dev_kit_n4` | 4 MiB flash, native USB and CH343 UART bridge, no Wi-Fi or PSRAM |
+| ESP32-P4 | 32-bit RISC-V | `m5stack_stamp_p4` | 16 MiB flash, 32 MiB PSRAM, native USB, no onboard radio |
 
 The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
-ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, and Waveshare H2 Dev Kit N4
-profiles have been tested on their respective physical boards. Additional
-generic profiles describe other ESP-IDF target families for inspection and
-future validation; their presence does not by itself mean that the complete
-BlitzMax implementation has been tested on that target.
+ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, Waveshare H2 Dev Kit N4,
+and M5Stack Stamp-P4 profiles have been tested on their respective physical
+boards. Additional generic profiles describe other ESP-IDF target families for
+inspection and future validation; their presence does not by itself mean that
+the complete BlitzMax implementation has been tested on that target.
 
 ## Requirements
 
@@ -95,6 +96,15 @@ the console (on macOS, it appears as a `cu.usbmodem` device with USB vendor ID
 If a subsequent upload cannot connect through native USB, press Reset and
 retry. The CH343 bridge is a separate serial port, not the default console.
 The H2 supports Bluetooth LE and IEEE 802.15.4, but not Wi-Fi.
+
+For the M5Stack Stamp-P4, use `-board m5stack_stamp_p4`. The profile selects
+ESP-IDF's P4 revision-1.x build mode, matching the tested chip revision v1.3;
+an image built with IDF's default revision-3.x mode will not flash to this
+board. The 32 MiB PSRAM can hold the managed heap with, for example,
+`-heap-region psram -heap 1m`. The bare Stamp-P4 has no Wi-Fi or Bluetooth LE
+radio; a separate companion module is required for wireless applications.
+Its labeled GPIO pads are available in `bmk boardinfo -board m5stack_stamp_p4`.
+The exposed `LPG8` and `LPG10` pads are GPIO8 and GPIO10 in the profile.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
@@ -412,12 +422,14 @@ filesystem inaccessible.
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
 connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
-`xiao_esp32s3_plus`, `xiao_esp32c6`, `xiao_esp32c5`, and
-`waveshare_h2_dev_kit_n4`; the complete suite has been verified on the
-Baguette S3 and XIAO C6. The `basic`,
+`xiao_esp32s3_plus`, `xiao_esp32c6`, `xiao_esp32c5`,
+`waveshare_h2_dev_kit_n4`, and `m5stack_stamp_p4`; the complete suite has been
+verified on the Baguette S3 and XIAO C6. The `basic`,
 `loopback`, and `psram` suites have each been verified on the XIAO C5. The
 `basic` and `loopback` suites have each been verified on the Waveshare H2 Dev
 Kit N4; its native USB port required a physical Reset between those suite runs.
+The `basic` checks (with the P4-specific ADC input), LPG8–LPG10 `loopback`,
+and `psram` suites have been verified on the Stamp-P4.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
