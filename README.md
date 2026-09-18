@@ -20,12 +20,13 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
+| ESP32-C5 | 32-bit RISC-V | `xiao_esp32c5` | 8 MiB flash, 8 MiB PSRAM, native USB |
 | ESP32-H2 | 32-bit RISC-V | `waveshare_h2_dev_kit_n4` | 4 MiB flash, native USB and CH343 UART bridge, no Wi-Fi or PSRAM |
 
 The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
-ESP32-C6 SuperMini, XIAO ESP32-C6, and Waveshare H2 Dev Kit N4 profiles have been tested on their
-respective physical boards. Additional generic profiles describe other ESP-IDF
-target families for inspection and
+ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, and Waveshare H2 Dev Kit N4
+profiles have been tested on their respective physical boards. Additional
+generic profiles describe other ESP-IDF target families for inspection and
 future validation; their presence does not by itself mean that the complete
 BlitzMax implementation has been tested on that target.
 
@@ -77,6 +78,14 @@ identifies the D0–D10 header pins, onboard LED on GPIO15, and the GPIO3/GPIO14
 antenna switch. The switch defaults to the ceramic antenna; selecting the
 external antenna requires enabling the switch with GPIO3 low, then setting
 GPIO14 high. Consult `bmk boardinfo -board xiao_esp32c6` before assigning pins.
+
+For the Seeed Studio XIAO ESP32-C5, use `-board xiao_esp32c5`. The profile
+maps its D0–D10 header, default I²C/SPI/UART pins, active-low user LED, and
+battery-voltage sensing circuit. The onboard 8 MiB PSRAM can hold the managed
+heap, for example with `-heap-region psram -heap 1m`. The battery divider is
+off until GPIO26 is driven high; read it through GPIO6, then disable it to
+avoid idle drain. Consult `bmk boardinfo -board xiao_esp32c5` before assigning
+pins, especially the boot-strapping pins.
 
 For the Waveshare ESP32-H2 Dev Kit N4, use `-board waveshare_h2_dev_kit_n4`.
 The single USB-C connection exposes both the H2's native USB Serial/JTAG port
@@ -403,10 +412,12 @@ filesystem inaccessible.
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
 connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
-`xiao_esp32s3_plus`, `xiao_esp32c6`, and `waveshare_h2_dev_kit_n4`; the
-complete suite has been verified on the Baguette S3 and XIAO C6. The `basic`
-and `loopback` suites have each been verified on the Waveshare H2 Dev Kit N4;
-its native USB port required a physical Reset between those suite runs.
+`xiao_esp32s3_plus`, `xiao_esp32c6`, `xiao_esp32c5`, and
+`waveshare_h2_dev_kit_n4`; the complete suite has been verified on the
+Baguette S3 and XIAO C6. The `basic`,
+`loopback`, and `psram` suites have each been verified on the XIAO C5. The
+`basic` and `loopback` suites have each been verified on the Waveshare H2 Dev
+Kit N4; its native USB port required a physical Reset between those suite runs.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
@@ -419,9 +430,10 @@ ESP32_TEST_BOARD=baguette_s3 ESP32_TEST_PORT=/dev/cu.usbmodem101 \
 ```
 
 For the RMT receive/transmit loopback, connect GPIO4 to GPIO5 and run
-`./tests/run_hardware.sh loopback` with the same variables. `all` runs both
-suites. On the XIAO C6, connect D3/GPIO21 to D4/GPIO22 instead; the runner
-selects its board-specific loopback example automatically.
+`./tests/run_hardware.sh loopback` with the same variables. On the XIAO C5,
+connect D3/GPIO7 to D4/GPIO23 instead; on the XIAO C6, connect D3/GPIO21 to
+D4/GPIO22. The runner selects the board-specific loopback example. `all` runs
+both the basic and loopback suites.
 On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
 Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
 your system Python does not have it. Test output is checked after an automatic

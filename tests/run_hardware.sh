@@ -54,12 +54,12 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != waveshare_h2_dev_kit_n4 ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, and Waveshare H2 Dev Kit N4." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, and Waveshare H2 Dev Kit N4." >&2
 	exit 2
 fi
 
-if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
+if [[ "$board" == baguette_s3 || "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == xiao_esp32c5 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
 	reset=usb-jtag
 else
 	reset=uart
@@ -95,8 +95,11 @@ for test_name in "${tests[@]}"; do
 	esac
 	echo "Building and flashing $test_name on $board..."
 	source_name="$test_name"
-	if [[ "$board" == xiao_esp32c6 && "$test_name" == rmt_loopback ]]; then
-		source_name=rmt_loopback_xiao_c6
+	if [[ "$test_name" == rmt_loopback ]]; then
+		case "$board" in
+			xiao_esp32c6) source_name=rmt_loopback_xiao_c6 ;;
+			xiao_esp32c5) source_name=rmt_loopback_xiao_c5 ;;
+		esac
 	fi
 	build_args=(-a -r -x -board "$board" -heap 64k)
 	if [[ "$test_name" == psram_info ]]; then
@@ -108,7 +111,7 @@ for test_name in "${tests[@]}"; do
 		tail -n 35 "$work_dir/$test_name.build.log" >&2
 		exit 1
 	fi
-	if [[ "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
+	if [[ "$board" == xiao_esp32s3_plus || "$board" == xiao_esp32c6 || "$board" == xiao_esp32c5 || "$board" == waveshare_h2_dev_kit_n4 ]]; then
 		# XIAO native USB Serial/JTAG can take a moment to settle after flashing.
 		sleep 1
 	fi
