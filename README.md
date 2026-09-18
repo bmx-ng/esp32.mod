@@ -394,7 +394,7 @@ filesystem inaccessible.
 The hardware runner builds, flashes, and checks self-verifying examples on a
 connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
 `xiao_esp32s3_plus`, and `xiao_esp32c6`; the complete suite has been verified
-on the Baguette S3, and the basic suite on the XIAO C6.
+on the Baguette S3 and XIAO C6.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
@@ -408,8 +408,8 @@ ESP32_TEST_BOARD=baguette_s3 ESP32_TEST_PORT=/dev/cu.usbmodem101 \
 
 For the RMT receive/transmit loopback, connect GPIO4 to GPIO5 and run
 `./tests/run_hardware.sh loopback` with the same variables. `all` runs both
-suites. The RMT loopback is not available through the XIAO C6 header because
-its GPIO4/GPIO5 are not the D3/D4 header pins; use `basic` on that board.
+suites. On the XIAO C6, connect D3/GPIO21 to D4/GPIO22 instead; the runner
+selects its board-specific loopback example automatically.
 On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
 Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
 your system Python does not have it. Test output is checked after an automatic
