@@ -29,6 +29,7 @@ uint32_t bmx_esp32_managed_callback_rejection_count(void);
    rejected after that point. */
 #define BMX_EMBEDDED_PLATFORM_CONTEXT_VALID() \
     bmx_esp32_managed_context_valid()
+#define BMX_EMBEDDED_PLATFORM_CONTEXT_INDEX() xPortGetCoreID()
 #define BMX_EMBEDDED_PLATFORM_PANIC(message) esp_system_abort(message)
 #define BMX_EMBEDDED_PLATFORM_ARENA_ACQUIRE(capacity, alignment) \
     bmx_esp32_managed_arena_acquire((capacity), (alignment))
