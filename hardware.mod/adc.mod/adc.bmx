@@ -33,6 +33,11 @@ Extern "C"
 	Function ADCGetAttenuation:Int(pin:UInt) = "bmx_esp32_adc_get_attenuation"
 
 	Rem
+	bbdoc: Returns True when ESP-IDF provides a calibrated voltage conversion scheme for the current SoC.
+	End Rem
+	Function ADCIsCalibrationSupported:Int() = "bmx_esp32_adc_calibration_supported"
+
+	Rem
 	bbdoc: Reads a calibrated voltage in millivolts when the SoC supports an ESP-IDF calibration scheme.
 	End Rem
 	Function ADCReadMilliVolts:Int(pin:UInt, millivolts:Int Var) = "bmx_esp32_adc_read_millivolts"

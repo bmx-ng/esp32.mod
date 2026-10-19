@@ -5,17 +5,27 @@ Import ESP32.Hardware.ADC
 Import ESP32.Hardware.PWM
 Import ESP32.Random
 
-Function RunADCPWMTests(ADCPin:UInt, PWMPin:UInt, SecondPWMPin:UInt)
+Function RunADCPWMTests(ADCPin:UInt, PWMPin:UInt, SecondPWMPin:UInt, ..
+		DefaultAttenuation:Int = ADCAttenuation12dB, ..
+		AlternateAttenuation:Int = ADCAttenuation6dB, UnsupportedAttenuation:Int = -1)
 	Local raw:UInt
 	Local millivolts:Int
 	Local passed:Int = ADCIsValidPin(ADCPin) And ADCInitPin(ADCPin)
 	ESP32RandomEnableInternalEntropy()
 	passed :& Not ESP32RandomInternalEntropyEnabled()
 	passed :& ADCUnitForPin(ADCPin) >= 0 And ADCChannelForPin(ADCPin) >= 0
-	passed :& ADCGetAttenuation(ADCPin) = ADCAttenuation12dB
-	passed :& ADCSetAttenuation(ADCPin, ADCAttenuation6dB)
+	passed :& ADCGetAttenuation(ADCPin) = DefaultAttenuation
+	passed :& ADCSetAttenuation(ADCPin, AlternateAttenuation)
+	If UnsupportedAttenuation >= 0 Then
+		passed :& Not ADCSetAttenuation(ADCPin, UnsupportedAttenuation)
+		passed :& ADCGetAttenuation(ADCPin) = AlternateAttenuation
+	End If
 	passed :& ADCReadRaw(ADCPin, raw) And raw <= ADCMaximumValueForPin(ADCPin)
-	passed :& ADCReadMilliVolts(ADCPin, millivolts) And millivolts >= 0
+	If ADCIsCalibrationSupported() Then
+		passed :& ADCReadMilliVolts(ADCPin, millivolts) And millivolts >= 0
+	Else
+		passed :& Not ADCReadMilliVolts(ADCPin, millivolts)
+	End If
 	passed :& ADCDeinitPin(ADCPin)
 	ESP32RandomEnableInternalEntropy()
 	passed :& ESP32RandomInternalEntropyEnabled() And Not ADCInitPin(ADCPin)
