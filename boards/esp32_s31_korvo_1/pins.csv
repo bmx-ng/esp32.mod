@@ -1,0 +1,56 @@
+name,gpio,connector,position
+CODEC_SDA,0,onboard,ES8389 SDA
+CODEC_SCL,1,onboard,ES8389 SCL
+I2S_MCLK,2,onboard,ES8389 MCLK
+I2S_SCLK,3,onboard,ES8389 SCLK
+I2S_LRCLK,4,onboard,ES8389 LRCLK
+I2S_SDOUT,5,onboard,ES8389 playback data
+I2S_SDIN,6,onboard,ES8389 capture data
+PA_CTRL,7,onboard,speaker amplifier enable
+LCD_B3,8,lcd,DB0
+LCD_B4,9,lcd,DB1
+LCD_B5,10,lcd,DB2
+LCD_B6,11,lcd,DB3
+LCD_B7,12,lcd,DB4
+LCD_G2,13,lcd,DB5
+LCD_G3,14,lcd,DB6
+LCD_G4,15,lcd,DB7
+LCD_G5,16,lcd,DB8
+LCD_G6,17,lcd,DB9
+LCD_G7,18,lcd,DB10
+LCD_R3,19,lcd,DB11
+SD_DATA0,20,microsd,DATA0
+SD_DATA1,21,microsd,DATA1
+SD_DATA2,22,microsd,DATA2
+SD_DATA3,23,microsd,DATA3
+SD_CLK,24,microsd,CLK
+SD_CMD,25,microsd,CMD
+LCD_R4,33,lcd,DB12
+LCD_R5,34,lcd,DB13
+LCD_R6,35,lcd,DB14
+LCD_R7,36,lcd,DB15
+RGB_LED,37,onboard,addressable RGB LED
+LCD_CS,38,lcd,chip select and camera GM_FK
+SD_CTRL,39,microsd,power control
+LCD_PCLK,40,lcd,pixel clock
+ADC_BUTTONS,42,onboard,PLAY SET VOL- VOL+
+LCD_DE,43,lcd,data enable
+LCD_HSYNC,44,lcd,horizontal sync
+LCD_VSYNC,45,lcd,vertical sync
+CAM_D0,46,camera,data 0
+CAM_D1,47,camera,data 1
+CAM_D2,48,camera,data 2
+CAM_D3,49,camera,data 3
+CAM_D4,50,camera,data 4
+CAM_D5,51,camera,data 5
+CAM_D6,52,camera,data 6
+CAM_D7,53,camera,data 7
+CAM_PCLK,54,camera,pixel clock
+CAM_XCLK,55,camera,master clock
+CAM_VSYNC,56,camera,vertical sync
+CAM_HSYNC,57,camera,horizontal sync
+UART_TX,58,onboard,USB UART TX
+UART_RX,59,onboard,USB UART RX
+LCD_MOSI,60,lcd,configuration data
+LCD_SCK,61,lcd,configuration clock and download control
+

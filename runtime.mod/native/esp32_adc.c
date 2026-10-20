@@ -48,13 +48,23 @@ static int32_t bmx_esp32_adc_ensure_unit(adc_unit_t unit) {
 }
 
 static int32_t bmx_esp32_adc_attenuation_value(int32_t attenuation) {
+    int32_t native_attenuation;
     switch (attenuation) {
-        case 0: return ADC_ATTEN_DB_0;
-        case 1: return ADC_ATTEN_DB_2_5;
-        case 2: return ADC_ATTEN_DB_6;
-        case 3: return ADC_ATTEN_DB_12;
+        case 0: native_attenuation = ADC_ATTEN_DB_0; break;
+        case 1: native_attenuation = ADC_ATTEN_DB_2_5; break;
+        case 2: native_attenuation = ADC_ATTEN_DB_6; break;
+        case 3: native_attenuation = ADC_ATTEN_DB_12; break;
         default: return -1;
     }
+    return (uint32_t)native_attenuation < SOC_ADC_ATTEN_NUM ? native_attenuation : -1;
+}
+
+static int32_t bmx_esp32_adc_default_attenuation(void) {
+    for (int32_t attenuation = 3; attenuation >= 0; --attenuation) {
+        if (bmx_esp32_adc_attenuation_value(attenuation) >= 0)
+            return attenuation;
+    }
+    return -1;
 }
 
 static int32_t bmx_esp32_adc_configure(adc_unit_t unit, adc_channel_t channel,
@@ -92,8 +102,10 @@ static void bmx_esp32_adc_delete_calibration(adc_unit_t unit,
 static int32_t bmx_esp32_adc_ensure_calibration(adc_unit_t unit,
         adc_channel_t channel) {
     if (bmx_esp32_adc_calibration[unit][channel]) return 1;
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED || ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
     adc_atten_t attenuation = bmx_esp32_adc_attenuation_value(
         bmx_esp32_adc_attenuation[unit][channel]);
+#endif
 #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
     adc_cali_curve_fitting_config_t curve = {
         .unit_id = unit,
@@ -125,13 +137,22 @@ static int32_t bmx_esp32_adc_ensure_calibration(adc_unit_t unit,
     return 0;
 }
 
+int32_t bmx_esp32_adc_calibration_supported(void) {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED || ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    return 1;
+#else
+    return 0;
+#endif
+}
+
 int32_t bmx_embedded_adc_init_pin(uint32_t gpio) {
     adc_unit_t unit;
     adc_channel_t channel;
     if (!bmx_esp32_adc_pin_mapping(gpio, &unit, &channel) ||
             bmx_esp32_random_internal_entropy_enabled()) return 0;
     if (bmx_esp32_adc_configured[unit][channel]) return 1;
-    return bmx_esp32_adc_configure(unit, channel, 3);
+    return bmx_esp32_adc_configure(unit, channel,
+        bmx_esp32_adc_default_attenuation());
 }
 
 int32_t bmx_embedded_adc_deinit_pin(uint32_t gpio) {

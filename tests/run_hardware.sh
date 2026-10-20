@@ -54,8 +54,8 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 && "$board" != m5stack_stamp_p4 ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, Waveshare H2 Dev Kit N4, and M5Stack Stamp-P4." >&2
+if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 && "$board" != m5stack_stamp_p4 && "$board" != esp32_s31_korvo_1 ]]; then
+	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, Waveshare H2 Dev Kit N4, M5Stack Stamp-P4, and ESP32-S31-Korvo-1." >&2
 	exit 2
 fi
 
@@ -95,8 +95,13 @@ for test_name in "${tests[@]}"; do
 	esac
 	echo "Building and flashing $test_name on $board..."
 	source_name="$test_name"
+	if [[ "$board" == esp32_s31_korvo_1 && "$test_name" == gpio_mirrored ]]; then
+		source_name=gpio_mirrored_s31
+	fi
 	if [[ "$board" == m5stack_stamp_p4 && "$test_name" == adc_pwm ]]; then
 		source_name=adc_pwm_p4
+	elif [[ "$board" == esp32_s31_korvo_1 && "$test_name" == adc_pwm ]]; then
+		source_name=adc_pwm_s31
 	fi
 	if [[ "$test_name" == rmt_loopback ]]; then
 		case "$board" in
