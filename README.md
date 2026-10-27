@@ -24,14 +24,15 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-H2 | 32-bit RISC-V | `waveshare_h2_dev_kit_n4` | 4 MiB flash, native USB and CH343 UART bridge, no Wi-Fi or PSRAM |
 | ESP32-P4 | 32-bit RISC-V | `m5stack_stamp_p4` | 16 MiB flash, 32 MiB PSRAM, native USB, no onboard radio |
 | ESP32-S31 | 32-bit RISC-V | `esp32_s31_korvo_1` | 16 MiB flash, 16 MiB PSRAM, UART bridge, MicroSD slot; ESP-IDF preview target |
+| ESP32-S31 | 32-bit RISC-V | `esp32_s31_function_coreboard_1` | 16 MiB flash, 16 MiB PSRAM, Gigabit Ethernet, audio, USB host; ESP-IDF preview target |
 
 The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
 ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, Waveshare H2 Dev Kit N4,
-M5Stack Stamp-P4, and ESP32-S31-Korvo-1 profiles have been tested on their
-respective physical boards. Additional generic profiles describe other ESP-IDF
-target families for inspection and future validation; their presence does not
-by itself mean that the complete BlitzMax implementation has been tested on
-that target.
+M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1
+profiles have been tested on their respective physical boards. Additional
+generic profiles describe other ESP-IDF target families for inspection and
+future validation; their presence does not by itself mean that the complete
+BlitzMax implementation has been tested on that target.
 
 ## Requirements
 
@@ -117,6 +118,15 @@ filesystem adapter uses the slot in one-bit SDMMC mode. Its 16 MiB PSRAM can
 hold the managed heap with `-heap-region psram -heap auto`. ESP32-S31 support
 is still marked preview in ESP-IDF 6.1: raw ADC reads work, but ESP-IDF does not
 yet provide the chip with a calibrated millivolt-conversion scheme.
+
+For the Espressif ESP32-S31-Function-CoreBoard-1, use
+`-board esp32_s31_function_coreboard_1`. The profile records its 40-pin J2
+header, YT8531DC Gigabit Ethernet PHY, ES8311 audio codec, microphone, amplified
+speaker output, GPIO60 addressable LED, 500 mA USB 2.0 High-Speed host port,
+USB Serial/JTAG port, and USB-to-UART bridge. Use the USB-to-UART Type-C port
+for the default upload and console path. The 16 MiB PSRAM supports
+`-heap-region psram -heap auto`. Ethernet hardware is described for pin and
+resource planning, but `esp32.mod` does not yet provide an Ethernet adapter.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
@@ -435,15 +445,18 @@ filesystem inaccessible.
 The hardware runner builds, flashes, and checks self-verifying examples on a
 connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
 `xiao_esp32s3_plus`, `xiao_esp32c6`, `xiao_esp32c5`,
-`waveshare_h2_dev_kit_n4`, `m5stack_stamp_p4`, and `esp32_s31_korvo_1`; the
-complete suite has been verified on the Baguette S3 and XIAO C6. The S31
-random, time/alarm, mirrored GPIO, ADC/PWM, and PSRAM checks have been verified
-on a V1.1 board, along with its onboard GPIO37 WS2812 through RMT. The `basic`,
+`waveshare_h2_dev_kit_n4`, `m5stack_stamp_p4`, `esp32_s31_korvo_1`, and
+`esp32_s31_function_coreboard_1`; the complete suite has been verified on the
+Baguette S3 and XIAO C6. The S31 Korvo random, time/alarm, mirrored GPIO,
+ADC/PWM, and PSRAM checks have been verified on a V1.1 board, along with its
+onboard GPIO37 WS2812 through RMT. The `basic`,
 `loopback`, and `psram` suites have each been verified on the XIAO C5. The
 `basic` and `loopback` suites have each been verified on the Waveshare H2 Dev
 Kit N4; its native USB port required a physical Reset between those suite runs.
 The `basic` checks (with the P4-specific ADC input), LPG8–LPG10 `loopback`,
 and `psram` suites have been verified on the Stamp-P4.
+The S31 Function-CoreBoard-1 `basic` and `psram` suites have also been
+verified, together with its GPIO60 WS2812 through RMT.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
