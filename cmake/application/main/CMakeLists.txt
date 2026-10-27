@@ -33,6 +33,11 @@ if (BLITZMAX_ESP32_WIFI_ENABLED)
         "${ESP32_MODULE_ROOT}/network.mod/wifi.mod/native/esp32_wifi.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_event esp_netif esp_wifi nvs_flash)
 endif()
+if (BLITZMAX_ESP32_ETHERNET_ENABLED)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${ESP32_MODULE_ROOT}/network.mod/ethernet.mod/native/esp32_ethernet.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_eth esp_event esp_netif)
+endif()
 
 file(MAKE_DIRECTORY "${GENERATED_DIRECTORY}")
 file(WRITE "${GENERATED_BOOTSTRAP_C}" "/* Generated ESP32 module initialization order. */\n")
@@ -112,6 +117,16 @@ if (BLITZMAX_ESP32_WIFI_ENABLED)
         ${BLITZMAX_ESP32_ESP_NETIF_LIB}
         ${BLITZMAX_ESP32_ESP_WIFI_LIB}
         ${BLITZMAX_ESP32_NVS_FLASH_LIB})
+endif()
+
+if (BLITZMAX_ESP32_ETHERNET_ENABLED)
+    idf_component_get_property(BLITZMAX_ESP32_ESP_ETH_LIB esp_eth COMPONENT_LIB)
+    idf_component_get_property(BLITZMAX_ESP32_ESP_EVENT_LIB esp_event COMPONENT_LIB)
+    idf_component_get_property(BLITZMAX_ESP32_ESP_NETIF_LIB esp_netif COMPONENT_LIB)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE
+        ${BLITZMAX_ESP32_ESP_ETH_LIB}
+        ${BLITZMAX_ESP32_ESP_EVENT_LIB}
+        ${BLITZMAX_ESP32_ESP_NETIF_LIB})
 endif()
 
 if (BLITZMAX_ESP32_BLE_ENABLED)

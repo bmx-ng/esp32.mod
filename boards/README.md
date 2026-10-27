@@ -41,6 +41,14 @@ application slots. Application slots must be large enough for the complete
 firmware image. Enabling rollback in `sdkconfig.defaults` makes a newly booted
 image provisional until it explicitly confirms that it is working.
 
+An onboard Ethernet resource records its PHY `type`, MAC/PHY `interface`, and
+named signal pins. RGMII profiles use `mdc`, `mdio`, `reset`, optional
+`interrupt`, `tx_clock`, `rx_clock`, `tx_control`, `rx_control`, and
+`txd0`-`txd3`/`rxd0`-`rxd3`. `phy_ref_clock` is available when the board routes
+one. Clock-source constraints belong in the profile's `sdkconfig.defaults`.
+These fields describe fixed board wiring; they do not claim that a cable, DHCP
+server, or reachable network is present.
+
 Use `bmk boardinfo -l esp32 -board <profile>` to inspect the resolved data.
 Extra board roots can be configured with `esp32.board.dirs` in `custom.bmk` or
 the platform path-list environment variable `ESP32_BOARD_DIRS`. A custom

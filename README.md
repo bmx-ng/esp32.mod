@@ -267,7 +267,7 @@ Import ESP32.Hardware.GPIO
 
 The latter also provides ESP32 drive-capability controls. This pattern is used
 throughout GPIO, time, UART, I2C, SPI, ADC, PWM, watchdog, device, random,
-power, Wi-Fi, and BLE support.
+power, Wi-Fi, wired Ethernet, and BLE support.
 
 ## Feature guide
 
@@ -287,6 +287,7 @@ power, Wi-Fi, and BLE support.
 | NVS and partitions | `ESP32.Storage.NVS`, `ESP32.System.Partition` | [`nvs_storage.bmx`](examples/nvs_storage.bmx), [`partition_info.bmx`](examples/partition_info.bmx) |
 | OTA | `ESP32.System.OTA` | [`ota_from_storage.bmx`](examples/ota_from_storage.bmx) |
 | Wi-Fi and sockets | `Embedded.Network.WiFi`, `ESP32.Network.WiFi`, `BRL.Socket` | [`wifi_scan.bmx`](examples/wifi_scan.bmx), [`socket_loopback.bmx`](examples/socket_loopback.bmx) |
+| Wired Ethernet | `Embedded.Network.Ethernet`, `ESP32.Network.Ethernet`, `BRL.Socket` | [`ethernet_live.bmx`](examples/ethernet_live.bmx) |
 | BLE | `Embedded.Network.BLE`, `ESP32.Network.BLE` | [`ble_scan.bmx`](examples/ble_scan.bmx), [`ble_peripheral.bmx`](examples/ble_peripheral.bmx), [`ble_client.bmx`](examples/ble_client.bmx) |
 
 Hardware resources differ between ESP32 variants. Query capabilities where the
@@ -388,6 +389,28 @@ Credentials are application data and are never compiled into these modules.
 TLS and `Net.HTTP` integration are not currently part of this module. The HTTP
 checks in the examples use plain local or test traffic.
 
+## Wired Ethernet
+
+`Embedded.Network.Ethernet` provides portable initialization, teardown, link
+events, DHCP waiting, IPv4 details, MAC address, speed, and duplex queries.
+Sockets, DNS, and ordinary UDP/TCP traffic use `BRL.Socket` exactly as they do
+over Wi-Fi. Native Ethernet callbacks are deferred through the normal embedded
+event queue.
+
+`ESP32.Network.Ethernet` selects its MAC, PHY, interface, and pins entirely from
+the active board profile. It also exposes the PHY address and ESP-IDF routing
+controls. ESP-IDF gives its default Ethernet interface route priority 50 and a
+Wi-Fi station priority 100, so Wi-Fi is normally preferred while both links are
+up. `EthernetMakeDefault()` explicitly selects Ethernet; alternatively,
+`EthernetSetRoutePriority()` can adjust its automatic routing priority.
+
+The first qualified adapter is the ESP32-S31-Function-CoreBoard-1 onboard
+YT8531DC PHY over RGMII. Its profile also selects APLL for the RGMII transmit
+clock because the board's 200 MHz PSRAM occupies MPLL. Applications on profiles
+without a supported Ethernet resource fail at build time rather than silently
+using guessed wiring. [`ethernet_live.bmx`](examples/ethernet_live.bmx) verifies
+DHCP, DNS, NTP over UDP, HTTP over TCP, and guarded teardown.
+
 ## Bluetooth Low Energy
 
 `Embedded.Network.BLE` provides portable lifecycle, discovery, central, GATT
@@ -455,8 +478,9 @@ onboard GPIO37 WS2812 through RMT. The `basic`,
 Kit N4; its native USB port required a physical Reset between those suite runs.
 The `basic` checks (with the P4-specific ADC input), LPG8–LPG10 `loopback`,
 and `psram` suites have been verified on the Stamp-P4.
-The S31 Function-CoreBoard-1 `basic` and `psram` suites have also been
-verified, together with its GPIO60 WS2812 through RMT.
+The S31 Function-CoreBoard-1 `basic`, `psram`, and `ethernet` suites have also
+been verified, together with its GPIO60 WS2812 through RMT. Its Ethernet test
+negotiated 1000 Mbps full duplex and completed DHCP, DNS, UDP, and TCP traffic.
 It checks the detected chip and flash against the board profile before
 flashing and stops if they disagree. It does not format storage, join Wi-Fi, or
 alter OTA partitions beyond the normal application upload.
@@ -473,6 +497,9 @@ For the RMT receive/transmit loopback, connect GPIO4 to GPIO5 and run
 connect D3/GPIO7 to D4/GPIO23 instead; on the XIAO C6, connect D3/GPIO21 to
 D4/GPIO22. The runner selects the board-specific loopback example. `all` runs
 both the basic and loopback suites.
+On the S31 Function-CoreBoard-1, attach Ethernet to a DHCP-enabled network and
+run `./tests/run_hardware.sh ethernet`. This live suite also requires Internet
+access for its NTP and plain-HTTP checks.
 On the 44-pin S3, use its USB-to-UART `COM` socket. The runner needs
 Python with `pyserial`; set `ESP32_TEST_PYTHON` to the ESP-IDF Tools Python if
 your system Python does not have it. Test output is checked after an automatic

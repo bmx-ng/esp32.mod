@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     args = parser.parse_args()
 
-    recent = deque(maxlen=35)
+    recent = deque(maxlen=100)
     seen_project = False
     deadline = time.monotonic() + args.timeout
 

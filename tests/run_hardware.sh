@@ -42,20 +42,28 @@ case "$suite" in
 	psram)
 		tests=(psram_info)
 		;;
+	ethernet)
+		tests=(ethernet_live)
+		;;
 	all)
 		tests=(random_esp32 time_alarm gpio_mirrored adc_pwm rmt_loopback)
 		;;
-	random_esp32|time_alarm|gpio_mirrored|adc_pwm|rmt_loopback|psram_info)
+	random_esp32|time_alarm|gpio_mirrored|adc_pwm|rmt_loopback|psram_info|ethernet_live)
 		tests=("$suite")
 		;;
 	*)
-		echo "Unknown suite '$suite' (choose basic, loopback, psram, all, or an example name)." >&2
+		echo "Unknown suite '$suite' (choose basic, loopback, psram, ethernet, all, or an example name)." >&2
 		exit 2
 		;;
 esac
 
 if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 && "$board" != m5stack_stamp_p4 && "$board" != esp32_s31_korvo_1 && "$board" != esp32_s31_function_coreboard_1 ]]; then
 	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, Waveshare H2 Dev Kit N4, M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1." >&2
+	exit 2
+fi
+
+if [[ " ${tests[*]} " == *" ethernet_live "* && "$board" != esp32_s31_function_coreboard_1 ]]; then
+	echo "The Ethernet suite currently requires the ESP32-S31-Function-CoreBoard-1 profile." >&2
 	exit 2
 fi
 
@@ -92,6 +100,7 @@ for test_name in "${tests[@]}"; do
 		adc_pwm) expected='ESP32 ADC and PWM checks passed' ;;
 		rmt_loopback) expected='RMT loopback passed' ;;
 		psram_info) expected='Managed arena in PSRAM: 1' ;;
+		ethernet_live) expected='Live Ethernet networking test passed' ;;
 	esac
 	echo "Building and flashing $test_name on $board..."
 	source_name="$test_name"

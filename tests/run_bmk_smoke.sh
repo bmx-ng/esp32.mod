@@ -25,6 +25,16 @@ for example in scalar_smoke managed_smoke managed_stress managed_fault_safety ma
 	test -s "$work_dir/$example.map"
 done
 
+if [[ "$target" == esp32_s31_function_coreboard_1 ]]; then
+	"$bmk" makeapp \
+		-a -r -l esp32 -g "$architecture" -board "$target" -heap 64k \
+		-o "$work_dir/ethernet_live" \
+		"$module_root/examples/ethernet_live.bmx"
+	test -s "$work_dir/ethernet_live.elf"
+	test -s "$work_dir/ethernet_live.bin"
+	test -s "$work_dir/ethernet_live.map"
+fi
+
 if "$bmk" makeapp -a -r -l esp32 -g xtensa -board baguette_s3 \
 		-heap-region psram -heap auto -o "$work_dir/invalid-psram" \
 		"$module_root/examples/psram_info.bmx"; then
