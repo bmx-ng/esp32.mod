@@ -67,7 +67,8 @@ int32_t bmx_esp32_managed_context_valid(void) {
 uint32_t bmx_esp32_managed_gc_context_index(void) {
     if (xPortInIsrContext()) return UINT32_MAX;
     TaskHandle_t current = xTaskGetCurrentTaskHandle();
-    if (__atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) == current)
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (xPortGetCoreID() == 0 && (!owner || owner == current))
         return 0u;
     if (__atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) == current)
         return 1u;
