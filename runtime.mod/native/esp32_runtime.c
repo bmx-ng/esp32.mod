@@ -17,6 +17,9 @@
 static void *bmx_esp32_managed_arena;
 static uint32_t bmx_esp32_managed_arena_size;
 static TaskHandle_t bmx_esp32_managed_owner_task;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+static TaskHandle_t bmx_esp32_managed_worker_task;
+#endif
 static uint32_t bmx_esp32_managed_context_violations;
 static uint32_t bmx_esp32_managed_callback_dispatches;
 static uint32_t bmx_esp32_managed_callback_rejections;
@@ -34,6 +37,19 @@ static int32_t bmx_esp32_psram_initialized(void) {
 }
 
 int32_t bmx_esp32_managed_context_valid(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (xPortInIsrContext()) {
+        __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
+        return 0;
+    }
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (xPortGetCoreID() == 0 && (!owner || owner == current)) return 1;
+    if (__atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) == current)
+        return 1;
+    __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
+    return 0;
+#else
     if (xPortInIsrContext() || xPortGetCoreID() != 0) {
         __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
         return 0;
@@ -44,10 +60,50 @@ int32_t bmx_esp32_managed_context_valid(void) {
         return 0;
     }
     return 1;
+#endif
 }
 
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+uint32_t bmx_esp32_managed_gc_context_index(void) {
+    if (xPortInIsrContext()) return UINT32_MAX;
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    if (__atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) == current)
+        return 0u;
+    if (__atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) == current)
+        return 1u;
+    return UINT32_MAX;
+}
+
+int32_t bmx_esp32_managed_gc_bind(uint32_t slot) {
+    if (xPortInIsrContext()) return 0;
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (slot == 0u && xPortGetCoreID() == 0 && (!owner || owner == current)) {
+        __atomic_store_n(&bmx_esp32_managed_owner_task, current, __ATOMIC_RELEASE);
+        return 1;
+    }
+    if (slot == 1u && owner && owner != current) {
+        TaskHandle_t expected = NULL;
+        return __atomic_compare_exchange_n(&bmx_esp32_managed_worker_task,
+            &expected, current, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+    }
+    return 0;
+}
+
+void bmx_esp32_managed_gc_unbind(uint32_t slot) {
+    if (slot == 1u && !xPortInIsrContext() &&
+        __atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) ==
+            xTaskGetCurrentTaskHandle())
+        __atomic_store_n(&bmx_esp32_managed_worker_task, NULL, __ATOMIC_RELEASE);
+}
+#endif
+
 int32_t bmx_esp32_managed_task_bound(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    return __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) != NULL;
+#else
     return bmx_esp32_managed_owner_task != NULL;
+#endif
 }
 
 uint32_t bmx_esp32_managed_context_violation_count(void) {
@@ -56,8 +112,14 @@ uint32_t bmx_esp32_managed_context_violation_count(void) {
 
 int32_t bmx_esp32_managed_callback_dispatch(
     BMXESP32ManagedCallback callback, void *argument) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (!callback || !bmx_esp32_managed_context_valid() ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle()) {
+#else
     if (!callback || !bmx_esp32_managed_owner_task ||
         !bmx_esp32_managed_context_valid()) {
+#endif
         __atomic_fetch_add(&bmx_esp32_managed_callback_rejections, 1u, __ATOMIC_RELAXED);
         return 0;
     }
@@ -76,15 +138,30 @@ uint32_t bmx_esp32_managed_callback_rejection_count(void) {
 
 void *bmx_esp32_managed_arena_acquire(uint32_t capacity, uint32_t alignment) {
     if (!bmx_esp32_managed_context_valid()) return NULL;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (owner && owner != xTaskGetCurrentTaskHandle()) return NULL;
+#endif
     if (bmx_esp32_managed_arena) {
         return capacity == bmx_esp32_managed_arena_size ? bmx_esp32_managed_arena : NULL;
     }
     if (!capacity || !alignment || (alignment & (alignment - 1u))) return NULL;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int owner_already_bound = owner != NULL;
+    __atomic_store_n(&bmx_esp32_managed_owner_task,
+        xTaskGetCurrentTaskHandle(), __ATOMIC_RELEASE);
+#else
     bmx_esp32_managed_owner_task = xTaskGetCurrentTaskHandle();
+#endif
     uint32_t capabilities = MALLOC_CAP_8BIT |
         (BMX_EMBEDDED_ARENA_IN_PSRAM ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL);
     if (BMX_EMBEDDED_ARENA_IN_PSRAM && !bmx_esp32_psram_initialized()) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (!owner_already_bound)
+            __atomic_store_n(&bmx_esp32_managed_owner_task, NULL, __ATOMIC_RELEASE);
+#else
         bmx_esp32_managed_owner_task = NULL;
+#endif
         return NULL;
     }
     bmx_esp32_managed_arena = heap_caps_aligned_alloc(
@@ -92,7 +169,12 @@ void *bmx_esp32_managed_arena_acquire(uint32_t capacity, uint32_t alignment) {
     if (bmx_esp32_managed_arena) {
         bmx_esp32_managed_arena_size = capacity;
     } else {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (!owner_already_bound)
+            __atomic_store_n(&bmx_esp32_managed_owner_task, NULL, __ATOMIC_RELEASE);
+#else
         bmx_esp32_managed_owner_task = NULL;
+#endif
     }
     return bmx_esp32_managed_arena;
 }
