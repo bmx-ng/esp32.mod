@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "blitzmax/embedded_events.h"
+#include "blitzmax/embedded_runtime.h"
 #include "blitzmax/embedded_uart.h"
 #include "blitzmax/esp32_uart.h"
 #include "driver/gpio.h"
@@ -478,7 +479,14 @@ int32_t bmx_embedded_uart_is_readable(int32_t controller) {
 
 int32_t bmx_embedded_uart_is_readable_within_us(int32_t controller,
         uint32_t timeout_us) {
-    return bmx_esp32_uart_is_readable_within_us(controller, timeout_us);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = timeout_us && bmx_embedded_gc_enter_native_safe();
+#endif
+    int32_t result = bmx_esp32_uart_is_readable_within_us(controller, timeout_us);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int32_t bmx_embedded_uart_write_blocking(int32_t controller,
@@ -503,12 +511,25 @@ int32_t bmx_embedded_uart_read_available(int32_t controller,
 }
 
 int32_t bmx_embedded_uart_put_byte(int32_t controller, uint32_t value) {
-    return bmx_esp32_uart_put_byte(controller, value);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
+    int32_t result = bmx_esp32_uart_put_byte(controller, value);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int32_t bmx_embedded_uart_tx_wait_blocking(int32_t controller) {
     if (!bmx_esp32_uart_is_enabled(controller)) return 0;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     bmx_esp32_uart_tx_wait_blocking(controller);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return 1;
 }
 

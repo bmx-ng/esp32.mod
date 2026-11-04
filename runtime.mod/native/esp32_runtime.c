@@ -276,12 +276,25 @@ int32_t bmx_embedded_millisecs(void) {
 
 void bmx_embedded_delay(int32_t milliseconds) {
     if (milliseconds <= 0) return;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     TickType_t ticks = pdMS_TO_TICKS((uint32_t)milliseconds);
     vTaskDelay(ticks ? ticks : 1);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 void bmx_embedded_udelay(int32_t microseconds) {
-    if (microseconds > 0) esp_rom_delay_us((uint32_t)microseconds);
+    if (microseconds <= 0) return;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
+    esp_rom_delay_us((uint32_t)microseconds);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 uint64_t bmx_embedded_time_microseconds(void) {
@@ -310,11 +323,17 @@ static void bmx_esp32_sleep_microseconds_chunk(uint32_t microseconds) {
 }
 
 void bmx_embedded_sleep_microseconds(uint64_t microseconds) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = microseconds && bmx_embedded_gc_enter_native_safe();
+#endif
     while (microseconds) {
         uint32_t chunk = microseconds > 60000000u ? 60000000u : (uint32_t)microseconds;
         bmx_esp32_sleep_microseconds_chunk(chunk);
         microseconds -= chunk;
     }
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 void bmx_embedded_sleep_milliseconds(uint32_t milliseconds) {
