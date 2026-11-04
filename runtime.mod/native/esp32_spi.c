@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "blitzmax/embedded_spi.h"
+#include "blitzmax/embedded_runtime.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
@@ -75,7 +76,16 @@ static int32_t bmx_esp32_spi_transfer(int32_t controller, const void *source,
             .tx_buffer = tx ? tx + transferred : NULL,
             .rx_buffer = rx ? rx + transferred : NULL,
         };
-        if (spi_device_polling_transmit(state->device, &transaction) != ESP_OK)
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        int native_safe = bmx_embedded_gc_enter_native_safe_for_buffers(
+            transaction.tx_buffer, transaction.tx_buffer ? (size_t)chunk : 0u,
+            transaction.rx_buffer, transaction.rx_buffer ? (size_t)chunk : 0u);
+#endif
+        esp_err_t error = spi_device_polling_transmit(state->device, &transaction);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+        if (error != ESP_OK)
             return BMX_SPI_ERROR_GENERIC;
         transferred += chunk;
     }
