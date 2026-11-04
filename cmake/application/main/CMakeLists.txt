@@ -161,6 +161,9 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
 )
 if (BLITZMAX_ESP32_GC_MULTICORE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_MULTICORE=1)
+    if ("$ENV{BMX_EMBEDDED_GC_PERF_COUNTERS}" STREQUAL "1")
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_GC_PERF_COUNTERS=1)
+    endif()
 endif()
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=unused-const-variable
