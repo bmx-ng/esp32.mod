@@ -164,6 +164,9 @@ if (BLITZMAX_ESP32_GC_MULTICORE)
     if ("$ENV{BMX_EMBEDDED_GC_PERF_COUNTERS}" STREQUAL "1")
         target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_GC_PERF_COUNTERS=1)
     endif()
+    if ("$ENV{BMX_EMBEDDED_GC_PHASE_TIME}" STREQUAL "1")
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_GC_PHASE_TIME=1)
+    endif()
 endif()
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=unused-const-variable
