@@ -19,6 +19,8 @@ static uint32_t bmx_esp32_managed_arena_size;
 static TaskHandle_t bmx_esp32_managed_owner_task;
 #if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
 static TaskHandle_t bmx_esp32_managed_worker_task;
+static TaskHandle_t bmx_esp32_managed_lifecycle_task;
+static void (*bmx_esp32_managed_lifecycle_entry)(void);
 #endif
 static uint32_t bmx_esp32_managed_context_violations;
 static uint32_t bmx_esp32_managed_callback_dispatches;
@@ -96,6 +98,38 @@ void bmx_esp32_managed_gc_unbind(uint32_t slot) {
         __atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) ==
             xTaskGetCurrentTaskHandle())
         __atomic_store_n(&bmx_esp32_managed_worker_task, NULL, __ATOMIC_RELEASE);
+}
+
+static void bmx_esp32_managed_worker_trampoline(void *argument) {
+    (void)argument;
+    void (*entry)(void) = __atomic_load_n(&bmx_esp32_managed_lifecycle_entry, __ATOMIC_ACQUIRE);
+    entry();
+    /* The owner observes the runtime completion state, then deletes this
+       suspended task. Self-deletion would leave a task-handle reuse race. */
+    for (;;) vTaskSuspend(NULL);
+}
+
+int32_t bmx_esp32_managed_gc_worker_start(void (*entry)(void)) {
+    if (!entry || xPortInIsrContext() || xPortGetCoreID() != 0 ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle() || bmx_esp32_managed_lifecycle_task) return 0;
+    TaskHandle_t task = NULL;
+    __atomic_store_n(&bmx_esp32_managed_lifecycle_entry, entry, __ATOMIC_RELEASE);
+    if (xTaskCreatePinnedToCore(bmx_esp32_managed_worker_trampoline,
+            "bmx-gc-worker", 4096, NULL, tskIDLE_PRIORITY + 1,
+            &task, 1) != pdPASS) return 0;
+    bmx_esp32_managed_lifecycle_task = task;
+    return 1;
+}
+
+int32_t bmx_esp32_managed_gc_worker_join(void) {
+    TaskHandle_t task = bmx_esp32_managed_lifecycle_task;
+    if (!task || xPortInIsrContext() || xPortGetCoreID() != 0 ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle() || eTaskGetState(task) != eSuspended) return 0;
+    vTaskDelete(task);
+    bmx_esp32_managed_lifecycle_task = NULL;
+    return 1;
 }
 #endif
 
