@@ -57,8 +57,8 @@ case "$suite" in
 		;;
 esac
 
-if [[ "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 && "$board" != m5stack_stamp_p4 && "$board" != esp32_s31_korvo_1 && "$board" != esp32_s31_function_coreboard_1 ]]; then
-	echo "This hardware suite is currently qualified only for the Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, Waveshare H2 Dev Kit N4, M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1." >&2
+if [[ "$board" != esp32_wroom_32d && "$board" != esp32s3_44pin_n16r8 && "$board" != baguette_s3 && "$board" != xiao_esp32s3_plus && "$board" != xiao_esp32c6 && "$board" != xiao_esp32c5 && "$board" != waveshare_h2_dev_kit_n4 && "$board" != m5stack_stamp_p4 && "$board" != esp32_s31_korvo_1 && "$board" != esp32_s31_function_coreboard_1 ]]; then
+	echo "This hardware suite is currently qualified only for the ESP32-WROOM-32D, Baguette S3, 44-pin S3, XIAO S3 Plus, XIAO C6, XIAO C5, Waveshare H2 Dev Kit N4, M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1." >&2
 	exit 2
 fi
 
@@ -112,6 +112,8 @@ for test_name in "${tests[@]}"; do
 	fi
 	if [[ "$board" == m5stack_stamp_p4 && "$test_name" == adc_pwm ]]; then
 		source_name=adc_pwm_p4
+	elif [[ "$board" == esp32_wroom_32d && "$test_name" == adc_pwm ]]; then
+		source_name=adc_pwm_esp32_wroom_32d
 	elif [[ "$board" == esp32_s31_korvo_1 && "$test_name" == adc_pwm ]]; then
 		source_name=adc_pwm_s31
 	elif [[ "$board" == esp32_s31_function_coreboard_1 && "$test_name" == adc_pwm ]]; then
