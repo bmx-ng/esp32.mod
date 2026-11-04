@@ -346,15 +346,37 @@ int32_t bmx_esp32_stdio_init_all(void) {
 
 int64_t bmx_esp32_stdio_read(void *buffer, int64_t count) {
     if (!buffer || count <= 0) return 0;
-    return (int64_t)fread(buffer, 1, (size_t)count, stdin);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = (uint64_t)count <= SIZE_MAX &&
+        bmx_embedded_gc_enter_native_safe_for_buffers(buffer, (size_t)count, NULL, 0u);
+#endif
+    int64_t result = (int64_t)fread(buffer, 1, (size_t)count, stdin);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int64_t bmx_esp32_stdio_write(void *buffer, int64_t count) {
     if (!buffer || count <= 0) return 0;
-    return (int64_t)fwrite(buffer, 1, (size_t)count, stdout);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = (uint64_t)count <= SIZE_MAX &&
+        bmx_embedded_gc_enter_native_safe_for_buffers(buffer, (size_t)count, NULL, 0u);
+#endif
+    int64_t result = (int64_t)fwrite(buffer, 1, (size_t)count, stdout);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 void bmx_esp32_stdio_flush(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     fflush(stdout);
     fflush(stderr);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }

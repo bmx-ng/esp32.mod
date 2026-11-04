@@ -195,14 +195,30 @@ int32_t bmx_esp32_filesystem_close(void *opaque) {
 int64_t bmx_esp32_filesystem_read(void *opaque, void *buffer, int64_t count) {
     if (!opaque || !buffer || count < 0 || (uint64_t)count > SIZE_MAX) return -1;
     BMXESP32File *handle = (BMXESP32File *)opaque;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = count > 0 && bmx_embedded_gc_enter_native_safe_for_buffers(
+        buffer, (size_t)count, NULL, 0u);
+#endif
     size_t result = fread(buffer, 1, (size_t)count, handle->file);
-    return result || !ferror(handle->file) ? (int64_t)result : -1;
+    int64_t outcome = result || !ferror(handle->file) ? (int64_t)result : -1;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return outcome;
 }
 int64_t bmx_esp32_filesystem_write(void *opaque, void *buffer, int64_t count) {
     if (!opaque || !buffer || count < 0 || (uint64_t)count > SIZE_MAX) return -1;
     BMXESP32File *handle = (BMXESP32File *)opaque;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = count > 0 && bmx_embedded_gc_enter_native_safe_for_buffers(
+        buffer, (size_t)count, NULL, 0u);
+#endif
     size_t result = fwrite(buffer, 1, (size_t)count, handle->file);
-    return result == (size_t)count ? (int64_t)result : -1;
+    int64_t outcome = result == (size_t)count ? (int64_t)result : -1;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return outcome;
 }
 int64_t bmx_esp32_filesystem_position(void *opaque) { return opaque ? ftell(((BMXESP32File *)opaque)->file) : -1; }
 int64_t bmx_esp32_filesystem_size(void *opaque) {
