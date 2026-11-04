@@ -13,7 +13,7 @@ The currently validated targets use ESP-IDF 6.1:
 
 | Target | Architecture | Validated board profile | Notes |
 | --- | --- | --- | --- |
-| ESP32 | Xtensa | `esp32` | Generic original ESP32 profile |
+| ESP32 | Xtensa | `esp32_wroom_32d` | ESP32-WROOM-32D, 4 MiB flash, UART bridge, no PSRAM |
 | ESP32-S3 | Xtensa | `baguette_s3` | 8 MiB flash, MicroSD slot, no PSRAM |
 | ESP32-S3 | Xtensa | `esp32s3_44pin_n16r8` | 16 MiB flash, 8 MiB PSRAM, dual USB-C |
 | ESP32-S3 | Xtensa | `xiao_esp32s3_plus` | 16 MiB flash, 8 MiB PSRAM, native USB, no onboard SD slot |
@@ -26,7 +26,7 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S31 | 32-bit RISC-V | `esp32_s31_korvo_1` | 16 MiB flash, 16 MiB PSRAM, UART bridge, MicroSD slot; ESP-IDF preview target |
 | ESP32-S31 | 32-bit RISC-V | `esp32_s31_function_coreboard_1` | 16 MiB flash, 16 MiB PSRAM, Gigabit Ethernet, audio, USB host; ESP-IDF preview target |
 
-The Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
+The ESP32-WROOM-32D, Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
 ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, Waveshare H2 Dev Kit N4,
 M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1
 profiles have been tested on their respective physical boards. Additional
@@ -70,6 +70,13 @@ For a Baguette C3, select its board profile instead:
 ```sh
 bmk makeapp -a -r -board baguette_c3 -heap 64k -x hello.bmx
 ```
+
+For an ESP32-WROOM-32D module with 4 MiB flash, use
+`-board esp32_wroom_32d`. Upload and console output use UART0 through the
+carrier board's USB-to-UART bridge. The profile maps documented module pads
+and internal flash signals, but deliberately does not invent carrier-board
+header positions, LEDs, or buttons that are not specified by the module
+datasheet.
 
 The ESP32-C6 SuperMini likewise has its own board profile:
 
@@ -466,7 +473,7 @@ filesystem inaccessible.
 ## Hardware regression tests
 
 The hardware runner builds, flashes, and checks self-verifying examples on a
-connected board. It supports `baguette_s3`, `esp32s3_44pin_n16r8`,
+connected board. It supports `esp32_wroom_32d`, `baguette_s3`, `esp32s3_44pin_n16r8`,
 `xiao_esp32s3_plus`, `xiao_esp32c6`, `xiao_esp32c5`,
 `waveshare_h2_dev_kit_n4`, `m5stack_stamp_p4`, `esp32_s31_korvo_1`, and
 `esp32_s31_function_coreboard_1`; the complete suite has been verified on the
@@ -478,6 +485,9 @@ onboard GPIO37 WS2812 through RMT. The `basic`,
 Kit N4; its native USB port required a physical Reset between those suite runs.
 The `basic` checks (with the P4-specific ADC input), LPG8–LPG10 `loopback`,
 and `psram` suites have been verified on the Stamp-P4.
+The ESP32-WROOM-32D `basic` suite has been verified on a revision-3.1
+ESP32-D0WD-V3 module with 4 MiB flash. Its ADC/PWM test uses GPIO32, GPIO25,
+and GPIO26 rather than the defaults used by newer ESP32 families.
 The S31 Function-CoreBoard-1 `basic`, `psram`, and `ethernet` suites have also
 been verified, together with its GPIO60 WS2812 through RMT. Its Ethernet test
 negotiated 1000 Mbps full duplex and completed DHCP, DNS, UDP, and TCP traffic.
