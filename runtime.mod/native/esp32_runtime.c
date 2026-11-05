@@ -17,6 +17,11 @@
 static void *bmx_esp32_managed_arena;
 static uint32_t bmx_esp32_managed_arena_size;
 static TaskHandle_t bmx_esp32_managed_owner_task;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+static TaskHandle_t bmx_esp32_managed_worker_task;
+static TaskHandle_t bmx_esp32_managed_lifecycle_task;
+static void (*bmx_esp32_managed_lifecycle_entry)(void);
+#endif
 static uint32_t bmx_esp32_managed_context_violations;
 static uint32_t bmx_esp32_managed_callback_dispatches;
 static uint32_t bmx_esp32_managed_callback_rejections;
@@ -34,6 +39,19 @@ static int32_t bmx_esp32_psram_initialized(void) {
 }
 
 int32_t bmx_esp32_managed_context_valid(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (xPortInIsrContext()) {
+        __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
+        return 0;
+    }
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (xPortGetCoreID() == 0 && (!owner || owner == current)) return 1;
+    if (__atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) == current)
+        return 1;
+    __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
+    return 0;
+#else
     if (xPortInIsrContext() || xPortGetCoreID() != 0) {
         __atomic_fetch_add(&bmx_esp32_managed_context_violations, 1u, __ATOMIC_RELAXED);
         return 0;
@@ -44,10 +62,83 @@ int32_t bmx_esp32_managed_context_valid(void) {
         return 0;
     }
     return 1;
+#endif
 }
 
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+uint32_t bmx_esp32_managed_gc_context_index(void) {
+    if (xPortInIsrContext()) return UINT32_MAX;
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (xPortGetCoreID() == 0 && (!owner || owner == current))
+        return 0u;
+    if (__atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) == current)
+        return 1u;
+    return UINT32_MAX;
+}
+
+int32_t bmx_esp32_managed_gc_bind(uint32_t slot) {
+    if (xPortInIsrContext()) return 0;
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (slot == 0u && xPortGetCoreID() == 0 && (!owner || owner == current)) {
+        __atomic_store_n(&bmx_esp32_managed_owner_task, current, __ATOMIC_RELEASE);
+        return 1;
+    }
+    if (slot == 1u && owner && owner != current) {
+        TaskHandle_t expected = NULL;
+        return __atomic_compare_exchange_n(&bmx_esp32_managed_worker_task,
+            &expected, current, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+    }
+    return 0;
+}
+
+void bmx_esp32_managed_gc_unbind(uint32_t slot) {
+    if (slot == 1u && !xPortInIsrContext() &&
+        __atomic_load_n(&bmx_esp32_managed_worker_task, __ATOMIC_ACQUIRE) ==
+            xTaskGetCurrentTaskHandle())
+        __atomic_store_n(&bmx_esp32_managed_worker_task, NULL, __ATOMIC_RELEASE);
+}
+
+static void bmx_esp32_managed_worker_trampoline(void *argument) {
+    (void)argument;
+    void (*entry)(void) = __atomic_load_n(&bmx_esp32_managed_lifecycle_entry, __ATOMIC_ACQUIRE);
+    entry();
+    /* The owner observes the runtime completion state, then deletes this
+       suspended task. Self-deletion would leave a task-handle reuse race. */
+    for (;;) vTaskSuspend(NULL);
+}
+
+int32_t bmx_esp32_managed_gc_worker_start(void (*entry)(void)) {
+    if (!entry || xPortInIsrContext() || xPortGetCoreID() != 0 ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle() || bmx_esp32_managed_lifecycle_task) return 0;
+    TaskHandle_t task = NULL;
+    __atomic_store_n(&bmx_esp32_managed_lifecycle_entry, entry, __ATOMIC_RELEASE);
+    if (xTaskCreatePinnedToCore(bmx_esp32_managed_worker_trampoline,
+            "bmx-gc-worker", 4096, NULL, tskIDLE_PRIORITY + 1,
+            &task, 1) != pdPASS) return 0;
+    bmx_esp32_managed_lifecycle_task = task;
+    return 1;
+}
+
+int32_t bmx_esp32_managed_gc_worker_join(void) {
+    TaskHandle_t task = bmx_esp32_managed_lifecycle_task;
+    if (!task || xPortInIsrContext() || xPortGetCoreID() != 0 ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle() || eTaskGetState(task) != eSuspended) return 0;
+    vTaskDelete(task);
+    bmx_esp32_managed_lifecycle_task = NULL;
+    return 1;
+}
+#endif
+
 int32_t bmx_esp32_managed_task_bound(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    return __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) != NULL;
+#else
     return bmx_esp32_managed_owner_task != NULL;
+#endif
 }
 
 uint32_t bmx_esp32_managed_context_violation_count(void) {
@@ -56,8 +147,14 @@ uint32_t bmx_esp32_managed_context_violation_count(void) {
 
 int32_t bmx_esp32_managed_callback_dispatch(
     BMXESP32ManagedCallback callback, void *argument) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (!callback || !bmx_esp32_managed_context_valid() ||
+        __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE) !=
+            xTaskGetCurrentTaskHandle()) {
+#else
     if (!callback || !bmx_esp32_managed_owner_task ||
         !bmx_esp32_managed_context_valid()) {
+#endif
         __atomic_fetch_add(&bmx_esp32_managed_callback_rejections, 1u, __ATOMIC_RELAXED);
         return 0;
     }
@@ -76,15 +173,30 @@ uint32_t bmx_esp32_managed_callback_rejection_count(void) {
 
 void *bmx_esp32_managed_arena_acquire(uint32_t capacity, uint32_t alignment) {
     if (!bmx_esp32_managed_context_valid()) return NULL;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    TaskHandle_t owner = __atomic_load_n(&bmx_esp32_managed_owner_task, __ATOMIC_ACQUIRE);
+    if (owner && owner != xTaskGetCurrentTaskHandle()) return NULL;
+#endif
     if (bmx_esp32_managed_arena) {
         return capacity == bmx_esp32_managed_arena_size ? bmx_esp32_managed_arena : NULL;
     }
     if (!capacity || !alignment || (alignment & (alignment - 1u))) return NULL;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int owner_already_bound = owner != NULL;
+    __atomic_store_n(&bmx_esp32_managed_owner_task,
+        xTaskGetCurrentTaskHandle(), __ATOMIC_RELEASE);
+#else
     bmx_esp32_managed_owner_task = xTaskGetCurrentTaskHandle();
+#endif
     uint32_t capabilities = MALLOC_CAP_8BIT |
         (BMX_EMBEDDED_ARENA_IN_PSRAM ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL);
     if (BMX_EMBEDDED_ARENA_IN_PSRAM && !bmx_esp32_psram_initialized()) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (!owner_already_bound)
+            __atomic_store_n(&bmx_esp32_managed_owner_task, NULL, __ATOMIC_RELEASE);
+#else
         bmx_esp32_managed_owner_task = NULL;
+#endif
         return NULL;
     }
     bmx_esp32_managed_arena = heap_caps_aligned_alloc(
@@ -92,7 +204,12 @@ void *bmx_esp32_managed_arena_acquire(uint32_t capacity, uint32_t alignment) {
     if (bmx_esp32_managed_arena) {
         bmx_esp32_managed_arena_size = capacity;
     } else {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (!owner_already_bound)
+            __atomic_store_n(&bmx_esp32_managed_owner_task, NULL, __ATOMIC_RELEASE);
+#else
         bmx_esp32_managed_owner_task = NULL;
+#endif
     }
     return bmx_esp32_managed_arena;
 }
@@ -159,12 +276,25 @@ int32_t bmx_embedded_millisecs(void) {
 
 void bmx_embedded_delay(int32_t milliseconds) {
     if (milliseconds <= 0) return;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     TickType_t ticks = pdMS_TO_TICKS((uint32_t)milliseconds);
     vTaskDelay(ticks ? ticks : 1);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 void bmx_embedded_udelay(int32_t microseconds) {
-    if (microseconds > 0) esp_rom_delay_us((uint32_t)microseconds);
+    if (microseconds <= 0) return;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
+    esp_rom_delay_us((uint32_t)microseconds);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 uint64_t bmx_embedded_time_microseconds(void) {
@@ -193,11 +323,17 @@ static void bmx_esp32_sleep_microseconds_chunk(uint32_t microseconds) {
 }
 
 void bmx_embedded_sleep_microseconds(uint64_t microseconds) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = microseconds && bmx_embedded_gc_enter_native_safe();
+#endif
     while (microseconds) {
         uint32_t chunk = microseconds > 60000000u ? 60000000u : (uint32_t)microseconds;
         bmx_esp32_sleep_microseconds_chunk(chunk);
         microseconds -= chunk;
     }
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }
 
 void bmx_embedded_sleep_milliseconds(uint32_t milliseconds) {
@@ -210,15 +346,37 @@ int32_t bmx_esp32_stdio_init_all(void) {
 
 int64_t bmx_esp32_stdio_read(void *buffer, int64_t count) {
     if (!buffer || count <= 0) return 0;
-    return (int64_t)fread(buffer, 1, (size_t)count, stdin);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = (uint64_t)count <= SIZE_MAX &&
+        bmx_embedded_gc_enter_native_safe_for_buffers(buffer, (size_t)count, NULL, 0u);
+#endif
+    int64_t result = (int64_t)fread(buffer, 1, (size_t)count, stdin);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int64_t bmx_esp32_stdio_write(void *buffer, int64_t count) {
     if (!buffer || count <= 0) return 0;
-    return (int64_t)fwrite(buffer, 1, (size_t)count, stdout);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = (uint64_t)count <= SIZE_MAX &&
+        bmx_embedded_gc_enter_native_safe_for_buffers(buffer, (size_t)count, NULL, 0u);
+#endif
+    int64_t result = (int64_t)fwrite(buffer, 1, (size_t)count, stdout);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 void bmx_esp32_stdio_flush(void) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     fflush(stdout);
     fflush(stderr);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
 }

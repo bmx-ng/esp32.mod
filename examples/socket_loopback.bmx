@@ -27,11 +27,15 @@ If Not addresses Or addresses.length = 0 Then RuntimeError "Loopback resolution 
 Local sender:TSocket = CreateUDPSocket()
 If Not sender Or Not ConnectSocket(sender, addresses[0]) Then RuntimeError "UDP connect failed"
 
-Local outgoing:Byte[] = [Byte(66), Byte(77), Byte(88)]
-If sender.Send(outgoing, outgoing.length) <> outgoing.length Then RuntimeError "UDP send failed"
+Local outgoing:Byte Ptr = MemAlloc(4)
+Local incoming:Byte Ptr = MemAlloc(4)
+If Not outgoing Or Not incoming Then RuntimeError "Socket buffer allocation failed"
+outgoing[0] = 66
+outgoing[1] = 77
+outgoing[2] = 88
+If sender.Send(outgoing, Size_T(3)) <> 3 Then RuntimeError "UDP send failed"
 
-Local incoming:Byte[3]
-If receiver.Recv(incoming, incoming.length) <> incoming.length Then RuntimeError "UDP receive failed"
+If receiver.Recv(incoming, Size_T(3)) <> 3 Then RuntimeError "UDP receive failed"
 If incoming[0] <> 66 Or incoming[1] <> 77 Or incoming[2] <> 88 Then RuntimeError "UDP payload mismatch"
 
 Print "UDP loopback passed on port " + SocketLocalPort(receiver)
@@ -56,21 +60,23 @@ If Not client.EnableEvents(SocketEventWritable | SocketEventError) Then RuntimeE
 If Not server.EnableEvents(SocketEventReadable | SocketEventClosed | SocketEventError) Then RuntimeError "TCP server events failed"
 If Not WaitForSocketEvent(EVENT_SOCKETWRITABLE, client) Then RuntimeError "TCP writable event failed"
 
-outgoing = [Byte(11), Byte(22), Byte(33), Byte(44)]
-Local tcpIncoming:Byte[4]
-If client.Send(outgoing, outgoing.length) <> outgoing.length Then RuntimeError "TCP send failed"
+outgoing[0] = 11
+outgoing[1] = 22
+outgoing[2] = 33
+outgoing[3] = 44
+If client.Send(outgoing, Size_T(4)) <> 4 Then RuntimeError "TCP send failed"
 If Not WaitForSocketEvent(EVENT_SOCKETREADABLE, server) Then RuntimeError "TCP readable event failed"
 Local available:Int = SocketReadAvail(server)
 Print "TCP bytes available: " + available
 If available < 1 Then RuntimeError "TCP available byte count failed"
 Local received:Int
-While received < tcpIncoming.length
-	Local count:Int = server.Recv(Varptr tcpIncoming[received], tcpIncoming.length - received)
+While received < 4
+	Local count:Int = server.Recv(incoming + received, Size_T(4 - received))
 	If count <= 0 Then RuntimeError "TCP receive failed"
 	received :+ count
 Wend
-For Local index:Int = 0 Until outgoing.length
-	If tcpIncoming[index] <> outgoing[index] Then RuntimeError "TCP payload mismatch"
+For Local index:Int = 0 Until 4
+	If incoming[index] <> outgoing[index] Then RuntimeError "TCP payload mismatch"
 Next
 
 Print "TCP loopback passed on port " + SocketLocalPort(listener)
@@ -78,3 +84,5 @@ CloseSocket client
 If Not WaitForSocketEvent(EVENT_SOCKETCLOSED, server) Then RuntimeError "TCP closed event failed"
 CloseSocket server
 CloseSocket listener
+MemFree(incoming)
+MemFree(outgoing)

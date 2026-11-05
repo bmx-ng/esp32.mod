@@ -8,6 +8,8 @@ bbdoc: Validated, transport-neutral ESP32 application updates and rollback contr
 about: Bytes may come from a file, SD card, socket, or another stream. Finishing
 an update validates its image but does not select it for boot; call #Activate
 explicitly after all application-level checks have succeeded.
+Run update operations on the owner task. The raw Write method accepts caller-owned
+Byte Ptr memory; keep that memory and the update handle live until it returns.
 End Rem
 Module ESP32.System.OTA
 ?esp32
@@ -106,6 +108,8 @@ Type TESP32OTAUpdate
 
 	Rem
 	bbdoc: Appends all or part of a byte array to the update image.
+	about: This convenience overload keeps the array reference live for the call.
+	Keep a separate array reference if passing its data pointer to the raw Write method.
 	End Rem
 	Method Write:Int(data:Byte[], offset:Int = 0, count:Int = -1)
 		If offset < 0 Or offset > data.length Then Return OTAErrorInvalidArgument

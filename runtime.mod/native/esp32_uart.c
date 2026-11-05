@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "blitzmax/embedded_events.h"
+#include "blitzmax/embedded_runtime.h"
 #include "blitzmax/embedded_uart.h"
 #include "blitzmax/esp32_uart.h"
 #include "driver/gpio.h"
@@ -272,19 +273,38 @@ int32_t bmx_esp32_uart_write_blocking(int32_t controller, const void *source,
         return BMX_ESP32_UART_INVALID_ARGUMENT;
     if (!length) return 0;
     const uint8_t *bytes = (const uint8_t *)source;
-    if (!state->translate_crlf) return bmx_esp32_uart_write_raw(controller, bytes, length);
+    int translate_crlf = state->translate_crlf;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe_for_buffers(
+        source, (size_t)length, NULL, 0u);
+#endif
+    int32_t result = length;
+    if (!translate_crlf) {
+        result = bmx_esp32_uart_write_raw(controller, bytes, length);
+        goto done;
+    }
     int32_t start = 0;
     for (int32_t index = 0; index < length; ++index) {
         if (bytes[index] != '\n') continue;
         if (index > start && bmx_esp32_uart_write_raw(controller,
-                bytes + start, index - start) < 0) return -1;
+                bytes + start, index - start) < 0) {
+            result = -1;
+            goto done;
+        }
         static const uint8_t crlf[2] = { '\r', '\n' };
-        if (bmx_esp32_uart_write_raw(controller, crlf, 2) < 0) return -1;
+        if (bmx_esp32_uart_write_raw(controller, crlf, 2) < 0) {
+            result = -1;
+            goto done;
+        }
         start = index + 1;
     }
     if (start < length && bmx_esp32_uart_write_raw(controller,
-            bytes + start, length - start) < 0) return -1;
-    return length;
+            bytes + start, length - start) < 0) result = -1;
+done:
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int32_t bmx_esp32_uart_read_blocking(int32_t controller, void *destination,
@@ -293,14 +313,24 @@ int32_t bmx_esp32_uart_read_blocking(int32_t controller, void *destination,
     if (!bmx_esp32_uart_buffer_valid(state, destination, length))
         return BMX_ESP32_UART_INVALID_ARGUMENT;
     if (!length) return 0;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe_for_buffers(
+        destination, (size_t)length, NULL, 0u);
+#endif
     int32_t count = 0;
     while (count < length) {
         int result = uart_read_bytes((uart_port_t)controller,
             (uint8_t *)destination + count, (uint32_t)(length - count), portMAX_DELAY);
-        if (result < 0) return -1;
+        if (result < 0) {
+            count = -1;
+            break;
+        }
         count += result;
     }
-    bmx_esp32_uart_collect_events(state);
+    if (count >= 0) bmx_esp32_uart_collect_events(state);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return count;
 }
 
@@ -310,16 +340,26 @@ int32_t bmx_esp32_uart_read_timeout_us(int32_t controller, void *destination,
     if (!bmx_esp32_uart_buffer_valid(state, destination, length))
         return BMX_ESP32_UART_INVALID_ARGUMENT;
     int64_t deadline = esp_timer_get_time() + timeout_us;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = length > 0 && timeout_us &&
+        bmx_embedded_gc_enter_native_safe_for_buffers(destination, (size_t)length, NULL, 0u);
+#endif
     int32_t count = 0;
     while (count < length) {
         int result = uart_read_bytes((uart_port_t)controller,
             (uint8_t *)destination + count, (uint32_t)(length - count), 0);
-        if (result < 0) return -1;
+        if (result < 0) {
+            count = -1;
+            break;
+        }
         count += result;
         if (count == length || esp_timer_get_time() >= deadline) break;
         taskYIELD();
     }
-    bmx_esp32_uart_collect_events(state);
+    if (count >= 0) bmx_esp32_uart_collect_events(state);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return count;
 }
 
@@ -478,7 +518,14 @@ int32_t bmx_embedded_uart_is_readable(int32_t controller) {
 
 int32_t bmx_embedded_uart_is_readable_within_us(int32_t controller,
         uint32_t timeout_us) {
-    return bmx_esp32_uart_is_readable_within_us(controller, timeout_us);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = timeout_us && bmx_embedded_gc_enter_native_safe();
+#endif
+    int32_t result = bmx_esp32_uart_is_readable_within_us(controller, timeout_us);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int32_t bmx_embedded_uart_write_blocking(int32_t controller,
@@ -503,12 +550,25 @@ int32_t bmx_embedded_uart_read_available(int32_t controller,
 }
 
 int32_t bmx_embedded_uart_put_byte(int32_t controller, uint32_t value) {
-    return bmx_esp32_uart_put_byte(controller, value);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
+    int32_t result = bmx_esp32_uart_put_byte(controller, value);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    return result;
 }
 
 int32_t bmx_embedded_uart_tx_wait_blocking(int32_t controller) {
     if (!bmx_esp32_uart_is_enabled(controller)) return 0;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
     bmx_esp32_uart_tx_wait_blocking(controller);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return 1;
 }
 

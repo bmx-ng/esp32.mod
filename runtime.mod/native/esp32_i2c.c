@@ -4,6 +4,7 @@
 #include "blitzmax_esp32_board.h"
 
 #include "blitzmax/embedded_i2c.h"
+#include "blitzmax/embedded_runtime.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_err.h"
@@ -136,11 +137,18 @@ static int32_t bmx_esp32_i2c_write(int32_t controller, uint32_t address,
     BMXESP32I2CState *state = bmx_esp32_i2c_state(controller);
     if (!bmx_esp32_i2c_transfer_valid(state, address, data, length))
         return BMX_I2C_ERROR_INVALID_ARGUMENT;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = length > 0 && bmx_embedded_gc_enter_native_safe_for_buffers(
+        data, (size_t)length, NULL, 0u);
+#endif
     i2c_master_dev_handle_t device = NULL;
     esp_err_t error = bmx_esp32_i2c_add_device(state, address, &device);
     if (error == ESP_OK)
         error = i2c_master_transmit(device, (const uint8_t *)data, (size_t)length, timeout_ms);
     if (device) (void)i2c_master_bus_rm_device(device);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return error == ESP_OK ? length : bmx_esp32_i2c_error(error);
 }
 
@@ -149,11 +157,18 @@ static int32_t bmx_esp32_i2c_read(int32_t controller, uint32_t address,
     BMXESP32I2CState *state = bmx_esp32_i2c_state(controller);
     if (!bmx_esp32_i2c_transfer_valid(state, address, data, length))
         return BMX_I2C_ERROR_INVALID_ARGUMENT;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = length > 0 && bmx_embedded_gc_enter_native_safe_for_buffers(
+        data, (size_t)length, NULL, 0u);
+#endif
     i2c_master_dev_handle_t device = NULL;
     esp_err_t error = bmx_esp32_i2c_add_device(state, address, &device);
     if (error == ESP_OK)
         error = i2c_master_receive(device, (uint8_t *)data, (size_t)length, timeout_ms);
     if (device) (void)i2c_master_bus_rm_device(device);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return error == ESP_OK ? length : bmx_esp32_i2c_error(error);
 }
 
@@ -163,6 +178,10 @@ static int32_t bmx_esp32_i2c_write_read(int32_t controller, uint32_t address,
     BMXESP32I2CState *state = bmx_esp32_i2c_state(controller);
     if (!bmx_esp32_i2c_transfer_valid(state, address, write_data, write_length) ||
             !read_data || read_length <= 0) return BMX_I2C_ERROR_INVALID_ARGUMENT;
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    int native_safe = bmx_embedded_gc_enter_native_safe_for_buffers(
+        write_data, (size_t)write_length, read_data, (size_t)read_length);
+#endif
     i2c_master_dev_handle_t device = NULL;
     esp_err_t error = bmx_esp32_i2c_add_device(state, address, &device);
     if (error == ESP_OK) {
@@ -170,6 +189,9 @@ static int32_t bmx_esp32_i2c_write_read(int32_t controller, uint32_t address,
             (size_t)write_length, (uint8_t *)read_data, (size_t)read_length, timeout_ms);
     }
     if (device) (void)i2c_master_bus_rm_device(device);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+    if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
     return error == ESP_OK ? read_length : bmx_esp32_i2c_error(error);
 }
 

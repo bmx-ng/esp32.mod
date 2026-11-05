@@ -87,6 +87,12 @@ set(BLITZMAX_ESP32_SOURCES
     "${BRL_BLITZ_ROOT}/ryu/ryu/d2s.c"
 )
 
+option(BLITZMAX_ESP32_GC_MULTICORE "Enable the internal two-task managed GC prototype" OFF)
+if (BLITZMAX_ESP32_GC_MULTICORE)
+    list(APPEND BLITZMAX_ESP32_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/runtime.mod/native/embedded_gc_handshake.c")
+endif()
+
 idf_component_register(
     SRCS ${BLITZMAX_ESP32_SOURCES}
     INCLUDE_DIRS
@@ -153,6 +159,15 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     BMX_EMBEDDED_ARENA_SIZE=${BLITZMAX_ESP32_ARENA_SIZE}u
     BMX_EMBEDDED_ARENA_IN_PSRAM=${BLITZMAX_ESP32_ARENA_IN_PSRAM}
 )
+if (BLITZMAX_ESP32_GC_MULTICORE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_MULTICORE=1)
+    if ("$ENV{BMX_EMBEDDED_GC_PERF_COUNTERS}" STREQUAL "1")
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_GC_PERF_COUNTERS=1)
+    endif()
+    if ("$ENV{BMX_EMBEDDED_GC_PHASE_TIME}" STREQUAL "1")
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE BMX_EMBEDDED_GC_PHASE_TIME=1)
+    endif()
+endif()
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-error=unused-const-variable
     -Wno-error=clobbered

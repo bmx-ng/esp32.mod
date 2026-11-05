@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include "blitzmax/embedded_events.h"
+#include "blitzmax/embedded_runtime.h"
 #include "blitzmax/embedded_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -132,7 +133,15 @@ void bmx_embedded_system_wait(void) {
     }
     SemaphoreHandle_t signal = bmx_esp32_deferred_event_signal;
     portEXIT_CRITICAL_SAFE(&bmx_esp32_deferred_event_lock);
-    if (signal) (void)xSemaphoreTake(signal, portMAX_DELAY);
+    if (signal) {
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        int native_safe = bmx_embedded_gc_enter_native_safe();
+#endif
+        (void)xSemaphoreTake(signal, portMAX_DELAY);
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+    }
 }
 
 void bmx_embedded_system_wake(void) {

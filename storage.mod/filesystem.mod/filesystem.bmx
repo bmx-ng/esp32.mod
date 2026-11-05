@@ -8,6 +8,10 @@ bbdoc: Shared BRL.FileSystem routing for ESP32 persistent storage volumes.
 about: Import the concrete LittleFS or SDCard module to mount a volume. Plain
 paths and file:: use the selected default; littlefs:: and sd:: always select
 their named mounted volume.
+Open and close files on the owner task. An open stream's read and write calls
+can run on a managed worker with a caller-owned Byte Ptr buffer. Keep the
+buffer and file handle live until the call returns. An array-backed pointer
+also requires a live array reference.
 End Rem
 Module ESP32.Storage.FileSystem
 ?esp32
