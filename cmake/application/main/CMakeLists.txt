@@ -38,6 +38,12 @@ if (BLITZMAX_ESP32_ETHERNET_ENABLED)
         "${ESP32_MODULE_ROOT}/network.mod/ethernet.mod/native/esp32_ethernet.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_eth esp_event esp_netif)
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_MQTT_INDEX)
+if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${ESP32_MODULE_ROOT}/network.mod/mqtt.mod/native/esp32_mqtt.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS bmx_mqtt_dependency esp_event)
+endif()
 
 file(MAKE_DIRECTORY "${GENERATED_DIRECTORY}")
 file(WRITE "${GENERATED_BOOTSTRAP_C}" "/* Generated ESP32 module initialization order. */\n")
@@ -104,6 +110,12 @@ idf_component_register(
         "${BRL_BLITZ_ROOT}/ryu"
     PRIV_REQUIRES app_update bootloader_support esp_adc esp_driver_gpio esp_driver_i2c esp_driver_ledc esp_driver_sdmmc esp_driver_spi esp_driver_uart esp_hw_support esp_partition esp_psram esp_system esp_timer fatfs freertos heap joltwallet__littlefs nvs_flash sdmmc ${BLITZMAX_ESP32_NETWORK_REQUIREMENTS} ${BLITZMAX_ESP32_RMT_REQUIREMENTS}
 )
+if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)
+    idf_component_get_property(BLITZMAX_ESP32_MQTT_DIR espressif__mqtt COMPONENT_DIR)
+    idf_component_get_property(BLITZMAX_ESP32_MQTT_LIB espressif__mqtt COMPONENT_LIB)
+    target_include_directories(${COMPONENT_LIB} PRIVATE "${BLITZMAX_ESP32_MQTT_DIR}/include")
+    target_link_libraries(${COMPONENT_LIB} PRIVATE ${BLITZMAX_ESP32_MQTT_LIB})
+endif()
 
 if (BLITZMAX_ESP32_NET_ENABLED)
     idf_component_get_property(BLITZMAX_ESP32_LWIP_LIB lwip COMPONENT_LIB)
