@@ -19,3 +19,4 @@ sdkconfig
 sdkconfig.old
 cmake/application/managed_components/
 cmake/application/dependencies.lock
+examples/thread_border_router_wifi.local.bmx

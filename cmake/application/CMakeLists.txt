@@ -12,7 +12,65 @@ endif()
 
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_PROJECT_MQTT_INDEX)
 if (NOT BLITZMAX_ESP32_PROJECT_MQTT_INDEX EQUAL -1)
-    list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/optional_components")
+    list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/optional_components/bmx_mqtt_dependency")
+endif()
+if ("__bb_esp32_network_threadborderrouter_threadborderrouter" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/optional_components/bmx_thread_border_router_dependency")
+endif()
+if ("$ENV{IDF_COMPONENT_MANAGER}" STREQUAL "0" AND
+        EXISTS "${CMAKE_CURRENT_LIST_DIR}/managed_components/joltwallet__littlefs")
+    list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/managed_components")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_thread_thread" BLITZMAX_ESP32_PROJECT_THREAD_INDEX)
+if (NOT BLITZMAX_ESP32_PROJECT_THREAD_INDEX EQUAL -1)
+    if (NOT IDF_TARGET STREQUAL "esp32h2" AND NOT IDF_TARGET STREQUAL "esp32c6" AND
+            NOT IDF_TARGET STREQUAL "esp32s31")
+        message(FATAL_ERROR "Embedded.Network.Thread requires an ESP32-H2, ESP32-C6, or ESP32-S31 board profile")
+    endif()
+    # ESP-IDF keeps SDKCONFIG across builds. Give each import combination its
+    # own file so adding or removing a feature changes the OpenThread library.
+    set(BMX_THREAD_FEATURE_PROFILE "core")
+    list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.defaults")
+    if ("__bb_embedded_network_threadcommissioning_threadcommissioning" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-commissioning")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.commissioning.defaults")
+    endif()
+    if ("__bb_embedded_network_threaddiscovery_threaddiscovery" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-discovery")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.discovery.defaults")
+    endif()
+    if ("__bb_embedded_network_threadserver_threadserver" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-server")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.server.defaults")
+    endif()
+    if ("__bb_embedded_network_threadcoap_threadcoap" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap.defaults")
+    endif()
+    if ("__bb_embedded_network_threadcoapblock_threadcoapblock" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-block")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-block.defaults")
+    endif()
+    if ("__bb_embedded_network_threadcoapobserve_threadcoapobserve" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-observe")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-observe.defaults")
+    endif()
+    if ("__bb_embedded_network_threadcoapsecure_threadcoapsecure" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-secure")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-secure.defaults")
+    endif()
+    if ("__bb_embedded_network_threadtcp_threadtcp" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-tcp")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.tcp.defaults")
+    endif()
+    if ("__bb_esp32_network_threadborderrouter_threadborderrouter" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-border-router")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.border-router.defaults")
+    endif()
+    set(SDKCONFIG "${SDKCONFIG}.thread-${BMX_THREAD_FEATURE_PROFILE}")
+    if (DEFINED ENV{BMX_ESP32_EXTRA_SDKCONFIG} AND NOT "$ENV{BMX_ESP32_EXTRA_SDKCONFIG}" STREQUAL "")
+        list(APPEND SDKCONFIG_DEFAULTS "$ENV{BMX_ESP32_EXTRA_SDKCONFIG}")
+    endif()
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_wifi_wifi" BLITZMAX_ESP32_PROJECT_WIFI_INDEX)
@@ -77,4 +135,45 @@ if (NOT BLITZMAX_ESP32_PROJECT_RMT_INDEX EQUAL -1)
         set(COMPONENTS main esp_driver_rmt)
     endif()
 endif()
+if (NOT BLITZMAX_ESP32_PROJECT_THREAD_INDEX EQUAL -1)
+    if (DEFINED COMPONENTS)
+        list(APPEND COMPONENTS openthread esp_event esp_netif lwip nvs_flash)
+    else()
+        set(COMPONENTS main openthread esp_event esp_netif lwip nvs_flash)
+    endif()
+endif()
+if ("__bb_esp32_network_threadborderrouter_threadborderrouter" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    list(APPEND COMPONENTS bmx_thread_border_router_dependency espressif__mdns)
+endif()
 project(${BLITZMAX_OUTPUT_NAME})
+if ("__bb_embedded_network_threadcoapblock_threadcoapblock" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    # ESP-IDF 6.1's bundled OpenThread blockwise logging uses %d for uint32_t
+    # on this toolchain. Scope the warning downgrade to OpenThread itself.
+    target_compile_options(__idf_openthread PRIVATE -Wno-error=format)
+endif()
+if ("__bb_embedded_network_threadcoapsecure_threadcoapsecure" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    target_compile_options(__idf_openthread PRIVATE
+        -include "${BLITZMAX_ESP32_SDK}/mod/embedded.mod/network.mod/thread.mod/native/thread_mbedtls4_compat.h")
+endif()
+if ("__bb_embedded_network_threadtcp_threadtcp" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    # ESP-IDF's OpenThread component lists tcp6.cpp but omits the TCPlp C
+    # implementation that it calls when application TCP is enabled.
+    set(BMX_TCPLP_ROOT "$ENV{IDF_PATH}/components/openthread/openthread/third_party/tcplp")
+    target_sources(__idf_openthread PRIVATE
+        "${BMX_TCPLP_ROOT}/bsdtcp/cc/cc_newreno.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_fastopen.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_input.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_output.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_reass.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_sack.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_subr.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_timer.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_timewait.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_usrreq.c"
+        "${BMX_TCPLP_ROOT}/lib/bitmap.c"
+        "${BMX_TCPLP_ROOT}/lib/cbuf.c"
+        "${BMX_TCPLP_ROOT}/lib/lbuf.c")
+    target_include_directories(__idf_openthread PRIVATE
+        "${BMX_TCPLP_ROOT}/bsdtcp" "${BMX_TCPLP_ROOT}/lib")
+    target_compile_options(__idf_openthread PRIVATE -Wno-sign-compare -Wno-unused-parameter)
+endif()

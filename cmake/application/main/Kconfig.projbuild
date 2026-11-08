@@ -1,0 +1,36 @@
+menu "BlitzMax Thread features"
+
+config BMX_THREAD_SRP_SERVER
+    bool "Host a Thread SRP and DNS-SD server"
+    depends on OPENTHREAD_ENABLED
+    default n
+    help
+        Enable on-mesh service registration and discovery hosting. This does
+        not enable border routing to Wi-Fi or Ethernet.
+
+config BMX_THREAD_COAP
+    bool "Enable OpenThread CoAP application API"
+    depends on OPENTHREAD_ENABLED
+    default n
+
+config BMX_THREAD_COAP_BLOCK
+    bool "Enable OpenThread CoAP blockwise transfers"
+    depends on BMX_THREAD_COAP
+    default n
+
+config BMX_THREAD_COAP_OBSERVE
+    bool "Enable OpenThread CoAP Observe"
+    depends on BMX_THREAD_COAP
+    default n
+
+config BMX_THREAD_COAP_SECURE
+    bool "Enable OpenThread secure CoAP over DTLS"
+    depends on BMX_THREAD_COAP
+    default n
+
+config BMX_THREAD_TCP
+    bool "Enable OpenThread TCP streams"
+    depends on OPENTHREAD_ENABLED
+    default n
+
+endmenu

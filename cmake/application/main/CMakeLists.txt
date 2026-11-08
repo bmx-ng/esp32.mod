@@ -38,6 +38,49 @@ if (BLITZMAX_ESP32_ETHERNET_ENABLED)
         "${ESP32_MODULE_ROOT}/network.mod/ethernet.mod/native/esp32_ethernet.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_eth esp_event esp_netif)
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_thread_thread" BLITZMAX_ESP32_THREAD_INDEX)
+if (NOT BLITZMAX_ESP32_THREAD_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_openthread.c"
+        "${ESP32_MODULE_ROOT}/network.mod/thread.mod/native/esp32_thread.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS openthread esp_event esp_netif lwip nvs_flash)
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_network_threadborderrouter_threadborderrouter" BLITZMAX_ESP32_BORDER_ROUTER_INDEX)
+if (NOT BLITZMAX_ESP32_BORDER_ROUTER_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${ESP32_MODULE_ROOT}/network.mod/threadborderrouter.mod/native/esp32_thread_border_router.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS espressif__mdns)
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threaddiscovery_threaddiscovery" BLITZMAX_ESP32_DISCOVERY_INDEX)
+if (NOT BLITZMAX_ESP32_DISCOVERY_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_discovery.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoap_threadcoap" BLITZMAX_ESP32_COAP_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoapblock_threadcoapblock" BLITZMAX_ESP32_COAP_BLOCK_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_BLOCK_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap_block.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoapobserve_threadcoapobserve" BLITZMAX_ESP32_COAP_OBSERVE_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_OBSERVE_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap_observe.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoapsecure_threadcoapsecure" BLITZMAX_ESP32_COAP_SECURE_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_SECURE_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap_secure.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadtcp_threadtcp" BLITZMAX_ESP32_TCP_INDEX)
+if (NOT BLITZMAX_ESP32_TCP_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_tcp.c")
+endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_MQTT_INDEX)
 if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
@@ -123,6 +166,16 @@ if (BLITZMAX_ESP32_NET_ENABLED)
     target_link_libraries(${COMPONENT_LIB} PRIVATE
         ${BLITZMAX_ESP32_LWIP_LIB}
         ${BLITZMAX_ESP32_NETIF_LIB})
+endif()
+if (NOT BLITZMAX_ESP32_THREAD_INDEX EQUAL -1)
+    idf_component_get_property(BLITZMAX_ESP32_OT_LIB openthread COMPONENT_LIB)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE ${BLITZMAX_ESP32_OT_LIB})
+endif()
+if (NOT BLITZMAX_ESP32_BORDER_ROUTER_INDEX EQUAL -1)
+    idf_component_get_property(BLITZMAX_ESP32_MDNS_LIB espressif__mdns COMPONENT_LIB)
+    # The prebuilt OpenThread border-router archive uses mDNS symbols. Keep
+    # mDNS after that archive for the static linker.
+    target_link_libraries(openthread_br INTERFACE ${BLITZMAX_ESP32_MDNS_LIB})
 endif()
 
 if (BLITZMAX_ESP32_WIFI_ENABLED)

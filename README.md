@@ -34,6 +34,20 @@ generic profiles describe other ESP-IDF target families for inspection and
 future validation; their presence does not by itself mean that the complete
 BlitzMax implementation has been tested on that target.
 
+Thread networking is opt-in on the ESP32-H2, ESP32-C6, and ESP32-S31 board profiles:
+`esp32h2`, `esp32_h2_supermini`, `waveshare_h2_dev_kit_n4`, `esp32c6`,
+`esp32_c6_supermini`, `xiao_esp32c6`, `esp32s31`,
+`esp32_s31_korvo_1`, and `esp32_s31_function_coreboard_1`.
+Import `ESP32.Network.Thread` to enable ESP-IDF's OpenThread component and the
+portable `Embedded.Network.Thread` API. The selected profile must have its
+native IEEE 802.15.4 radio. The [Thread form and echo example](examples/thread_form_echo.bmx)
+forms a standalone mesh, and the [UDP peer example](examples/thread_udp_peer.bmx)
+joins its dataset and exchanges packets with it or the nRF52 echo example.
+The ESP-IDF 6.1 installation must include OpenThread; an external Thread
+border router is needed for off-mesh IPv6 access. The dataset includes the
+network key, so enter it only in local test firmware. Other ESP32 targets are
+rejected at configure time until a supported radio profile is verified.
+
 ## Requirements
 
 - A BlitzMax NG installation containing the ESP32-enabled `bmk` and compiler.
@@ -132,8 +146,8 @@ header, YT8531DC Gigabit Ethernet PHY, ES8311 audio codec, microphone, amplified
 speaker output, GPIO60 addressable LED, 500 mA USB 2.0 High-Speed host port,
 USB Serial/JTAG port, and USB-to-UART bridge. Use the USB-to-UART Type-C port
 for the default upload and console path. The 16 MiB PSRAM supports
-`-heap-region psram -heap auto`. Ethernet hardware is described for pin and
-resource planning, but `esp32.mod` does not yet provide an Ethernet adapter.
+`-heap-region psram -heap auto`. The onboard Ethernet PHY is supported by
+`ESP32.Network.Ethernet` and can serve as a Thread border-router backbone.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
