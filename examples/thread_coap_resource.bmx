@@ -18,6 +18,7 @@ While ThreadServiceServerState() <> 1 And MilliSecs() - started < 30000
 Wend
 If ThreadServiceServerState() <> 1 Then RuntimeError "SRP server not running"
 If ThreadCoAPStart() <> 0 Or ThreadCoAPResource("status") <> 0 Then RuntimeError "CoAP start failed"
+If ThreadCoAPAddResource("health") <> 0 Or ThreadCoAPAddResource("echo") <> 0 Then RuntimeError "CoAP multi-resource setup failed"
 Local service:TThreadPublishedService = TThreadPublishedService.Publish("bmx-coap-host", "bmx-coap", "_bmxcoap._udp", 5683, ["ver=1"])
 If Not service Then RuntimeError "SRP publish failed"
 started = MilliSecs()
@@ -42,6 +43,24 @@ While True
 			Next
 			result = ThreadCoAPRespond(ThreadCoAPChanged, reply)
 			Print "THREAD_COAP_POST=" + result
+		End If
+	End If
+	Local path:String, requestId:Int
+	length = ThreadCoAPReceiveNext(request, method, source, path, requestId)
+	If length >= 0 Then
+		If path = "health" And method = ThreadCoAPGet Then
+			result = ThreadCoAPRespondTo(requestId, ThreadCoAPContent, [Byte(Asc("U")), Byte(Asc("P"))])
+			Print "THREAD_COAP_HEALTH=" + result
+		Else If path = "echo" And method = ThreadCoAPPost Then
+			Local reply:Byte[] = New Byte[length]
+			For Local i:Int = 0 Until length
+				reply[i] = request[i]
+			Next
+			result = ThreadCoAPRespondTo(requestId, ThreadCoAPChanged, reply)
+			Print "THREAD_COAP_ECHO=" + result
+		Else
+			result = ThreadCoAPRespondTo(requestId, ThreadCoAPMethodNotAllowed)
+			Print "THREAD_COAP_REJECT=" + result
 		End If
 	End If
 	Delay 20
