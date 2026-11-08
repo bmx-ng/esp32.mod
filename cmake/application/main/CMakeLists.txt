@@ -45,6 +45,12 @@ if (NOT BLITZMAX_ESP32_THREAD_INDEX EQUAL -1)
         "${ESP32_MODULE_ROOT}/network.mod/thread.mod/native/esp32_thread.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS openthread esp_event esp_netif lwip nvs_flash)
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_network_threadborderrouter_threadborderrouter" BLITZMAX_ESP32_BORDER_ROUTER_INDEX)
+if (NOT BLITZMAX_ESP32_BORDER_ROUTER_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${ESP32_MODULE_ROOT}/network.mod/threadborderrouter.mod/native/esp32_thread_border_router.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS espressif__mdns)
+endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threaddiscovery_threaddiscovery" BLITZMAX_ESP32_DISCOVERY_INDEX)
 if (NOT BLITZMAX_ESP32_DISCOVERY_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
@@ -144,6 +150,12 @@ endif()
 if (NOT BLITZMAX_ESP32_THREAD_INDEX EQUAL -1)
     idf_component_get_property(BLITZMAX_ESP32_OT_LIB openthread COMPONENT_LIB)
     target_link_libraries(${COMPONENT_LIB} PRIVATE ${BLITZMAX_ESP32_OT_LIB})
+endif()
+if (NOT BLITZMAX_ESP32_BORDER_ROUTER_INDEX EQUAL -1)
+    idf_component_get_property(BLITZMAX_ESP32_MDNS_LIB espressif__mdns COMPONENT_LIB)
+    # The prebuilt OpenThread border-router archive uses mDNS symbols. Keep
+    # mDNS after that archive for the static linker.
+    target_link_libraries(openthread_br INTERFACE ${BLITZMAX_ESP32_MDNS_LIB})
 endif()
 
 if (BLITZMAX_ESP32_WIFI_ENABLED)

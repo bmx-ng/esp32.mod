@@ -21,6 +21,10 @@
 static SemaphoreHandle_t bmx_thread_ready;
 static volatile int bmx_thread_status = -1;
 
+int bmx_thread_platform_is_initialized(void) {
+    return bmx_thread_status == 0;
+}
+
 static void bmx_thread_task(void *argument) {
     (void)argument;
     esp_openthread_platform_config_t platform = {
