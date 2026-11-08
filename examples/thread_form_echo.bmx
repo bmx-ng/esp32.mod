@@ -6,8 +6,16 @@ Framework BRL.StandardIO
 Import ESP32.Network.Thread
 Import Embedded.Network.Thread
 
-Local result:Int = ThreadForm("BMXThread", 15)
-If result <> 0 Then RuntimeError "ThreadForm failed: " + result
+Local result:Int = ThreadStartSaved()
+If result = ThreadErrorNoSavedNetwork Then
+	result = ThreadForm("BMXThread", 15)
+	If result <> 0 Then RuntimeError "ThreadForm failed: " + result
+	Print "THREAD_NETWORK=formed"
+Else If result <> 0 Then
+	RuntimeError "ThreadStartSaved failed: " + result
+Else
+	Print "THREAD_NETWORK=resumed"
+End If
 Print "THREAD_DATASET=" + ThreadActiveDataset()
 Local role:Int = ThreadWaitForAttached()
 If role < ThreadRoleChild Then RuntimeError "Thread attach failed: " + role
