@@ -1,69 +1,53 @@
 # ESP32 Thread border router
 
 Import `ESP32.Network.ThreadBorderRouter` on an ESP32 with an IEEE 802.15.4
-radio and a Wi-Fi or Ethernet backbone. The import selects a separate ESP-IDF OpenThread build
-profile with border routing and the mDNS component enabled. Builds without this
-import continue to use their own smaller Thread profile.
+radio and a Wi-Fi or Ethernet backbone. This selects the ESP-IDF border
+routing and mDNS build profile for the application. The
+[border router API declarations](threadborderrouter.bmx) document each call.
 
-Connect Wi-Fi with `WiFiInitialize` and `WiFiConnectWait`, then call
-`ThreadBorderRouterUseWiFi` **before** `ThreadStartSaved` or `ThreadForm`.
-For a board with Ethernet, import `ESP32.Network.Ethernet`, call
-`EthernetInitialize` and `EthernetWaitForIP`, then select it with
-`ThreadBorderRouterUseEthernet` before starting Thread.
-Once Thread has attached, call `ThreadBorderRouterStart`. The selection call binds
-the chosen network interface as OpenThread's backbone; `ThreadBorderRouterStart` initializes
-ESP-IDF's border router services. `ThreadBorderRouterStop` deinitializes those
-services. All return ESP-IDF error codes, with zero for success.
+## Start with Ethernet
 
-The S31 examples are `examples/thread_border_router_wifi.bmx` and
-`examples/thread_border_router_ethernet.bmx`. The Wi-Fi example's local
-`examples/thread_border_router_wifi.local.bmx` settings file is ignored by Git.
-Both resume the saved mesh if present and provide UDP echo on port 12345.
-`ThreadBorderRouterBackboneIPv6Address(index)` lists the backbone interface's
-current IPv6 addresses for diagnostics. An empty string ends the list.
-`ThreadBorderRouterState()` reports OpenThread's actual routing state:
-uninitialized (0), disabled (1), stopped (2), or active (3). This distinguishes
-a configured border router from one temporarily stopped by backbone link loss.
-While border routing runs, the module keeps a backbone IPv6 address in the
-favored on-link prefix. It uses the interface MAC to form the address when no
-address in that prefix already exists. It tracks prefix changes and removes
-only the address it added when border routing stops. On link recovery it
-requests a new link-local IPv6 address once and waits for address validation.
-The Ethernet example logs link, routing, and address transitions. If Ethernet
-remains down for 30 seconds, it calls `EthernetRestart()` to restart ESP-IDF's
-Ethernet driver and PHY autonegotiation without restarting the Thread mesh.
-The Wi-Fi example logs backbone IPv4/IPv6 addresses, link state, and routing
-state, and retries a lost Wi-Fi connection.
+```blitzmax
+Import ESP32.Network.ThreadBorderRouter
+Import ESP32.Network.Ethernet
 
-On the S31 Function-CoreBoard-1, the Wi-Fi backbone example connects to the
-access point and starts Thread and border routing, but a LAN host could no
-longer ping the S31 over Wi-Fi once Thread started. A staged test showed that
-incoming IPv4 worked with Wi-Fi alone and after selecting Wi-Fi as the
-OpenThread backbone; it stopped when `ThreadStartSaved` started the Thread
-radio, before border routing began. The S31 still sent UDP packets to the LAN
-host, and mesh UDP continued. Changing Wi-Fi power save did not restore
-incoming traffic. This single-chip Wi-Fi configuration has therefore not
-passed an end-to-end border-routing test. Espressif classifies Wi-Fi station
-plus Thread router coexistence on the S31 as supported but unstable (`C1`)
-and recommends a dual-SoC design for a Wi-Fi Thread border router:
-<https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-guides/coexist.html>.
-Use the tested Ethernet backbone on this board for now.
+If EthernetInitialize() <> 0 Then RuntimeError "Ethernet failed"
+If EthernetWaitForIP(20000) <> 0 Then RuntimeError "No backbone IP"
+If ThreadBorderRouterUseEthernet() <> 0 Then RuntimeError "Backbone selection failed"
 
-On the S31 Function-CoreBoard-1, Ethernet border routing has been verified to
-connect by DHCP, advertise the `_meshcop._udp` service, send a route for its
-Thread OMR prefix, and continue UDP exchanges with a C6 mesh peer. An nRF52
-peer with Thread SLAAC enabled acquired an OMR address; a Mac on the LAN reached
-it through the S31 with IPv6 ping and a UDP echo. The Mac initially retained
-the route from an earlier Wi-Fi test. After that stale route was removed and
-the Ethernet route was installed, the end-to-end exchange succeeded. The S31
-then acquired `fd38:f2c:193a:291c:1c29:4ff:fed0:737f` on Ethernet from the
-favored on-link prefix. The Mac reached this address with IPv6 ping and received
-a UDP echo from the S31's own Thread address. IPv6 ping and UDP echo to the nRF
-also continued to work through the S31.
+Local result:Int = ThreadStartSaved()
+If result = ThreadErrorNoSavedNetwork Then result = ThreadForm("MyMesh", 15)
+If result <> 0 Or ThreadWaitForAttached() < ThreadRoleChild Then
+    RuntimeError "Thread attach failed"
+End If
+If ThreadBorderRouterStart() <> 0 Then RuntimeError "Border routing failed"
+```
 
-An Ethernet cable interruption was tested on the S31. The link went down,
-OpenThread routing changed from active to stopped, and the backbone IPv6
-addresses were removed. After reconnection, the link-local and on-link IPv6
-addresses returned, routing became active, and the Mac received UDP echoes
-from both the S31 and nRF again. The 30-second Ethernet driver restart fallback
-was not needed in the successful recovery test.
+Select the backbone **before** starting Thread. For Wi-Fi, connect with
+`WiFiInitialize` and `WiFiConnectWait`, then call
+`ThreadBorderRouterUseWiFi()` at the same point. Call
+`ThreadBorderRouterStop()` to release border routing services.
+
+`ThreadBorderRouterState()` reports Uninitialized, Disabled, Stopped, or
+Active. `ThreadBorderRouterRunning()` is true only while active.
+`ThreadBorderRouterBackboneIPv6Address(index)` enumerates backbone addresses
+for diagnostics. Link loss can move routing from Active to Stopped; the module
+tracks backbone IPv6 prefix changes and removes only an address it added.
+
+## Examples and tested configuration
+
+- [Ethernet border router](../../examples/thread_border_router_ethernet.bmx):
+  resumes the saved mesh, serves UDP echo, and monitors link recovery.
+- [Wi-Fi border router](../../examples/thread_border_router_wifi.bmx):
+  shows the same setup with Wi-Fi. Fill in its ignored local settings file
+  before building.
+
+On the S31 Function-CoreBoard-1, Ethernet routing has passed a LAN-to-Thread
+IPv6 ping and UDP echo test with an nRF52840 peer, including an Ethernet cable
+interruption and recovery. Wi-Fi station plus Thread on this S31 did not pass
+an end-to-end LAN reachability test: incoming traffic stopped after the Thread
+radio started. Use Ethernet for the tested S31 configuration. Espressif
+[documents S31 Wi-Fi/Thread router coexistence as unstable](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-guides/coexist.html).
+
+A border router provides IPv6 routing. IPv4-only destinations additionally
+need NAT64 service; this module does not expose NAT64 configuration.

@@ -30,13 +30,13 @@ Print "THREAD_COAP=ready"
 
 Local request:Byte[512]
 While True
-	Local method:Int, source:String
-	Local length:Int = ThreadCoAPReceive(request, method, source)
+	Local requestMethod:Int, source:String
+	Local length:Int = ThreadCoAPReceive(request, requestMethod, source)
 	If length >= 0 Then
-		If method = ThreadCoAPGet Then
+		If requestMethod = ThreadCoAPGet Then
 			result = ThreadCoAPRespond(ThreadCoAPContent, [Byte(Asc("O")), Byte(Asc("K"))])
 			Print "THREAD_COAP_GET=" + result
-		Else If method = ThreadCoAPPost Then
+		Else If requestMethod = ThreadCoAPPost Then
 			Local reply:Byte[] = New Byte[length]
 			For Local i:Int = 0 Until length
 				reply[i] = request[i]
@@ -46,12 +46,12 @@ While True
 		End If
 	End If
 	Local path:String, requestId:Int
-	length = ThreadCoAPReceiveNext(request, method, source, path, requestId)
+	length = ThreadCoAPReceiveNext(request, requestMethod, source, path, requestId)
 	If length >= 0 Then
-		If path = "health" And method = ThreadCoAPGet Then
+		If path = "health" And requestMethod = ThreadCoAPGet Then
 			result = ThreadCoAPRespondTo(requestId, ThreadCoAPContent, [Byte(Asc("U")), Byte(Asc("P"))])
 			Print "THREAD_COAP_HEALTH=" + result
-		Else If path = "echo" And method = ThreadCoAPPost Then
+		Else If path = "echo" And requestMethod = ThreadCoAPPost Then
 			Local reply:Byte[] = New Byte[length]
 			For Local i:Int = 0 Until length
 				reply[i] = request[i]

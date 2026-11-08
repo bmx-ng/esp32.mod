@@ -22,13 +22,13 @@ For Local i:Int = 0 Until response.length
 	response[i] = Byte(i & $ff)
 Next
 While True
-	Local method:Int, address:String
-	Local length:Int = ThreadCoAPBlockReceive(request, method, address)
+	Local requestMethod:Int, address:String
+	Local length:Int = ThreadCoAPBlockReceive(request, requestMethod, address)
 	If length >= 0 Then
 		Print "THREAD_COAP_BLOCK_RX=" + length
-		If method = ThreadCoAPGet Then
+		If requestMethod = ThreadCoAPGet Then
 			Print "THREAD_COAP_BLOCK_RESPOND=" + ThreadCoAPBlockRespond(ThreadCoAPContent, response)
-		Else If method = ThreadCoAPPost Then
+		Else If requestMethod = ThreadCoAPPost Then
 			If length <> 2048 Then RuntimeError "Block1 request length: " + length
 			For Local i:Int = 0 Until length
 				If request[i] <> Byte(i & $ff) Then RuntimeError "Block1 mismatch at " + i

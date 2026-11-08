@@ -31,40 +31,89 @@ End Extern
 
 Public
 
+Rem
+bbdoc: Border routing has not been initialized.
+End Rem
 Const ThreadBorderRouterUninitialized:Int = 0
+Rem
+bbdoc: Border routing is disabled.
+End Rem
 Const ThreadBorderRouterDisabled:Int = 1
+Rem
+bbdoc: Border routing is configured but stopped.
+End Rem
 Const ThreadBorderRouterStopped:Int = 2
+Rem
+bbdoc: Border routing is active.
+End Rem
 Const ThreadBorderRouterActive:Int = 3
 
+Rem
+bbdoc: Select the connected Wi-Fi interface as Thread backbone.
+returns: Zero on success or an ESP-IDF error.
+about: Call before ThreadStartSaved or ThreadForm.
+End Rem
 Function ThreadBorderRouterUseWiFi:Int()
 	Return _UseWiFi()
 End Function
 
+Rem
+bbdoc: Select the connected Ethernet interface as Thread backbone.
+returns: Zero on success or an ESP-IDF error.
+about: Call before ThreadStartSaved or ThreadForm.
+End Rem
 Function ThreadBorderRouterUseEthernet:Int()
 	Return _UseEthernet()
 End Function
 
+Rem
+bbdoc: Start border routing after Thread attaches.
+returns: Zero on success or an ESP-IDF error.
+End Rem
 Function ThreadBorderRouterStart:Int()
 	Return _Start()
 End Function
 
+Rem
+bbdoc: Stop border routing and release its backbone address.
+returns: Zero on success or an ESP-IDF error.
+End Rem
 Function ThreadBorderRouterStop:Int()
 	Return _Stop()
 End Function
 
+Rem
+bbdoc: Check whether border routing is currently active.
+returns: True when active; otherwise False.
+End Rem
 Function ThreadBorderRouterRunning:Int()
 	Return _Running()
 End Function
 
+Rem
+bbdoc: Get the border routing state.
+returns: A ThreadBorderRouter* constant or a negative error.
+End Rem
 Function ThreadBorderRouterState:Int()
 	Return _State()
 End Function
 
+Rem
+bbdoc: Read a backbone IPv6 address by index.
+param: Zero-based result index.
+returns: An IPv6 address, or an empty string after the last address.
+End Rem
 Function ThreadBorderRouterBackboneIPv6Address:String(index:Int)
-	If index < 0 Then Return ""
+	If index < 0 Then
+		Return ""
+	End If
+
 	Local bytes:Byte[48]
 	Local length:Int = _BackboneIPv6Address(index, bytes, bytes.length)
-	If length <= 0 Then Return ""
+	If length <= 0 Then
+		Return ""
+	End If
+
 	Return String.FromUTF8Bytes(bytes, length)
 End Function
 ?

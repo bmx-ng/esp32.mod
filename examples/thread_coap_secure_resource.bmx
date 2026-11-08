@@ -21,9 +21,9 @@ For Local index:Int = 0 To 7
 	Print "THREAD_ADDRESS=" + address
 Next
 Print "THREAD_COAP_SECURE=ready"
-Local payload:Byte[1024], method:Int, address:String
+Local payload:Byte[1024], requestMethod:Int, address:String
 While True
-	Local length:Int = ThreadCoAPSecureReceive(payload, method, address)
+	Local length:Int = ThreadCoAPSecureReceive(payload, requestMethod, address)
 	If length >= 0 Then
 		Print "THREAD_COAP_SECURE_RX=" + length
 		Local reply:Byte[] = [Byte(Asc("O")), Byte(Asc("K"))]
