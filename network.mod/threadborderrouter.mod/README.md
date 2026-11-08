@@ -32,6 +32,22 @@ requests a new link-local IPv6 address once and waits for address validation.
 The Ethernet example logs link, routing, and address transitions. If Ethernet
 remains down for 30 seconds, it calls `EthernetRestart()` to restart ESP-IDF's
 Ethernet driver and PHY autonegotiation without restarting the Thread mesh.
+The Wi-Fi example logs backbone IPv4/IPv6 addresses, link state, and routing
+state, and retries a lost Wi-Fi connection.
+
+On the S31 Function-CoreBoard-1, the Wi-Fi backbone example connects to the
+access point and starts Thread and border routing, but a LAN host could no
+longer ping the S31 over Wi-Fi once Thread started. A staged test showed that
+incoming IPv4 worked with Wi-Fi alone and after selecting Wi-Fi as the
+OpenThread backbone; it stopped when `ThreadStartSaved` started the Thread
+radio, before border routing began. The S31 still sent UDP packets to the LAN
+host, and mesh UDP continued. Changing Wi-Fi power save did not restore
+incoming traffic. This single-chip Wi-Fi configuration has therefore not
+passed an end-to-end border-routing test. Espressif classifies Wi-Fi station
+plus Thread router coexistence on the S31 as supported but unstable (`C1`)
+and recommends a dual-SoC design for a Wi-Fi Thread border router:
+<https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-guides/coexist.html>.
+Use the tested Ethernet backbone on this board for now.
 
 On the S31 Function-CoreBoard-1, Ethernet border routing has been verified to
 connect by DHCP, advertise the `_meshcop._udp` service, send a route for its
