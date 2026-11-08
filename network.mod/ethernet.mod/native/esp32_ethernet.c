@@ -343,6 +343,18 @@ int32_t bmx_embedded_ethernet_initialized(void) { return bmx_ethernet_initialize
 int32_t bmx_embedded_ethernet_link_status(void) { return bmx_ethernet_link_status; }
 void bmx_embedded_ethernet_service(void) {}
 
+int32_t bmx_esp32_ethernet_restart(void) {
+    if (!bmx_ethernet_initialized || !bmx_ethernet_started || !bmx_ethernet_handle) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    esp_err_t result = esp_eth_stop(bmx_ethernet_handle);
+    if (result != ESP_OK) return result;
+    bmx_ethernet_started = false;
+    result = esp_eth_start(bmx_ethernet_handle);
+    if (result == ESP_OK) bmx_ethernet_started = true;
+    return result;
+}
+
 int32_t bmx_embedded_ethernet_take_event(int32_t *kind, int32_t *link_status,
         uint32_t *address, uint32_t *netmask, uint32_t *gateway, uint8_t *mac,
         int32_t *speed, int32_t *full_duplex) {

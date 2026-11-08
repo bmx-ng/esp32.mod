@@ -25,6 +25,7 @@ static esp_netif_t *bmx_backbone;
 static volatile int bmx_running;
 static volatile int bmx_address_task_running;
 static int bmx_address_owned;
+static int bmx_linklocal_requested;
 static esp_ip6_addr_t bmx_owned_address;
 
 static int bmx_has_address(const esp_ip6_addr_t *address) {
@@ -54,12 +55,17 @@ static void bmx_remove_owned_address(void) {
 static void bmx_sync_backbone_address(void) {
     otIp6Prefix prefix = {0};
     if (esp_netif_is_netif_up(bmx_backbone)) {
+        if (!bmx_linklocal_requested &&
+                esp_netif_create_ip6_linklocal(bmx_backbone) == ESP_OK) {
+            bmx_linklocal_requested = 1;
+        }
         bmx_thread_platform_lock();
         otError error = otBorderRoutingGetFavoredOnLinkPrefix(bmx_thread_platform_instance(), &prefix);
         bmx_thread_platform_unlock();
         if (error != OT_ERROR_NONE) return;
     }
     if (prefix.mLength != 64) {
+        if (!esp_netif_is_netif_up(bmx_backbone)) bmx_linklocal_requested = 0;
         bmx_remove_owned_address();
         return;
     }
@@ -104,6 +110,7 @@ static int bmx_use_backbone(const char *if_key) {
     if (!netif) return ESP_ERR_INVALID_STATE;
     esp_err_t error = esp_netif_create_ip6_linklocal(netif);
     if (error != ESP_OK && error != ESP_ERR_INVALID_STATE) return error;
+    bmx_linklocal_requested = error == ESP_OK;
     error = mdns_init();
     if (error != ESP_OK && error != ESP_ERR_INVALID_STATE) return error;
     error = mdns_hostname_set("bmx-thread-br");
@@ -156,6 +163,16 @@ int bmx_esp32_thread_border_router_stop(void) {
 
 int bmx_esp32_thread_border_router_running(void) {
     return bmx_running;
+}
+
+int bmx_esp32_thread_border_router_state(void) {
+    if (!bmx_running || !bmx_thread_platform_is_initialized()) {
+        return OT_BORDER_ROUTING_STATE_UNINITIALIZED;
+    }
+    bmx_thread_platform_lock();
+    int state = otBorderRoutingGetState(bmx_thread_platform_instance());
+    bmx_thread_platform_unlock();
+    return state;
 }
 
 int bmx_esp32_thread_border_router_backbone_ipv6_address(int index, char *value, int capacity) {

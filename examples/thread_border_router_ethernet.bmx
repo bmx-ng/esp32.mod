@@ -39,11 +39,42 @@ Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345, ThreadUDPNetifAny)
 If Not socket Then RuntimeError "Thread UDP bind failed"
 Local packet:Byte[512]
 Local lastBackboneAddress:String
+Local lastLinkLocalAddress:String
 Local lastAddressCheck:UInt
+Local lastEthernetStatus:Int = -1
+Local lastBorderRouterState:Int = -1
+Local linkDownSince:UInt
+Local lastRestart:UInt
 While True
 	If MilliSecs() - lastAddressCheck >= 1000 Then
+		Local ethernetStatus:Int = EthernetLinkStatus()
+		If ethernetStatus <> lastEthernetStatus Then
+			Print "BACKBONE_LINK=" + ethernetStatus
+			If ethernetStatus = EthernetLinkDown Then
+				linkDownSince = MilliSecs()
+			Else
+				linkDownSince = 0
+			End If
+			lastEthernetStatus = ethernetStatus
+		End If
+		If ethernetStatus = EthernetLinkDown And linkDownSince <> 0 And ..
+				MilliSecs() - linkDownSince >= 30000 And MilliSecs() - lastRestart >= 30000 Then
+			Local restartResult:Int = EthernetRestart()
+			Print "BACKBONE_RESTART=" + restartResult
+			lastRestart = MilliSecs()
+		End If
+		Local borderRouterState:Int = ThreadBorderRouterState()
+		If borderRouterState <> lastBorderRouterState Then
+			Print "BORDER_ROUTER_STATE=" + borderRouterState
+			lastBorderRouterState = borderRouterState
+		End If
 		Local backboneAddress:String = ThreadBorderRouterBackboneIPv6Address(1)
-		If backboneAddress <> "" And backboneAddress <> lastBackboneAddress Then
+		Local linkLocalAddress:String = ThreadBorderRouterBackboneIPv6Address(0)
+		If linkLocalAddress <> lastLinkLocalAddress Then
+			Print "BACKBONE_LINKLOCAL=" + linkLocalAddress
+			lastLinkLocalAddress = linkLocalAddress
+		End If
+		If backboneAddress <> lastBackboneAddress Then
 			Print "BACKBONE_IPV6=" + backboneAddress
 			lastBackboneAddress = backboneAddress
 		End If

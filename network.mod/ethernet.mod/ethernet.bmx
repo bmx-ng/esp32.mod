@@ -26,6 +26,7 @@ Extern "C"
 	Function _ESP32EthernetIsDefault:Int() = "bmx_esp32_ethernet_is_default"
 	Function _ESP32EthernetRoutePriority:Int() = "bmx_esp32_ethernet_route_priority"
 	Function _ESP32EthernetSetRoutePriority:Int(priority:Int) = "bmx_esp32_ethernet_set_route_priority"
+	Function _ESP32EthernetRestart:Int() = "bmx_esp32_ethernet_restart"
 End Extern
 
 Public
@@ -52,5 +53,9 @@ End Function
 
 Function EthernetSetRoutePriority:Int(priority:Int)
 	Return _ESP32EthernetSetRoutePriority(priority)
+End Function
+
+Function EthernetRestart:Int()
+	Return _ESP32EthernetRestart()
 End Function
 ?

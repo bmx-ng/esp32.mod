@@ -21,10 +21,17 @@ The S31 examples are `examples/thread_border_router_wifi.bmx` and
 Both resume the saved mesh if present and provide UDP echo on port 12345.
 `ThreadBorderRouterBackboneIPv6Address(index)` lists the backbone interface's
 current IPv6 addresses for diagnostics. An empty string ends the list.
+`ThreadBorderRouterState()` reports OpenThread's actual routing state:
+uninitialized (0), disabled (1), stopped (2), or active (3). This distinguishes
+a configured border router from one temporarily stopped by backbone link loss.
 While border routing runs, the module keeps a backbone IPv6 address in the
 favored on-link prefix. It uses the interface MAC to form the address when no
 address in that prefix already exists. It tracks prefix changes and removes
-only the address it added when border routing stops.
+only the address it added when border routing stops. On link recovery it
+requests a new link-local IPv6 address once and waits for address validation.
+The Ethernet example logs link, routing, and address transitions. If Ethernet
+remains down for 30 seconds, it calls `EthernetRestart()` to restart ESP-IDF's
+Ethernet driver and PHY autonegotiation without restarting the Thread mesh.
 
 On the S31 Function-CoreBoard-1, Ethernet border routing has been verified to
 connect by DHCP, advertise the `_meshcop._udp` service, send a route for its
@@ -37,3 +44,10 @@ then acquired `fd38:f2c:193a:291c:1c29:4ff:fed0:737f` on Ethernet from the
 favored on-link prefix. The Mac reached this address with IPv6 ping and received
 a UDP echo from the S31's own Thread address. IPv6 ping and UDP echo to the nRF
 also continued to work through the S31.
+
+An Ethernet cable interruption was tested on the S31. The link went down,
+OpenThread routing changed from active to stopped, and the backbone IPv6
+addresses were removed. After reconnection, the link-local and on-link IPv6
+addresses returned, routing became active, and the Mac received UDP echoes
+from both the S31 and nRF again. The 30-second Ethernet driver restart fallback
+was not needed in the successful recovery test.
