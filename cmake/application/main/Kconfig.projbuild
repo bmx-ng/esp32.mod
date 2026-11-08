@@ -28,4 +28,9 @@ config BMX_THREAD_COAP_SECURE
     depends on BMX_THREAD_COAP
     default n
 
+config BMX_THREAD_TCP
+    bool "Enable OpenThread TCP streams"
+    depends on OPENTHREAD_ENABLED
+    default n
+
 endmenu

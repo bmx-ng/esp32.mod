@@ -59,6 +59,10 @@ if (NOT BLITZMAX_ESP32_PROJECT_THREAD_INDEX EQUAL -1)
         string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-secure")
         list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-secure.defaults")
     endif()
+    if ("__bb_embedded_network_threadtcp_threadtcp" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-tcp")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.tcp.defaults")
+    endif()
     if ("__bb_esp32_network_threadborderrouter_threadborderrouter" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
         string(APPEND BMX_THREAD_FEATURE_PROFILE "-border-router")
         list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.border-router.defaults")
@@ -150,4 +154,26 @@ endif()
 if ("__bb_embedded_network_threadcoapsecure_threadcoapsecure" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
     target_compile_options(__idf_openthread PRIVATE
         -include "${BLITZMAX_ESP32_SDK}/mod/embedded.mod/network.mod/thread.mod/native/thread_mbedtls4_compat.h")
+endif()
+if ("__bb_embedded_network_threadtcp_threadtcp" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    # ESP-IDF's OpenThread component lists tcp6.cpp but omits the TCPlp C
+    # implementation that it calls when application TCP is enabled.
+    set(BMX_TCPLP_ROOT "$ENV{IDF_PATH}/components/openthread/openthread/third_party/tcplp")
+    target_sources(__idf_openthread PRIVATE
+        "${BMX_TCPLP_ROOT}/bsdtcp/cc/cc_newreno.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_fastopen.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_input.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_output.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_reass.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_sack.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_subr.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_timer.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_timewait.c"
+        "${BMX_TCPLP_ROOT}/bsdtcp/tcp_usrreq.c"
+        "${BMX_TCPLP_ROOT}/lib/bitmap.c"
+        "${BMX_TCPLP_ROOT}/lib/cbuf.c"
+        "${BMX_TCPLP_ROOT}/lib/lbuf.c")
+    target_include_directories(__idf_openthread PRIVATE
+        "${BMX_TCPLP_ROOT}/bsdtcp" "${BMX_TCPLP_ROOT}/lib")
+    target_compile_options(__idf_openthread PRIVATE -Wno-sign-compare -Wno-unused-parameter)
 endif()
