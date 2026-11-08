@@ -19,7 +19,12 @@ The S31 examples are `examples/thread_border_router_wifi.bmx` and
 `examples/thread_border_router_ethernet.bmx`. The Wi-Fi example's local
 `examples/thread_border_router_wifi.local.bmx` settings file is ignored by Git.
 Both resume the saved mesh if present and provide UDP echo on port 12345.
+`ThreadBorderRouterBackboneIPv6Address(index)` lists the backbone interface's
+current IPv6 addresses for diagnostics. An empty string ends the list.
 
-Route and service diagnostics, LAN reachability checks, and tests with other
-border routers remain future work. Hardware validation on a stable backbone
-is needed before treating this as a complete border router integration.
+On the S31 Function-CoreBoard-1, Ethernet border routing has been verified to
+connect by DHCP, advertise the `_meshcop._udp` service, send a route for its
+Thread OMR prefix, and continue UDP exchanges with a C6 mesh peer. LAN-to-Thread
+IPv6 ping reaches the S31's OMR address with a manual LAN route. Full forwarding
+to a separate Thread node and automatic route discovery on the test LAN remain
+to be verified.

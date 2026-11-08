@@ -24,13 +24,18 @@ result = ThreadBorderRouterStart()
 If result <> 0 Then RuntimeError "Border router start failed: " + result
 Print "BORDER_ROUTER=running"
 Delay 3000
+For Local index:Int = 0 Until 5
+	Local address:String = ThreadBorderRouterBackboneIPv6Address(index)
+	If address = "" Then Exit
+	Print "BACKBONE_IPV6=" + address
+Next
 For Local index:Int = 0 Until 10
 	Local address:String = ThreadIPv6Address(index)
 	If address = "" Then Exit
 	Print "THREAD_ADDRESS=" + address
 Next
 
-Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345)
+Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345, ThreadUDPNetifAny)
 If Not socket Then RuntimeError "Thread UDP bind failed"
 Local packet:Byte[512]
 While True

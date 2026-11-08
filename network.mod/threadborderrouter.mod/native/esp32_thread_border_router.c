@@ -11,6 +11,7 @@
 #include "esp_openthread_border_router.h"
 #include "freertos/FreeRTOS.h"
 #include "mdns.h"
+#include <stdio.h>
 
 extern void bmx_thread_platform_lock(void);
 extern void bmx_thread_platform_unlock(void);
@@ -63,4 +64,13 @@ int bmx_esp32_thread_border_router_stop(void) {
 
 int bmx_esp32_thread_border_router_running(void) {
     return bmx_running;
+}
+
+int bmx_esp32_thread_border_router_backbone_ipv6_address(int index, char *value, int capacity) {
+    if (!bmx_backbone || index < 0 || !value || capacity < 1) return -1;
+    esp_ip6_addr_t addresses[CONFIG_LWIP_IPV6_NUM_ADDRESSES];
+    int count = esp_netif_get_all_ip6(bmx_backbone, addresses);
+    if (index >= count) return 0;
+    int length = snprintf(value, (size_t)capacity, IPV6STR, IPV62STR(addresses[index]));
+    return length >= 0 && length < capacity ? length : -1;
 }

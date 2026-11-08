@@ -25,6 +25,7 @@ Extern "C"
 	Function _Start:Int() = "bmx_esp32_thread_border_router_start"
 	Function _Stop:Int() = "bmx_esp32_thread_border_router_stop"
 	Function _Running:Int() = "bmx_esp32_thread_border_router_running"
+	Function _BackboneIPv6Address:Int(index:Int, value:Byte Ptr, capacity:Int) = "bmx_esp32_thread_border_router_backbone_ipv6_address"
 End Extern
 
 Public
@@ -47,5 +48,13 @@ End Function
 
 Function ThreadBorderRouterRunning:Int()
 	Return _Running()
+End Function
+
+Function ThreadBorderRouterBackboneIPv6Address:String(index:Int)
+	If index < 0 Then Return ""
+	Local bytes:Byte[48]
+	Local length:Int = _BackboneIPv6Address(index, bytes, bytes.length)
+	If length <= 0 Then Return ""
+	Return String.FromUTF8Bytes(bytes, length)
 End Function
 ?

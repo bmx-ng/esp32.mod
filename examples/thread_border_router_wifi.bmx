@@ -35,7 +35,7 @@ For Local index:Int = 0 Until 10
 	Print "THREAD_ADDRESS=" + address
 Next
 
-Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345)
+Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345, ThreadUDPNetifAny)
 If Not socket Then RuntimeError "Thread UDP bind failed"
 Local packet:Byte[512]
 While True
