@@ -23,4 +23,9 @@ config BMX_THREAD_COAP_OBSERVE
     depends on BMX_THREAD_COAP
     default n
 
+config BMX_THREAD_COAP_SECURE
+    bool "Enable OpenThread secure CoAP over DTLS"
+    depends on BMX_THREAD_COAP
+    default n
+
 endmenu

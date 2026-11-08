@@ -55,6 +55,10 @@ if (NOT BLITZMAX_ESP32_PROJECT_THREAD_INDEX EQUAL -1)
         string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-observe")
         list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-observe.defaults")
     endif()
+    if ("__bb_embedded_network_threadcoapsecure_threadcoapsecure" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+        string(APPEND BMX_THREAD_FEATURE_PROFILE "-coap-secure")
+        list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.coap-secure.defaults")
+    endif()
     if ("__bb_esp32_network_threadborderrouter_threadborderrouter" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
         string(APPEND BMX_THREAD_FEATURE_PROFILE "-border-router")
         list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/thread.border-router.defaults")
@@ -142,4 +146,8 @@ if ("__bb_embedded_network_threadcoapblock_threadcoapblock" IN_LIST BLITZMAX_ESP
     # ESP-IDF 6.1's bundled OpenThread blockwise logging uses %d for uint32_t
     # on this toolchain. Scope the warning downgrade to OpenThread itself.
     target_compile_options(__idf_openthread PRIVATE -Wno-error=format)
+endif()
+if ("__bb_embedded_network_threadcoapsecure_threadcoapsecure" IN_LIST BLITZMAX_ESP32_MODULE_INITIALIZERS)
+    target_compile_options(__idf_openthread PRIVATE
+        -include "${BLITZMAX_ESP32_SDK}/mod/embedded.mod/network.mod/thread.mod/native/thread_mbedtls4_compat.h")
 endif()

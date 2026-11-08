@@ -71,6 +71,11 @@ if (NOT BLITZMAX_ESP32_COAP_OBSERVE_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
         "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap_observe.c")
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoapsecure_threadcoapsecure" BLITZMAX_ESP32_COAP_SECURE_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_SECURE_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap_secure.c")
+endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_MQTT_INDEX)
 if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
