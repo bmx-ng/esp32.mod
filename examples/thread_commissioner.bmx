@@ -4,6 +4,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Thread
 Import Embedded.Network.Thread
+Import Embedded.Network.ThreadCommissioning
 
 Const JoinerEui64:String = "<factory-eui64>"
 Const JoinerPskd:String = "<unique-pskd>"

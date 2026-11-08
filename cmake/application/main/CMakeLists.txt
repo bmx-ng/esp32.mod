@@ -42,9 +42,13 @@ list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_thread_threa
 if (NOT BLITZMAX_ESP32_THREAD_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
         "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_openthread.c"
-        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_discovery.c"
         "${ESP32_MODULE_ROOT}/network.mod/thread.mod/native/esp32_thread.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS openthread esp_event esp_netif lwip nvs_flash)
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threaddiscovery_threaddiscovery" BLITZMAX_ESP32_DISCOVERY_INDEX)
+if (NOT BLITZMAX_ESP32_DISCOVERY_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_discovery.c")
 endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_MQTT_INDEX)
 if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)

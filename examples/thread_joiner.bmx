@@ -4,6 +4,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Thread
 Import Embedded.Network.Thread
+Import Embedded.Network.ThreadCommissioning
 
 Const JoinerPskd:String = "<unique-pskd>"
 

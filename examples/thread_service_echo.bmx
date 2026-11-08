@@ -4,6 +4,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Thread
 Import Embedded.Network.Thread
+Import Embedded.Network.ThreadServer
 
 Local result:Int = ThreadStartSaved()
 If result = ThreadErrorNoSavedNetwork Then result = ThreadForm("BMXThread", 15)

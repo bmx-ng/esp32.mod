@@ -4,6 +4,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Thread
 Import Embedded.Network.Thread
+Import Embedded.Network.ThreadDiscovery
 
 Print "THREAD_BOOT=starting"
 If ThreadStartSaved() <> 0 Then RuntimeError "No saved Thread network"
