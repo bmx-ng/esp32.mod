@@ -146,8 +146,8 @@ header, YT8531DC Gigabit Ethernet PHY, ES8311 audio codec, microphone, amplified
 speaker output, GPIO60 addressable LED, 500 mA USB 2.0 High-Speed host port,
 USB Serial/JTAG port, and USB-to-UART bridge. Use the USB-to-UART Type-C port
 for the default upload and console path. The 16 MiB PSRAM supports
-`-heap-region psram -heap auto`. Ethernet hardware is described for pin and
-resource planning, but `esp32.mod` does not yet provide an Ethernet adapter.
+`-heap-region psram -heap auto`. The onboard Ethernet PHY is supported by
+`ESP32.Network.Ethernet` and can serve as a Thread border-router backbone.
 
 The dual-USB 44-pin N16R8 board uses its CH343P `COM` socket for automatic
 upload, reset, and console output. Its separate `USB` socket is wired directly
