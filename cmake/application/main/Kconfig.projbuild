@@ -13,4 +13,14 @@ config BMX_THREAD_COAP
     depends on OPENTHREAD_ENABLED
     default n
 
+config BMX_THREAD_COAP_BLOCK
+    bool "Enable OpenThread CoAP blockwise transfers"
+    depends on BMX_THREAD_COAP
+    default n
+
+config BMX_THREAD_COAP_OBSERVE
+    bool "Enable OpenThread CoAP Observe"
+    depends on BMX_THREAD_COAP
+    default n
+
 endmenu
