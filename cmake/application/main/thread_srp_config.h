@@ -1,0 +1,8 @@
+/* On-mesh SRP service discovery without enabling off-mesh border routing. */
+#pragma once
+#if CONFIG_BMX_THREAD_SRP_SERVER
+#define OPENTHREAD_CONFIG_SRP_SERVER_ENABLE 1
+#define OPENTHREAD_CONFIG_DNSSD_SERVER_ENABLE 1
+#define OPENTHREAD_CONFIG_NETDATA_PUBLISHER_ENABLE 1
+#define OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE 1
+#endif

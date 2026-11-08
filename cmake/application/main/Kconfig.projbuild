@@ -1,0 +1,12 @@
+menu "BlitzMax Thread features"
+
+config BMX_THREAD_SRP_SERVER
+    bool "Host a Thread SRP and DNS-SD server"
+    depends on OPENTHREAD_ENABLED
+    default y if IDF_TARGET_ESP32S31
+    default n
+    help
+        Enable on-mesh service registration and discovery hosting. This does
+        not enable border routing to Wi-Fi or Ethernet.
+
+endmenu
