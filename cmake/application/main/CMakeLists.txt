@@ -50,6 +50,11 @@ if (NOT BLITZMAX_ESP32_DISCOVERY_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
         "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_discovery.c")
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_threadcoap_threadcoap" BLITZMAX_ESP32_COAP_INDEX)
+if (NOT BLITZMAX_ESP32_COAP_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${EMBEDDED_MODULE_ROOT}/network.mod/thread.mod/native/thread_coap.c")
+endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_embedded_network_mqtt_mqtt" BLITZMAX_ESP32_MQTT_INDEX)
 if (NOT BLITZMAX_ESP32_MQTT_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES

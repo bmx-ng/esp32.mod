@@ -8,4 +8,9 @@ config BMX_THREAD_SRP_SERVER
         Enable on-mesh service registration and discovery hosting. This does
         not enable border routing to Wi-Fi or Ethernet.
 
+config BMX_THREAD_COAP
+    bool "Enable OpenThread CoAP application API"
+    depends on OPENTHREAD_ENABLED
+    default n
+
 endmenu
