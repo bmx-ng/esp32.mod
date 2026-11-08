@@ -21,6 +21,10 @@ The S31 examples are `examples/thread_border_router_wifi.bmx` and
 Both resume the saved mesh if present and provide UDP echo on port 12345.
 `ThreadBorderRouterBackboneIPv6Address(index)` lists the backbone interface's
 current IPv6 addresses for diagnostics. An empty string ends the list.
+While border routing runs, the module keeps a backbone IPv6 address in the
+favored on-link prefix. It uses the interface MAC to form the address when no
+address in that prefix already exists. It tracks prefix changes and removes
+only the address it added when border routing stops.
 
 On the S31 Function-CoreBoard-1, Ethernet border routing has been verified to
 connect by DHCP, advertise the `_meshcop._udp` service, send a route for its
@@ -28,6 +32,8 @@ Thread OMR prefix, and continue UDP exchanges with a C6 mesh peer. An nRF52
 peer with Thread SLAAC enabled acquired an OMR address; a Mac on the LAN reached
 it through the S31 with IPv6 ping and a UDP echo. The Mac initially retained
 the route from an earlier Wi-Fi test. After that stale route was removed and
-the Ethernet route was installed, the end-to-end exchange succeeded. The S31's
-own backbone interface had only a link-local IPv6 address in this test, so a
-UDP echo hosted locally on the S31 did not reply to a LAN ULA sender.
+the Ethernet route was installed, the end-to-end exchange succeeded. The S31
+then acquired `fd38:f2c:193a:291c:1c29:4ff:fed0:737f` on Ethernet from the
+favored on-link prefix. The Mac reached this address with IPv6 ping and received
+a UDP echo from the S31's own Thread address. IPv6 ping and UDP echo to the nRF
+also continued to work through the S31.

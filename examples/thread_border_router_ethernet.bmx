@@ -38,7 +38,17 @@ Next
 Local socket:TThreadUDPSocket = TThreadUDPSocket.Open(12345, ThreadUDPNetifAny)
 If Not socket Then RuntimeError "Thread UDP bind failed"
 Local packet:Byte[512]
+Local lastBackboneAddress:String
+Local lastAddressCheck:UInt
 While True
+	If MilliSecs() - lastAddressCheck >= 1000 Then
+		Local backboneAddress:String = ThreadBorderRouterBackboneIPv6Address(1)
+		If backboneAddress <> "" And backboneAddress <> lastBackboneAddress Then
+			Print "BACKBONE_IPV6=" + backboneAddress
+			lastBackboneAddress = backboneAddress
+		End If
+		lastAddressCheck = MilliSecs()
+	End If
 	Local source:String, port:Int
 	Local length:Int = socket.Receive(packet, source, port)
 	If length >= 0 Then
