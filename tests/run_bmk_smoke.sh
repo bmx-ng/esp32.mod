@@ -49,7 +49,7 @@ test -s "$work_dir/psram-n8r8.elf"
 test -s "$work_dir/psram-n8r8.bin"
 
 conformance_root="$module_root/../embedded.mod/tests"
-for conformance in embedded_runtime_conformance embedded_language_conformance embedded_gpio_conformance embedded_gpio_events_conformance embedded_time_conformance embedded_power_conformance embedded_uart_conformance embedded_buffered_uart_conformance embedded_i2c_conformance embedded_spi_conformance embedded_adc_conformance embedded_pwm_conformance embedded_watchdog_conformance embedded_device_conformance embedded_random_conformance embedded_unicode_conformance embedded_events_conformance embedded_uncaught_string embedded_runtime_error; do
+for conformance in embedded_runtime_conformance embedded_language_conformance embedded_gpio_conformance embedded_gpio_events_conformance embedded_time_conformance embedded_power_conformance embedded_uart_conformance embedded_buffered_uart_conformance embedded_i2c_conformance embedded_spi_conformance embedded_display_conformance embedded_adc_conformance embedded_pwm_conformance embedded_watchdog_conformance embedded_device_conformance embedded_random_conformance embedded_unicode_conformance embedded_events_conformance embedded_uncaught_string embedded_runtime_error; do
 	"$bmk" makeapp \
 		-a -r \
 		-l esp32 -g "$architecture" -board "$target" -heap 64k \

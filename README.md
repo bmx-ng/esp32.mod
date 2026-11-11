@@ -18,6 +18,7 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S3 | Xtensa | `esp32s3_44pin_n16r8` | 16 MiB flash, 8 MiB PSRAM, dual USB-C |
 | ESP32-S3 | Xtensa | `xiao_esp32s3_plus` | 16 MiB flash, 8 MiB PSRAM, native USB, no onboard SD slot |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
+| ESP32-C3 | 32-bit RISC-V | `esp32c3_oled_042` | 4 MiB flash, native USB, 72x40 SSD1306 OLED |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C5 | 32-bit RISC-V | `xiao_esp32c5` | 8 MiB flash, 8 MiB PSRAM, native USB |
@@ -27,6 +28,7 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S31 | 32-bit RISC-V | `esp32_s31_function_coreboard_1` | 16 MiB flash, 16 MiB PSRAM, Gigabit Ethernet, audio, USB host; ESP-IDF preview target |
 
 The ESP32-WROOM-32D, Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
+ESP32-C3 0.42-inch OLED,
 ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, Waveshare H2 Dev Kit N4,
 M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1
 profiles have been tested on their respective physical boards. Additional
@@ -84,6 +86,18 @@ For a Baguette C3, select its board profile instead:
 ```sh
 bmk makeapp -a -r -board baguette_c3 -heap 64k -x hello.bmx
 ```
+
+For the compact ESP32-C3 board with a 0.42-inch OLED, use
+`-board esp32c3_oled_042`. The profile records the verified 72x40 display at
+I2C address `0x3c`, with SDA on GPIO5, SCL on GPIO6, and a 28-column controller
+RAM offset. The shared SSD1306 example builds and uploads with:
+
+```sh
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042.bmx
+```
+
+Visually similar revisions disagree about their onboard LED, so the profile
+does not claim one without separate hardware verification.
 
 For an ESP32-WROOM-32D module with 4 MiB flash, use
 `-board esp32_wroom_32d`. Upload and console output use UART0 through the
@@ -299,6 +313,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
+| Displays | `Embedded.Drivers.Display`, `Embedded.Drivers.Displays.SSD1306` | [`oled_042.bmx`](examples/oled_042.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
