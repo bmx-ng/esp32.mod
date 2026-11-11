@@ -2,6 +2,8 @@ SuperStrict
 
 Framework BRL.StandardIO
 Import Embedded.Drivers.Display
+Import Embedded.Drivers.Display.Font
+Import Embedded.Drivers.Display.Fonts.Spleen5x8
 Import Embedded.Drivers.Displays.SSD1306
 Import Embedded.Hardware.I2C
 
@@ -18,13 +20,14 @@ If Not display Or Not display.Initialize() Then RuntimeError "Could not initiali
 
 Local frame:TDisplayBuffer = display.CreateBuffer()
 frame.Clear()
-frame.DrawRect(0, 0, frame.Width(), frame.Height())
-frame.DrawLine(0, 0, frame.Width() - 1, frame.Height() - 1)
-frame.DrawLine(0, frame.Height() - 1, frame.Width() - 1, 0)
-frame.FillRect(frame.Width() / 2 - 6, frame.Height() / 2 - 6, 12, 12)
+Local font:TBitmapFont = Spleen5x8Font()
+If Not font Then RuntimeError "Could not load the display font"
+font.DrawText(frame, "BlitzMax~nESP32-C3~n72x40 OLED", 1, 0)
+frame.DrawLine(1, 25, 70, 25)
+font.DrawText(frame, "Spleen 5x8", 1, 30)
 If display.Present(frame) <= 0 Then RuntimeError "Could not present the OLED frame"
 
-Print "OLED geometry test displayed"
+Print "OLED text test displayed"
 While True
 	Delay 1000
 Wend
