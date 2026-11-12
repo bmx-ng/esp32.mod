@@ -177,6 +177,31 @@ drawn normally and mirrored at its native size, and
 `examples/rgb_lcd_image_compositing.bmx` for conversion and opacity equivalence
 checks.
 
+`examples/rgb_lcd_sprite_atlas.bmx` demonstrates the complete sprite workflow.
+Six independently trimmed SVG frames are packed into one atlas by
+`spriteatlas`, converted to a masked RGB565 EBI asset, and played on their
+original 128x128 logical canvas. The animation presents only the union of the
+old and new sprite bounds. Masked RGB565 draws use the native raster path for
+clipping, mirroring, tint, and opacity; an untinted opaque sprite takes the
+direct-copy fast path. Regenerate and run the example from `esp32.mod` with:
+
+```sh
+spriteatlas examples/assets/rgb_lcd_sprite_atlas --symbol VisualBot \
+    --page-size 512 --padding 2 --alpha-threshold 128 \
+    --animation run=run0:90,run1:90,run2:90,run3:90,run4:90,run5:90 \
+    run0=examples/assets/rgb_lcd_sprite_frames/run0.svg \
+    run1=examples/assets/rgb_lcd_sprite_frames/run1.svg \
+    run2=examples/assets/rgb_lcd_sprite_frames/run2.svg \
+    run3=examples/assets/rgb_lcd_sprite_frames/run3.svg \
+    run4=examples/assets/rgb_lcd_sprite_frames/run4.svg \
+    run5=examples/assets/rgb_lcd_sprite_frames/run5.svg
+image2embedded examples/assets/rgb_lcd_sprite_atlas.png \
+    examples/assets/rgb_lcd_sprite_atlas.ebi \
+    --format auto --mask auto --alpha-threshold 128
+bmk makeapp -a -r -board esp32_s31_korvo_1 -x \
+    examples/rgb_lcd_sprite_atlas.bmx
+```
+
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.
 
