@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 static void *bmx_esp32_managed_arena;
@@ -25,10 +26,36 @@ static void (*bmx_esp32_managed_lifecycle_entry)(void);
 static uint32_t bmx_esp32_managed_context_violations;
 static uint32_t bmx_esp32_managed_callback_dispatches;
 static uint32_t bmx_esp32_managed_callback_rejections;
+static SemaphoreHandle_t bmx_esp32_yield_semaphore;
+static esp_timer_handle_t bmx_esp32_yield_timer;
 
 #ifndef BMX_EMBEDDED_ARENA_IN_PSRAM
 #define BMX_EMBEDDED_ARENA_IN_PSRAM 0
 #endif
+
+static void bmx_esp32_yield_timer_callback(void *argument) {
+    (void)argument;
+    if (bmx_esp32_yield_semaphore) xSemaphoreGive(bmx_esp32_yield_semaphore);
+}
+
+static int bmx_esp32_cooperative_yield(void) {
+    if (!bmx_esp32_yield_semaphore) {
+        bmx_esp32_yield_semaphore = xSemaphoreCreateBinary();
+        if (!bmx_esp32_yield_semaphore) return 0;
+    }
+    if (!bmx_esp32_yield_timer) {
+        const esp_timer_create_args_t arguments = {
+            .callback = bmx_esp32_yield_timer_callback,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "bmx_yield",
+            .skip_unhandled_events = true,
+        };
+        if (esp_timer_create(&arguments, &bmx_esp32_yield_timer) != ESP_OK) return 0;
+    }
+    xSemaphoreTake(bmx_esp32_yield_semaphore, 0);
+    if (esp_timer_start_once(bmx_esp32_yield_timer, 100) != ESP_OK) return 0;
+    return xSemaphoreTake(bmx_esp32_yield_semaphore, portMAX_DELAY) == pdTRUE;
+}
 
 static int32_t bmx_esp32_psram_initialized(void) {
 #if CONFIG_SPIRAM
@@ -275,10 +302,20 @@ int32_t bmx_embedded_millisecs(void) {
 }
 
 void bmx_embedded_delay(int32_t milliseconds) {
-    if (milliseconds <= 0) return;
+    if (milliseconds < 0) return;
 #if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
     int native_safe = bmx_embedded_gc_enter_native_safe();
 #endif
+    if (milliseconds == 0) {
+        /* ESP-IDF's idle task runs below the application task, so taskYIELD()
+         * alone cannot service it. A short high-resolution timer wait blocks
+         * without imposing FreeRTOS's full scheduler-tick delay. */
+        if (!bmx_esp32_cooperative_yield()) taskYIELD();
+#if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE
+        if (native_safe) bmx_embedded_gc_leave_native_safe();
+#endif
+        return;
+    }
     TickType_t ticks = pdMS_TO_TICKS((uint32_t)milliseconds);
     vTaskDelay(ticks ? ticks : 1);
 #if defined(BMX_EMBEDDED_MULTICORE) && BMX_EMBEDDED_MULTICORE

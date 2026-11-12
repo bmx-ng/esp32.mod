@@ -20,7 +20,7 @@ set(BLITZMAX_ESP32_RMT_REQUIREMENTS)
 set(BLITZMAX_ESP32_DISPLAY_REQUIREMENTS)
 set(BLITZMAX_ESP32_TOUCH_REQUIREMENTS)
 if (BLITZMAX_ESP32_RGB_DISPLAY_ENABLED)
-    list(APPEND BLITZMAX_ESP32_DISPLAY_REQUIREMENTS esp_lcd)
+    list(APPEND BLITZMAX_ESP32_DISPLAY_REQUIREMENTS esp_driver_ppa esp_lcd)
 endif()
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_drivers_touch_gt1151_gt1151" BLITZMAX_ESP32_GT1151_INDEX)
 if (NOT BLITZMAX_ESP32_GT1151_INDEX EQUAL -1)
@@ -163,10 +163,12 @@ idf_component_register(
     PRIV_REQUIRES app_update bootloader_support esp_adc esp_driver_gpio esp_driver_i2c esp_driver_ledc esp_driver_sdmmc esp_driver_spi esp_driver_uart esp_hw_support esp_partition esp_psram esp_system esp_timer fatfs freertos heap joltwallet__littlefs nvs_flash sdmmc ${BLITZMAX_ESP32_NETWORK_REQUIREMENTS} ${BLITZMAX_ESP32_RMT_REQUIREMENTS} ${BLITZMAX_ESP32_DISPLAY_REQUIREMENTS} ${BLITZMAX_ESP32_TOUCH_REQUIREMENTS}
 )
 if (BLITZMAX_ESP32_RGB_DISPLAY_ENABLED)
-    # The project seeds esp_lcd during component discovery. Link its component
-    # target explicitly so its public headers also reach imported native code.
+    # The project seeds these drivers during component discovery. Link their
+    # component targets explicitly so public headers reach imported native code.
     idf_component_get_property(BLITZMAX_ESP32_LCD_LIB esp_lcd COMPONENT_LIB)
+    idf_component_get_property(BLITZMAX_ESP32_PPA_LIB esp_driver_ppa COMPONENT_LIB)
     target_link_libraries(${COMPONENT_LIB} PRIVATE ${BLITZMAX_ESP32_LCD_LIB})
+    target_link_libraries(${COMPONENT_LIB} PRIVATE ${BLITZMAX_ESP32_PPA_LIB})
 endif()
 if (NOT BLITZMAX_ESP32_GT1151_INDEX EQUAL -1)
     idf_component_get_property(BLITZMAX_ESP32_GT1151_LIB espressif__esp_lcd_touch_gt1151 COMPONENT_LIB)

@@ -16,6 +16,7 @@ ModuleInfo "License: zlib/libpng"
 
 Import Embedded.Drivers.Display
 Import "native/esp32_rgb_display.c"
+Import "native/esp32_display_acceleration.c"
 
 Type TESP32RGBDisplayConfig
 	Field width:Int
@@ -36,11 +37,19 @@ Type TESP32RGBDisplayConfig
 	Field dataPins:Int[16]
 	Field pixelClockActiveNegative:Int
 	Field displayEnableActiveLow:Int
+	Rem
+	bbdoc: Number of RGB framebuffers allocated by ESP-IDF, from one through three.
+	about: One buffer minimizes memory use, two prevent visible drawing and tearing,
+	and three allow rendering to overlap a queued display swap. Each 800x480 RGB565
+	buffer occupies 768,000 bytes.
+	End Rem
 	Field framebufferCount:Int = 1
 End Type
 
 Extern "C"
 	Function _RGBDisplaySupported:Int() = "bmx_esp32_rgb_display_supported"
+	Function _RGBDisplayAccelerationInitialize:Int() = ..
+		"bmx_esp32_display_acceleration_initialize"
 	Function _RGBDisplayCreate:Byte Ptr(width:Int, height:Int, pixelClockHz:UInt, ..
 		hsyncPulseWidth:Int, hsyncBackPorch:Int, hsyncFrontPorch:Int, ..
 		vsyncPulseWidth:Int, vsyncBackPorch:Int, vsyncFrontPorch:Int, ..
@@ -104,12 +113,15 @@ Type TESP32RGBDisplay Extends TDisplay
 	Field displayHeight:Int
 	Field framebuffer:Byte Ptr
 	Field framebufferCount:Int
+	Field acceleratedFill:Int
 	Field buffer:TDisplayBuffer
 
 	Public
 	Function Create:TESP32RGBDisplay(config:TESP32RGBDisplayConfig)
 		If Not config Or config.width <= 0 Or config.height <= 0 Or ..
-			config.pixelClockHz = 0 Or Not config.dataPins Then Return Null
+			config.pixelClockHz = 0 Or Not config.dataPins Or ..
+			config.framebufferCount < 1 Or config.framebufferCount > 3 Then Return Null
+		Local acceleratedFill:Int = _RGBDisplayAccelerationInitialize()
 		Local nativeHandle:Byte Ptr = _RGBDisplayCreate(config.width, config.height, ..
 			config.pixelClockHz, config.hsyncPulseWidth, config.hsyncBackPorch, ..
 			config.hsyncFrontPorch, config.vsyncPulseWidth, config.vsyncBackPorch, ..
@@ -123,6 +135,7 @@ Type TESP32RGBDisplay Extends TDisplay
 		display.displayWidth = config.width
 		display.displayHeight = config.height
 		display.framebufferCount = _RGBDisplayFramebufferCount(nativeHandle)
+		display.acceleratedFill = acceleratedFill
 		If Not display.SetOrientation(config.orientation) Then
 			display.Close()
 			Return Null
@@ -156,6 +169,7 @@ Type TESP32RGBDisplay Extends TDisplay
 		Else
 			result :| DisplayCapabilityLiveFramebuffer
 		End If
+		If acceleratedFill Then result :| DisplayCapabilityAcceleratedFill
 		Return result
 	End Method
 

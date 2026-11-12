@@ -150,11 +150,12 @@ if (NOT BLITZMAX_ESP32_PROJECT_RMT_INDEX EQUAL -1)
 endif()
 if (NOT BLITZMAX_ESP32_PROJECT_RGB_DISPLAY_INDEX EQUAL -1)
     # Component discovery runs before main/CMakeLists can add its conditional
-    # dependency. Seed the LCD driver for applications that import RGB panels.
+    # dependencies. Seed the LCD and optional PPA acceleration drivers for
+    # applications that import RGB panels.
     if (DEFINED COMPONENTS)
-        list(APPEND COMPONENTS esp_lcd)
+        list(APPEND COMPONENTS esp_driver_ppa esp_lcd)
     else()
-        set(COMPONENTS main esp_lcd)
+        set(COMPONENTS main esp_driver_ppa esp_lcd)
     endif()
 endif()
 if (NOT BLITZMAX_ESP32_PROJECT_GT1151_INDEX EQUAL -1)
