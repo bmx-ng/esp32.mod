@@ -113,6 +113,21 @@ application image. The 21-glyph subset reduced the font from 11,360 to 536
 bytes and the application image to 192,464 bytes, saving 10,480 bytes of flash.
 Exact application sizes can vary with the compiler and ESP-IDF version.
 
+`examples/oled_042_image.bmx` demonstrates firmware-resident images, including
+one-bit transparency, tinting, native drawing, and nearest-neighbour scaling.
+Its small SVG source is converted on the desktop to the 96-byte EBI1 asset
+included by the application:
+
+```sh
+image2embedded examples/assets/oled_042_image.svg \
+    examples/assets/oled_042_image.ebi --format mono1 --mask auto
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042_image.bmx
+```
+
+The converter source is provided by `embedded.mod/tools/image2embedded.bmx` and
+uses the standard BlitzMax `image.mod` loaders; image decoding is not linked
+into the ESP32 firmware.
+
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.
 
@@ -330,7 +345,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
-| Displays | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx) |
+| Displays | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
