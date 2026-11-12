@@ -10,6 +10,8 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
 #include "esp_lcd_types.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 typedef struct {
     esp_lcd_panel_handle_t panel;
@@ -17,12 +19,26 @@ typedef struct {
     int32_t width;
     int32_t height;
     int32_t stride;
+    SemaphoreHandle_t vsync;
 } bmx_esp32_rgb_display_t;
 
 static int32_t last_error;
 
 int32_t bmx_esp32_rgb_display_supported(void) { return 1; }
 int32_t bmx_esp32_rgb_display_last_error(void) { return last_error; }
+
+static bool IRAM_ATTR bmx_esp32_rgb_display_on_vsync(
+        esp_lcd_panel_handle_t panel,
+        const esp_lcd_rgb_panel_event_data_t *event_data, void *user_ctx) {
+    (void)panel;
+    (void)event_data;
+    bmx_esp32_rgb_display_t *display = user_ctx;
+    BaseType_t task_woken = pdFALSE;
+    if (display && display->vsync) {
+        xSemaphoreGiveFromISR(display->vsync, &task_woken);
+    }
+    return task_woken == pdTRUE;
+}
 
 void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         uint32_t pixel_clock_hz, int32_t hsync_pulse_width,
@@ -37,6 +53,12 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
     if (width <= 0 || height <= 0 || !pixel_clock_hz || !data_pins) return NULL;
     bmx_esp32_rgb_display_t *display = calloc(1, sizeof(*display));
     if (!display) { last_error = ESP_ERR_NO_MEM; return NULL; }
+    display->vsync = xSemaphoreCreateBinary();
+    if (!display->vsync) {
+        free(display);
+        last_error = ESP_ERR_NO_MEM;
+        return NULL;
+    }
     esp_lcd_rgb_panel_config_t config = {
         .clk_src = LCD_CLK_SRC_PLL160M,
         .timings = {
@@ -65,6 +87,13 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
     };
     for (int index = 0; index < 16; ++index) config.data_gpio_nums[index] = data_pins[index];
     esp_err_t result = esp_lcd_new_rgb_panel(&config, &display->panel);
+    if (result == ESP_OK) {
+        const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
+            .on_vsync = bmx_esp32_rgb_display_on_vsync,
+        };
+        result = esp_lcd_rgb_panel_register_event_callbacks(display->panel,
+            &callbacks, display);
+    }
     if (result == ESP_OK) result = esp_lcd_panel_reset(display->panel);
     if (result == ESP_OK) result = esp_lcd_panel_init(display->panel);
     if (result == ESP_OK) result = esp_lcd_rgb_panel_get_frame_buffer(
@@ -72,6 +101,7 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
     if (result == ESP_OK) result = esp_lcd_panel_disp_on_off(display->panel, true);
     if (result != ESP_OK || !display->framebuffer) {
         if (display->panel) esp_lcd_panel_del(display->panel);
+        vSemaphoreDelete(display->vsync);
         free(display);
         last_error = result != ESP_OK ? result : ESP_ERR_NO_MEM;
         return NULL;
@@ -84,6 +114,7 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         display->framebuffer);
     if (result != ESP_OK) {
         esp_lcd_panel_del(display->panel);
+        vSemaphoreDelete(display->vsync);
         free(display);
         last_error = result;
         return NULL;
@@ -96,6 +127,7 @@ void bmx_esp32_rgb_display_delete(void *handle) {
     bmx_esp32_rgb_display_t *display = handle;
     if (!display) return;
     if (display->panel) esp_lcd_panel_del(display->panel);
+    if (display->vsync) vSemaphoreDelete(display->vsync);
     free(display);
 }
 
@@ -129,6 +161,15 @@ int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {
     return display ? esp_lcd_panel_disp_on_off(display->panel, !!enabled) : ESP_ERR_INVALID_ARG;
 }
 
+int32_t bmx_esp32_rgb_display_wait_vsync(void *handle, int32_t timeout_ms) {
+    bmx_esp32_rgb_display_t *display = handle;
+    if (!display || !display->vsync || timeout_ms < 0) return ESP_ERR_INVALID_ARG;
+    xSemaphoreTake(display->vsync, 0);
+    TickType_t ticks = timeout_ms == 0 ? 0 : pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ms > 0 && ticks == 0) ticks = 1;
+    return xSemaphoreTake(display->vsync, ticks) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
+}
+
 #else
 static int32_t last_error = -1;
 int32_t bmx_esp32_rgb_display_supported(void) { return 0; }
@@ -157,5 +198,8 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
 }
 int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {
     (void)handle; (void)enabled; return -1;
+}
+int32_t bmx_esp32_rgb_display_wait_vsync(void *handle, int32_t timeout_ms) {
+    (void)handle; (void)timeout_ms; return -1;
 }
 #endif

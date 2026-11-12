@@ -51,6 +51,7 @@ Extern "C"
 	Function _RGBDisplayPresent:Int(handle:Byte Ptr, pixels:Byte Ptr, stride:Int, ..
 		x:Int, y:Int, width:Int, height:Int) = "bmx_esp32_rgb_display_present"
 	Function _RGBDisplaySetEnabled:Int(handle:Byte Ptr, enabled:Int) = "bmx_esp32_rgb_display_set_enabled"
+	Function _RGBDisplayWaitVSync:Int(handle:Byte Ptr, timeoutMs:Int) = "bmx_esp32_rgb_display_wait_vsync"
 	Function _RGBDisplayLastError:Int() = "bmx_esp32_rgb_display_last_error"
 End Extern
 
@@ -159,6 +160,16 @@ Type TESP32RGBDisplay Extends TDisplay
 
 	Method SetEnabled:Int(enabled:Int) Override
 		Return handle And _RGBDisplaySetEnabled(handle, enabled) = 0
+	End Method
+
+	Rem
+	bbdoc: Waits for the next vertical synchronization boundary.
+	about: This is useful before changing the live framebuffer of a continuously
+	scanned RGB panel. A timeout of zero performs a non-blocking poll.
+	returns: True when a frame boundary was observed, or False on timeout/error.
+	End Rem
+	Method WaitVSync:Int(timeoutMs:Int = 1000)
+		Return handle And timeoutMs >= 0 And _RGBDisplayWaitVSync(handle, timeoutMs) = 0
 	End Method
 
 	Method Close()
