@@ -20,6 +20,7 @@ Import "native/esp32_rgb_display.c"
 Type TESP32RGBDisplayConfig
 	Field width:Int
 	Field height:Int
+	Field orientation:Int = DisplayOrientation0
 	Field pixelClockHz:UInt
 	Field hsyncPulseWidth:Int
 	Field hsyncBackPorch:Int
@@ -116,6 +117,10 @@ Type TESP32RGBDisplay Extends TDisplay
 		display.handle = nativeHandle
 		display.displayWidth = config.width
 		display.displayHeight = config.height
+		If Not display.SetOrientation(config.orientation) Then
+			display.Close()
+			Return Null
+		End If
 		display.framebuffer = _RGBDisplayFramebuffer(nativeHandle)
 		display.buffer = TDisplayBuffer.CreateExternal(config.width, config.height, ..
 			DisplayPixelFormatRGB565, display.framebuffer, config.width * 2)

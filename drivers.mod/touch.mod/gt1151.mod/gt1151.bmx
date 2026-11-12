@@ -13,11 +13,13 @@ ModuleInfo "Version: 0.1"
 ModuleInfo "License: zlib/libpng"
 
 Import Embedded.Drivers.Touch
+Import Embedded.Drivers.Display
 Import "native/esp32_gt1151.c"
 
 Type TGT1151Config
 	Field width:Int
 	Field height:Int
+	Field orientation:Int = DisplayOrientation0
 	Field i2cPort:Int
 	Field sdaPin:Int = -1
 	Field sclPin:Int = -1
@@ -77,6 +79,10 @@ Type TGT1151Touch Extends TTouchDevice
 		touch.handle = nativeHandle
 		touch.touchWidth = config.width
 		touch.touchHeight = config.height
+		If Not touch.SetOrientation(config.orientation) Then
+			touch.Close()
+			Return Null
+		End If
 		If generateEvents And Not touch.StartEvents() Then
 			touch.Close()
 			Return Null

@@ -20,8 +20,8 @@ Function OnTouch:Object(hookId:Int, data:Object, context:Object)
 	If event.id <> EVENT_TOUCHDOWN And event.id <> EVENT_TOUCHMOVE And ..
 		event.id <> EVENT_TOUCHUP Then Return data
 
-	Local x:Int = event.x * (Frame.Width() - 1) / 10000
-	Local y:Int = event.y * (Frame.Height() - 1) / 10000
+	Local x:Int = event.x * (GraphicsWidth() - 1) / 10000
+	Local y:Int = event.y * (GraphicsHeight() - 1) / 10000
 	If event.id = EVENT_TOUCHUP Then
 		Print "Touch up " + event.data + " at " + x + "," + y
 		Return data
@@ -63,7 +63,9 @@ Next
 Present
 SetViewport 25, 191, 750, 258
 
-Touch = TGT1151Touch.Create(ESP32S31Korvo1GT1151Config())
+Local touchConfig:TGT1151Config = ESP32S31Korvo1GT1151Config()
+touchConfig.orientation = Display.Orientation()
+Touch = TGT1151Touch.Create(touchConfig)
 If Not Touch Then RuntimeError "Could not initialize GT1151 touch: " + GT1151LastError()
 AddHook EmitEventHook, OnTouch
 
