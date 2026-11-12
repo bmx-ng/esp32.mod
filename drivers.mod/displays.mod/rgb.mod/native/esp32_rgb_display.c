@@ -27,12 +27,58 @@ typedef struct {
     SemaphoreHandle_t vsync;
     SemaphoreHandle_t frame_complete;
     volatile int32_t awaiting_frame_complete;
+    int32_t previous_dirty_valid;
+    int32_t previous_dirty_x0;
+    int32_t previous_dirty_y0;
+    int32_t previous_dirty_x1;
+    int32_t previous_dirty_y1;
 } bmx_esp32_rgb_display_t;
 
 static int32_t last_error;
 
 int32_t bmx_esp32_rgb_display_supported(void) { return 1; }
 int32_t bmx_esp32_rgb_display_last_error(void) { return last_error; }
+
+static void bmx_esp32_rgb_display_copy_region(
+        const bmx_esp32_rgb_display_t *display, uint8_t *destination,
+        const uint8_t *source, int32_t x0, int32_t y0,
+        int32_t x1, int32_t y1) {
+    const size_t row_bytes = (size_t)(x1 - x0) * 2U;
+    for (int32_t row = y0; row < y1; ++row) {
+        memcpy(destination + (size_t)row * display->stride + (size_t)x0 * 2U,
+            source + (size_t)row * display->stride + (size_t)x0 * 2U,
+            row_bytes);
+    }
+}
+
+static void bmx_esp32_rgb_display_preserve_next(
+        bmx_esp32_rgb_display_t *display, uint8_t *destination,
+        const uint8_t *source, int32_t x0, int32_t y0,
+        int32_t x1, int32_t y1, int32_t preserve_contents) {
+    if (!preserve_contents) {
+        display->previous_dirty_valid = 0;
+        return;
+    }
+
+    /* A triple-buffered render target is two submitted frames behind the
+       source. Bring it through the preceding frame before applying the
+       current changes. Double buffering is only one frame behind. */
+    if (display->framebuffer_count == 3 && display->previous_dirty_valid) {
+        bmx_esp32_rgb_display_copy_region(display, destination, source,
+            display->previous_dirty_x0, display->previous_dirty_y0,
+            display->previous_dirty_x1, display->previous_dirty_y1);
+    }
+    bmx_esp32_rgb_display_copy_region(display, destination, source,
+        x0, y0, x1, y1);
+
+    if (display->framebuffer_count == 3) {
+        display->previous_dirty_x0 = x0;
+        display->previous_dirty_y0 = y0;
+        display->previous_dirty_x1 = x1;
+        display->previous_dirty_y1 = y1;
+        display->previous_dirty_valid = 1;
+    }
+}
 
 static bool IRAM_ATTR bmx_esp32_rgb_display_on_vsync(
         esp_lcd_panel_handle_t panel,
@@ -225,12 +271,9 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
     }
 
     uint8_t *render = display->framebuffers[display->render_index];
-    const size_t row_bytes = (size_t)(x1 - x0) * 2;
     if (pixels != render) {
-        for (int32_t row = y0; row < y1; ++row) {
-            memcpy(render + (size_t)row * display->stride + (size_t)x0 * 2,
-                pixels + (size_t)row * stride + (size_t)x0 * 2, row_bytes);
-        }
+        bmx_esp32_rgb_display_copy_region(display, render, pixels,
+            x0, y0, x1, y1);
     }
 
     xSemaphoreTake(display->frame_complete, 0);
@@ -245,13 +288,9 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
         display->pending_index = display->render_index;
         display->render_index = display->spare_index;
         display->spare_index = -1;
-        if (preserve_contents) {
-            uint8_t *next_render = display->framebuffers[display->render_index];
-            for (int32_t row = y0; row < y1; ++row) {
-                memcpy(next_render + (size_t)row * display->stride + (size_t)x0 * 2,
-                    render + (size_t)row * display->stride + (size_t)x0 * 2, row_bytes);
-            }
-        }
+        bmx_esp32_rgb_display_preserve_next(display,
+            display->framebuffers[display->render_index], render,
+            x0, y0, x1, y1, preserve_contents);
         return ESP_OK;
     }
 
@@ -263,13 +302,9 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
     const int32_t old_scan_index = display->scan_index;
     display->scan_index = display->render_index;
     display->render_index = old_scan_index;
-    if (preserve_contents) {
-        uint8_t *next_render = display->framebuffers[display->render_index];
-        for (int32_t row = y0; row < y1; ++row) {
-            memcpy(next_render + (size_t)row * display->stride + (size_t)x0 * 2,
-                render + (size_t)row * display->stride + (size_t)x0 * 2, row_bytes);
-        }
-    }
+    bmx_esp32_rgb_display_preserve_next(display,
+        display->framebuffers[display->render_index], render,
+        x0, y0, x1, y1, preserve_contents);
     return ESP_OK;
 }
 
@@ -289,6 +324,17 @@ int32_t bmx_esp32_rgb_display_present_regions(void *handle, uint8_t *pixels,
         if (x[index] < 0 || y[index] < 0 || width[index] <= 0 || height[index] <= 0 ||
                 x[index] + width[index] > display->width ||
                 y[index] + height[index] > display->height) return ESP_ERR_INVALID_ARG;
+    }
+
+    int32_t dirty_x0 = x[0];
+    int32_t dirty_y0 = y[0];
+    int32_t dirty_x1 = x[0] + width[0];
+    int32_t dirty_y1 = y[0] + height[0];
+    for (int32_t index = 1; index < count; ++index) {
+        if (x[index] < dirty_x0) dirty_x0 = x[index];
+        if (y[index] < dirty_y0) dirty_y0 = y[index];
+        if (x[index] + width[index] > dirty_x1) dirty_x1 = x[index] + width[index];
+        if (y[index] + height[index] > dirty_y1) dirty_y1 = y[index] + height[index];
     }
 
     if (display->framebuffer_count == 1) {
@@ -347,18 +393,9 @@ int32_t bmx_esp32_rgb_display_present_regions(void *handle, uint8_t *pixels,
         display->render_index = old_scan_index;
     }
 
-    if (preserve_contents) {
-        uint8_t *next_render = display->framebuffers[display->render_index];
-        for (int32_t index = 0; index < count; ++index) {
-            const size_t row_bytes = (size_t)width[index] * 2U;
-            for (int32_t row = y[index]; row < y[index] + height[index]; ++row) {
-                memcpy(next_render + (size_t)row * display->stride +
-                        (size_t)x[index] * 2U,
-                    render + (size_t)row * display->stride +
-                        (size_t)x[index] * 2U, row_bytes);
-            }
-        }
-    }
+    bmx_esp32_rgb_display_preserve_next(display,
+        display->framebuffers[display->render_index], render,
+        dirty_x0, dirty_y0, dirty_x1, dirty_y1, preserve_contents);
     return ESP_OK;
 }
 
