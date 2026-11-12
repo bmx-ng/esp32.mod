@@ -68,7 +68,7 @@ While True
 	If display.HasCapability(DisplayCapabilityBufferSwap) Then
 		If frame.Pixels() = renderPixels Then RuntimeError "RGB framebuffer did not swap"
 		If frame.Pixel(x + 36, 206) <> renderedPixel Then ..
-			RuntimeError "RGB dirty union was not preserved"
+			RuntimeError "RGB dirty region was not preserved"
 	End If
 	previousX = x
 Wend

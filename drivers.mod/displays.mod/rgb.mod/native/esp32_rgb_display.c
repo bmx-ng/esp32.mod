@@ -273,6 +273,95 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
     return ESP_OK;
 }
 
+int32_t bmx_esp32_rgb_display_present_regions(void *handle, uint8_t *pixels,
+        int32_t stride, const int32_t *x, const int32_t *y,
+        const int32_t *width, const int32_t *height, int32_t count,
+        int32_t preserve_contents) {
+    bmx_esp32_rgb_display_t *display = handle;
+    if (!display || !pixels || stride != display->stride || !x || !y ||
+            !width || !height || count <= 0) return ESP_ERR_INVALID_ARG;
+    if (count == 1) {
+        return bmx_esp32_rgb_display_present(handle, pixels, stride,
+            x[0], y[0], width[0], height[0], preserve_contents);
+    }
+
+    for (int32_t index = 0; index < count; ++index) {
+        if (x[index] < 0 || y[index] < 0 || width[index] <= 0 || height[index] <= 0 ||
+                x[index] + width[index] > display->width ||
+                y[index] + height[index] > display->height) return ESP_ERR_INVALID_ARG;
+    }
+
+    if (display->framebuffer_count == 1) {
+        if (pixels != display->framebuffers[0]) return ESP_ERR_NOT_SUPPORTED;
+        for (int32_t index = 0; index < count; ++index) {
+            esp_err_t result = esp_lcd_panel_draw_bitmap(display->panel,
+                x[index], y[index], x[index] + width[index],
+                y[index] + height[index], pixels);
+            if (result != ESP_OK) return result;
+        }
+        return ESP_OK;
+    }
+
+    if (display->framebuffer_count == 3 && display->pending_index >= 0) {
+        if (xSemaphoreTake(display->frame_complete, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            return ESP_ERR_TIMEOUT;
+        }
+        display->awaiting_frame_complete = 0;
+        const int32_t old_scan_index = display->scan_index;
+        display->scan_index = display->pending_index;
+        display->pending_index = -1;
+        display->spare_index = old_scan_index;
+    }
+
+    uint8_t *render = display->framebuffers[display->render_index];
+    if (pixels != render) {
+        for (int32_t index = 0; index < count; ++index) {
+            const size_t row_bytes = (size_t)width[index] * 2U;
+            for (int32_t row = y[index]; row < y[index] + height[index]; ++row) {
+                memcpy(render + (size_t)row * display->stride + (size_t)x[index] * 2U,
+                    pixels + (size_t)row * stride + (size_t)x[index] * 2U, row_bytes);
+            }
+        }
+    }
+
+    xSemaphoreTake(display->frame_complete, 0);
+    display->awaiting_frame_complete = 1;
+    esp_err_t result = esp_lcd_panel_draw_bitmap(display->panel, 0, 0,
+        display->width, display->height, render);
+    if (result != ESP_OK) {
+        display->awaiting_frame_complete = 0;
+        return result;
+    }
+
+    if (display->framebuffer_count == 3) {
+        display->pending_index = display->render_index;
+        display->render_index = display->spare_index;
+        display->spare_index = -1;
+    } else {
+        if (xSemaphoreTake(display->frame_complete, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            return ESP_ERR_TIMEOUT;
+        }
+        display->awaiting_frame_complete = 0;
+        const int32_t old_scan_index = display->scan_index;
+        display->scan_index = display->render_index;
+        display->render_index = old_scan_index;
+    }
+
+    if (preserve_contents) {
+        uint8_t *next_render = display->framebuffers[display->render_index];
+        for (int32_t index = 0; index < count; ++index) {
+            const size_t row_bytes = (size_t)width[index] * 2U;
+            for (int32_t row = y[index]; row < y[index] + height[index]; ++row) {
+                memcpy(next_render + (size_t)row * display->stride +
+                        (size_t)x[index] * 2U,
+                    render + (size_t)row * display->stride +
+                        (size_t)x[index] * 2U, row_bytes);
+            }
+        }
+    }
+    return ESP_OK;
+}
+
 int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {
     bmx_esp32_rgb_display_t *display = handle;
     return display ? esp_lcd_panel_disp_on_off(display->panel, !!enabled) : ESP_ERR_INVALID_ARG;
@@ -315,6 +404,14 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
         int32_t preserve_contents) {
     (void)handle; (void)pixels; (void)stride; (void)x; (void)y; (void)width; (void)height;
     (void)preserve_contents;
+    return -1;
+}
+int32_t bmx_esp32_rgb_display_present_regions(void *handle, uint8_t *pixels,
+        int32_t stride, const int32_t *x, const int32_t *y,
+        const int32_t *width, const int32_t *height, int32_t count,
+        int32_t preserve_contents) {
+    (void)handle; (void)pixels; (void)stride; (void)x; (void)y;
+    (void)width; (void)height; (void)count; (void)preserve_contents;
     return -1;
 }
 int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {

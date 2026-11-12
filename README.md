@@ -145,7 +145,7 @@ Parallel RGB panels continuously scan their framebuffer, so the example also
 uses `TESP32RGBDisplay.WaitVSync()` before modifying live pixels when configured
 with one framebuffer. The S31 panel profile requests two PSRAM framebuffers, so
 the same application instead draws invisibly and swaps at a safe frame boundary.
-After each swap the adapter copies only the presented dirty union into the next
+After each swap the adapter copies only the presented dirty regions into the next
 render buffer, preserving partial-update coherence. Dirty tracking limits update
 scope; buffering or VSYNC controls when changes become visible.
 `examples/rgb_lcd_triple_buffer.bmx` complements it with a complete 800x480
@@ -160,7 +160,8 @@ Normal full-frame presentation preserves the newly displayed image in the next
 render buffer, so applications may safely mix complete and partial updates.
 The specimen instead uses `PresentDiscard` because it redraws every pixel; this
 explicitly omits the coherence copy for faster full-screen animation. Dirty-
-region presentation copies only the dirty union. On ESP32 targets with a Pixel
+region presentation submits one framebuffer swap and copies each independent
+region without copying unchanged gaps. On ESP32 targets with a Pixel
 Processing Accelerator (PPA), sufficiently large RGB565 `Cls` and `FillRect`
 operations are sent to that hardware automatically; smaller operations and
 targets without PPA retain the portable native fallback. Applications can test
@@ -180,8 +181,9 @@ checks.
 `examples/rgb_lcd_sprite_atlas.bmx` demonstrates the complete sprite workflow.
 Six independently trimmed SVG frames are packed into one atlas by
 `spriteatlas`, converted to a masked RGB565 EBI asset, and played on their
-original 128x128 logical canvas. The animation presents only the union of the
-old and new sprite bounds. Masked RGB565 draws use the native raster path for
+original 128x128 logical canvas. Two players animate in distant parts of the
+screen, demonstrating independent old/new dirty bounds presented in one frame.
+Masked RGB565 draws use the native raster path for
 clipping, mirroring, tint, and opacity; an untinted opaque sprite takes the
 direct-copy fast path. Regenerate and run the example from `esp32.mod` with:
 

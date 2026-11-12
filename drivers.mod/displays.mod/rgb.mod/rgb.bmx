@@ -61,6 +61,9 @@ Extern "C"
 	Function _RGBDisplayFramebufferCount:Int(handle:Byte Ptr) = "bmx_esp32_rgb_display_framebuffer_count"
 	Function _RGBDisplayPresent:Int(handle:Byte Ptr, pixels:Byte Ptr, stride:Int, ..
 		x:Int, y:Int, width:Int, height:Int, preserveContents:Int) = "bmx_esp32_rgb_display_present"
+	Function _RGBDisplayPresentRegions:Int(handle:Byte Ptr, pixels:Byte Ptr, stride:Int, ..
+		x:Int Ptr, y:Int Ptr, width:Int Ptr, height:Int Ptr, count:Int, ..
+		preserveContents:Int) = "bmx_esp32_rgb_display_present_regions"
 	Function _RGBDisplaySetEnabled:Int(handle:Byte Ptr, enabled:Int) = "bmx_esp32_rgb_display_set_enabled"
 	Function _RGBDisplayWaitVSync:Int(handle:Byte Ptr, timeoutMs:Int) = "bmx_esp32_rgb_display_wait_vsync"
 	Function _RGBDisplayLastError:Int() = "bmx_esp32_rgb_display_last_error"
@@ -203,6 +206,24 @@ Type TESP32RGBDisplay Extends TDisplay
 		If stride <> displayWidth * 2 Then Return DisplayErrorInvalidArgument
 		If _RGBDisplayPresent(handle, pixels, stride, 0, 0, displayWidth, displayHeight, False) <> 0 Then ..
 			Return DisplayErrorGeneric
+		If framebufferCount > 1 Then
+			framebuffer = _RGBDisplayFramebuffer(handle)
+			If Not framebuffer Or Not buffer.RetargetExternal(framebuffer) Then ..
+				Return DisplayErrorGeneric
+		End If
+		Return True
+	End Method
+
+	Method PresentRegions:Int(source:TDisplayBuffer, x:Int Ptr, y:Int Ptr, ..
+			width:Int Ptr, height:Int Ptr, count:Int) Override
+		If Not handle Or Not source Or Not x Or Not y Or Not width Or Not height Or ..
+				count <= 0 Or source.Width() < displayWidth Or source.Height() < displayHeight Then ..
+			Return DisplayErrorInvalidArgument
+		If count = 1 Then Return PresentRegion(source, x[0], y[0], width[0], height[0])
+		If source.Format() <> DisplayPixelFormatRGB565 Then Return DisplayErrorUnsupportedFormat
+		If source.Stride() <> displayWidth * 2 Then Return DisplayErrorInvalidArgument
+		If _RGBDisplayPresentRegions(handle, source.Pixels(), source.Stride(), x, y, ..
+				width, height, count, True) <> 0 Then Return DisplayErrorGeneric
 		If framebufferCount > 1 Then
 			framebuffer = _RGBDisplayFramebuffer(handle)
 			If Not framebuffer Or Not buffer.RetargetExternal(framebuffer) Then ..

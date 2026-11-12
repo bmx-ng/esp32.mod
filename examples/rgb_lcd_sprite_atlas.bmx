@@ -19,7 +19,9 @@ If Not frame Then RuntimeError "Could not access RGB render framebuffer"
 
 Local animation:TEmbeddedSpriteAnimation = VisualBotRunAnimation()
 If Not animation Then RuntimeError "Could not load generated sprite animation"
-Local runner:TEmbeddedSpritePlayer = TEmbeddedSpritePlayer.Create(animation)
+Local leftRunner:TEmbeddedSpritePlayer = TEmbeddedSpritePlayer.Create(animation)
+Local rightRunner:TEmbeddedSpritePlayer = TEmbeddedSpritePlayer.Create(animation)
+rightRunner.Advance(270)
 
 SetRenderTarget frame, display
 SetFont Terminus10x20BoldFont()
@@ -40,13 +42,16 @@ SetColor 238, 244, 255
 DrawText "TRANSPARENT RGB565 + MASK", 24, 328
 SetColor 105, 135, 175
 DrawText "The yellow guide stays locked to the logical canvas", 24, 358
-DrawText "Only the old/new sprite union is presented", 24, 388
+DrawText "Two distant dirty regions are presented as one frame", 24, 388
 If Present() <= 0 Then RuntimeError "Could not present initial sprite frame"
 SetDirtyTracking True
 
-Local position:Long = 30 * 1000
-Local direction:Int = 1
-Local previousX:Int = 30
+Local leftPosition:Long = 30 * 1000
+Local leftDirection:Int = 1
+Local leftPreviousX:Int = 30
+Local rightPosition:Long = 620 * 1000
+Local rightDirection:Int = -1
+Local rightPreviousX:Int = 620
 Local lastTime:ULong = MonotonicMilliseconds()
 Local measuredFPS:Int
 Local measurementFrames:Int
@@ -54,6 +59,7 @@ Local measurementStarted:ULong = lastTime
 Local waitMicroseconds:ULong
 Local renderMicroseconds:ULong
 Local presentMicroseconds:ULong
+Local presentedRegions:ULong
 
 While True
 	Local frameStarted:ULong = MonotonicMicroseconds()
@@ -61,47 +67,74 @@ While True
 	Local delta:Int = Int(now - lastTime)
 	If delta > 50 Then delta = 50
 	lastTime = now
-	runner.Advance(delta)
+	leftRunner.Advance(delta)
+	rightRunner.Advance(delta)
 
-	position :+ Long(direction) * 210 * delta
-	If position >= 620000 Then
-		position = 620000
-		direction = -1
-	Else If position <= 30000 Then
-		position = 30000
-		direction = 1
+	leftPosition :+ Long(leftDirection) * 150 * delta
+	If leftPosition >= 250000 Then
+		leftPosition = 250000
+		leftDirection = -1
+	Else If leftPosition <= 30000 Then
+		leftPosition = 30000
+		leftDirection = 1
 	End If
-	Local x:Int = Int(position / 1000)
+	Local leftX:Int = Int(leftPosition / 1000)
+	rightPosition :+ Long(rightDirection) * 150 * delta
+	If rightPosition >= 620000 Then
+		rightPosition = 620000
+		rightDirection = -1
+	Else If rightPosition <= 420000 Then
+		rightPosition = 420000
+		rightDirection = 1
+	End If
+	Local rightX:Int = Int(rightPosition / 1000)
 
 	If display.HasCapability(DisplayCapabilityLiveFramebuffer) And ..
 			Not display.WaitVSync() Then RuntimeError "Timed out waiting for RGB VSYNC"
 	Local waited:ULong = MonotonicMicroseconds()
-	Local dirtyLeft:Int = previousX
-	If x < dirtyLeft Then dirtyLeft = x
-	Local dirtyRight:Int = previousX
-	If x > dirtyRight Then dirtyRight = x
+	Local dirtyLeft:Int = leftPreviousX
+	If leftX < dirtyLeft Then dirtyLeft = leftX
+	Local dirtyRight:Int = leftPreviousX
+	If leftX > dirtyRight Then dirtyRight = leftX
 	dirtyRight :+ 128
 	SetColorValue Lane
 	FillRect dirtyLeft, 120, dirtyRight - dirtyLeft, 156
 	SetColor 74, 112, 145
 	DrawLine dirtyLeft, 269, dirtyRight - 1, 269
 	SetColor 255, 218, 78
-	DrawLine x + 64, 124, x + 64, 274
+	DrawLine leftX + 64, 124, leftX + 64, 274
 	SetColor 255, 255, 255
-	runner.Draw Null, x, 132
+	leftRunner.Draw Null, leftX, 132
+
+	dirtyLeft = rightPreviousX
+	If rightX < dirtyLeft Then dirtyLeft = rightX
+	dirtyRight = rightPreviousX
+	If rightX > dirtyRight Then dirtyRight = rightX
+	dirtyRight :+ 128
+	SetColorValue Lane
+	FillRect dirtyLeft, 120, dirtyRight - dirtyLeft, 156
+	SetColor 74, 112, 145
+	DrawLine dirtyLeft, 269, dirtyRight - 1, 269
+	SetColor 255, 218, 78
+	DrawLine rightX + 64, 124, rightX + 64, 274
+	SetColor 255, 255, 255
+	rightRunner.Draw Null, rightX, 132, ImageFlipX
 	Local rendered:ULong = MonotonicMicroseconds()
 
+	presentedRegions :+ ULong(DirtyRegionCount())
 	If PresentDirty() <= 0 Then RuntimeError "Could not present sprite frame"
 	Local presented:ULong = MonotonicMicroseconds()
 	waitMicroseconds :+ waited - frameStarted
 	renderMicroseconds :+ rendered - waited
 	presentMicroseconds :+ presented - rendered
-	previousX = x
+	leftPreviousX = leftX
+	rightPreviousX = rightX
 	measurementFrames :+ 1
 	Local elapsed:ULong = now - measurementStarted
 	If elapsed >= 1000 Then
 		measuredFPS = Int((Long(measurementFrames) * 1000) / Long(elapsed))
-		Print "Sprite atlas visual demo: " + measuredFPS + " FPS, wait " + ..
+		Print "Sprite atlas visual demo: " + measuredFPS + " FPS, regions " + ..
+			Int(Long(presentedRegions) / measurementFrames) + ", wait " + ..
 			Int(Long(waitMicroseconds) / measurementFrames) + " us, render " + ..
 			Int(Long(renderMicroseconds) / measurementFrames) + " us, present " + ..
 			Int(Long(presentMicroseconds) / measurementFrames) + " us"
@@ -109,6 +142,7 @@ While True
 		waitMicroseconds = 0
 		renderMicroseconds = 0
 		presentMicroseconds = 0
+		presentedRegions = 0
 		measurementStarted = now
 	End If
 	Delay 0
