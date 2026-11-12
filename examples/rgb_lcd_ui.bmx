@@ -13,6 +13,10 @@ Global Status:TUILabel
 Global StartButton:TUIButton
 Global PauseButton:TUIButton
 Global ResetButton:TUIButton
+Global AlertsCheck:TUICheckBox
+Global LiveSwitch:TUISwitch
+Global LevelSlider:TUISlider
+Global LevelProgress:TUIProgressBar
 Global ActionCount:Int
 
 Function Started(button:TUIButton)
@@ -33,6 +37,19 @@ Function ResetState(button:TUIButton)
 	Status.SetText("Ready")
 	StartButton.SetEnabled(True)
 	PauseButton.SetEnabled(False)
+End Function
+
+Function AlertsChanged(checkBox:TUICheckBox)
+	If checkBox.Checked() Then Status.SetText("Alerts enabled") Else Status.SetText("Alerts disabled")
+End Function
+
+Function LiveChanged(switchControl:TUISwitch)
+	If switchControl.Value() Then Status.SetText("Live mode on") Else Status.SetText("Live mode off")
+End Function
+
+Function LevelChanged(slider:TUISlider)
+	LevelProgress.SetValue(slider.Value())
+	Status.SetText("Level " + slider.Value())
 End Function
 
 Local display:TESP32RGBDisplay = TESP32RGBDisplay.Create(ESP32S31Korvo1ST7262Config())
@@ -70,6 +87,26 @@ Status = page.Label("Ready")
 Status.Style().fontScale = 4
 Status.Style().foreground = $ffd84a
 Status.SetGrow(1)
+
+Local options:TUIRow = page.Row()
+options.SetGap(24)
+AlertsCheck = options.CheckBox("Alerts", True)
+AlertsCheck.OnChange(AlertsChanged)
+Local liveLabel:TUILabel = options.Label("Live")
+liveLabel.SetAlign(UIAlignCenter)
+LiveSwitch = options.Switch(False)
+LiveSwitch.OnChange(LiveChanged)
+
+Local level:TUIRow = page.Row()
+level.SetGap(18)
+Local levelLabel:TUILabel = level.Label("Level")
+levelLabel.SetAlign(UIAlignCenter)
+LevelSlider = level.Slider(0, 100, 35)
+LevelSlider.SetGrow(1)
+LevelSlider.OnChange(LevelChanged)
+LevelProgress = level.ProgressBar(0, 100, 35)
+LevelProgress.SetWidth(150)
+LevelProgress.SetAlign(UIAlignCenter)
 
 Local actions:TUIRow = page.Row()
 actions.SetGap(16)
