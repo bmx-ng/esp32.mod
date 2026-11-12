@@ -3,7 +3,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import Embedded.Drivers.Display
 Import Embedded.Drivers.Display.Font
-Import Embedded.Drivers.Display.Fonts.Spleen5x8
+Import Embedded.Drivers.Display.Fonts.Spleen.Size5x8
 Import Embedded.Drivers.Displays.SSD1306
 Import Embedded.Hardware.I2C
 

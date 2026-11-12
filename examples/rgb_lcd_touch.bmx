@@ -5,7 +5,7 @@ Import BRL.Event
 Import BRL.System
 Import BRL.SystemDefault
 Import Embedded.Drivers.Display
-Import Embedded.Drivers.Display.Fonts.Spleen5x8
+Import Embedded.Drivers.Display.Fonts.Spleen.Size5x8
 Import Embedded.Graphics2D
 Import ESP32.Drivers.Displays.RGB
 Import ESP32.Drivers.Touch.GT1151

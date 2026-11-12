@@ -2,7 +2,7 @@ SuperStrict
 
 Framework BRL.StandardIO
 Import Embedded.Drivers.Display
-Import Embedded.Drivers.Display.Fonts.Spleen5x8
+Import Embedded.Drivers.Display.Fonts.Spleen.Size5x8
 Import Embedded.Drivers.Display.Image
 Import Embedded.Graphics2D
 Import ESP32.Drivers.Displays.RGB
