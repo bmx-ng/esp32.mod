@@ -4,6 +4,7 @@ Framework BRL.StandardIO
 Import Embedded.Drivers.Display
 Import Embedded.Drivers.Display.Font
 Import Embedded.Drivers.Displays.SSD1306
+Import Embedded.Graphics2D
 Import Embedded.Hardware.I2C
 
 Incbin "assets/oled_042_subset.ebf"
@@ -24,9 +25,13 @@ Local font:TBitmapFont = TBitmapFont.Create(IncbinPtr("assets/oled_042_subset.eb
 	IncbinLen("assets/oled_042_subset.ebf"))
 If Not font Then RuntimeError "Could not load the subset font"
 
-frame.Clear()
-font.DrawText(frame, "Subset font~n123.4 C~nMissing: Ω", 1, 0)
-If display.Present(frame) <= 0 Then RuntimeError "Could not present the OLED frame"
+SetRenderTarget frame, display
+SetFont font
+SetClsColor 0, 0, 0
+SetColor 255, 255, 255
+Cls
+DrawText "Subset font~n123.4 C~nMissing: Ω", 1, 0
+If Present() <= 0 Then RuntimeError "Could not present the OLED frame"
 
 Print "OLED subset font displayed; glyphs=" + font.GlyphCount()
 While True

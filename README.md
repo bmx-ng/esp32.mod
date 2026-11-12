@@ -99,7 +99,8 @@ bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042.bmx
 `examples/oled_042_subset.bmx` demonstrates an application-specific font. Its
 manifest keeps only the characters used by the fixed UI and selects `?` as a
 visible fallback. The displayed Greek omega is deliberately absent and is
-therefore rendered as `?`:
+therefore rendered as `?`. The example also uses the familiar global drawing
+functions from `Embedded.Graphics2D`:
 
 ```sh
 bdf2embeddedfont spleen-5x8.bdf examples/assets/oled_042_subset.ebf \
@@ -329,7 +330,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
-| Displays | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Font`, `Embedded.Drivers.Displays.SSD1306` | [`oled_042.bmx`](examples/oled_042.bmx) |
+| Displays | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
