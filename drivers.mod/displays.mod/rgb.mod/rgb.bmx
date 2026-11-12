@@ -36,6 +36,7 @@ Type TESP32RGBDisplayConfig
 	Field dataPins:Int[16]
 	Field pixelClockActiveNegative:Int
 	Field displayEnableActiveLow:Int
+	Field framebufferCount:Int = 1
 End Type
 
 Extern "C"
@@ -45,9 +46,10 @@ Extern "C"
 		vsyncPulseWidth:Int, vsyncBackPorch:Int, vsyncFrontPorch:Int, ..
 		hsyncPin:Int, vsyncPin:Int, dataEnablePin:Int, pixelClockPin:Int, ..
 		displayEnablePin:Int, dataPins:Int Ptr, pixelClockActiveNegative:Int, ..
-		displayEnableActiveLow:Int) = "bmx_esp32_rgb_display_create"
+		displayEnableActiveLow:Int, framebufferCount:Int) = "bmx_esp32_rgb_display_create"
 	Function _RGBDisplayDelete(handle:Byte Ptr) = "bmx_esp32_rgb_display_delete"
 	Function _RGBDisplayFramebuffer:Byte Ptr(handle:Byte Ptr) = "bmx_esp32_rgb_display_framebuffer"
+	Function _RGBDisplayFramebufferCount:Int(handle:Byte Ptr) = "bmx_esp32_rgb_display_framebuffer_count"
 	Function _RGBDisplayPresent:Int(handle:Byte Ptr, pixels:Byte Ptr, stride:Int, ..
 		x:Int, y:Int, width:Int, height:Int) = "bmx_esp32_rgb_display_present"
 	Function _RGBDisplaySetEnabled:Int(handle:Byte Ptr, enabled:Int) = "bmx_esp32_rgb_display_set_enabled"
@@ -91,6 +93,7 @@ Function ESP32S31Korvo1ST7262Config:TESP32RGBDisplayConfig()
 	config.dataPins = [8, 9, 10, 11, 12, 13, 14, 15, ..
 		16, 17, 18, 19, 33, 34, 35, 36]
 	config.pixelClockActiveNegative = True
+	config.framebufferCount = 2
 	Return config
 End Function
 
@@ -100,6 +103,7 @@ Type TESP32RGBDisplay Extends TDisplay
 	Field displayWidth:Int
 	Field displayHeight:Int
 	Field framebuffer:Byte Ptr
+	Field framebufferCount:Int
 	Field buffer:TDisplayBuffer
 
 	Public
@@ -112,12 +116,13 @@ Type TESP32RGBDisplay Extends TDisplay
 			config.vsyncFrontPorch, config.hsyncPin, config.vsyncPin, ..
 			config.dataEnablePin, config.pixelClockPin, config.displayEnablePin, ..
 			Varptr config.dataPins[0], config.pixelClockActiveNegative, ..
-			config.displayEnableActiveLow)
+			config.displayEnableActiveLow, config.framebufferCount)
 		If Not nativeHandle Then Return Null
 		Local display:TESP32RGBDisplay = New TESP32RGBDisplay
 		display.handle = nativeHandle
 		display.displayWidth = config.width
 		display.displayHeight = config.height
+		display.framebufferCount = _RGBDisplayFramebufferCount(nativeHandle)
 		If Not display.SetOrientation(config.orientation) Then
 			display.Close()
 			Return Null
@@ -144,6 +149,20 @@ Type TESP32RGBDisplay Extends TDisplay
 		Return DisplayPixelFormatRGB565
 	End Method
 
+	Method Capabilities:Int() Override
+		Local result:Int = DisplayCapabilityPartialPresent | DisplayCapabilityVSync
+		If framebufferCount > 1 Then
+			result :| DisplayCapabilityBufferSwap
+		Else
+			result :| DisplayCapabilityLiveFramebuffer
+		End If
+		Return result
+	End Method
+
+	Method FramebufferCount:Int()
+		Return framebufferCount
+	End Method
+
 	Method CreateBuffer:TDisplayBuffer() Override
 		Return buffer
 	End Method
@@ -155,6 +174,11 @@ Type TESP32RGBDisplay Extends TDisplay
 		If stride <> displayWidth * 2 Then Return DisplayErrorInvalidArgument
 		If _RGBDisplayPresent(handle, pixels, stride, x, y, width, height) <> 0 Then ..
 			Return DisplayErrorGeneric
+		If framebufferCount > 1 Then
+			framebuffer = _RGBDisplayFramebuffer(handle)
+			If Not framebuffer Or Not buffer.RetargetExternal(framebuffer) Then ..
+				Return DisplayErrorGeneric
+		End If
 		Return True
 	End Method
 

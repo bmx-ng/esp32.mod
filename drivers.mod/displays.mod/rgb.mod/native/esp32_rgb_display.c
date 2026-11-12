@@ -15,11 +15,15 @@
 
 typedef struct {
     esp_lcd_panel_handle_t panel;
-    uint8_t *framebuffer;
+    uint8_t *framebuffers[2];
+    int32_t framebuffer_count;
+    int32_t scan_index;
+    int32_t render_index;
     int32_t width;
     int32_t height;
     int32_t stride;
     SemaphoreHandle_t vsync;
+    SemaphoreHandle_t frame_complete;
 } bmx_esp32_rgb_display_t;
 
 static int32_t last_error;
@@ -40,6 +44,19 @@ static bool IRAM_ATTR bmx_esp32_rgb_display_on_vsync(
     return task_woken == pdTRUE;
 }
 
+static bool IRAM_ATTR bmx_esp32_rgb_display_on_frame_complete(
+        esp_lcd_panel_handle_t panel,
+        const esp_lcd_rgb_panel_event_data_t *event_data, void *user_ctx) {
+    (void)panel;
+    (void)event_data;
+    bmx_esp32_rgb_display_t *display = user_ctx;
+    BaseType_t task_woken = pdFALSE;
+    if (display && display->frame_complete) {
+        xSemaphoreGiveFromISR(display->frame_complete, &task_woken);
+    }
+    return task_woken == pdTRUE;
+}
+
 void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         uint32_t pixel_clock_hz, int32_t hsync_pulse_width,
         int32_t hsync_back_porch, int32_t hsync_front_porch,
@@ -48,13 +65,17 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         int32_t data_enable_pin, int32_t pixel_clock_pin,
         int32_t display_enable_pin, const int32_t *data_pins,
         int32_t pixel_clock_active_negative,
-        int32_t display_enable_active_low) {
+        int32_t display_enable_active_low, int32_t framebuffer_count) {
     last_error = ESP_ERR_INVALID_ARG;
-    if (width <= 0 || height <= 0 || !pixel_clock_hz || !data_pins) return NULL;
+    if (width <= 0 || height <= 0 || !pixel_clock_hz || !data_pins ||
+            framebuffer_count < 1 || framebuffer_count > 2) return NULL;
     bmx_esp32_rgb_display_t *display = calloc(1, sizeof(*display));
     if (!display) { last_error = ESP_ERR_NO_MEM; return NULL; }
     display->vsync = xSemaphoreCreateBinary();
-    if (!display->vsync) {
+    display->frame_complete = xSemaphoreCreateBinary();
+    if (!display->vsync || !display->frame_complete) {
+        if (display->vsync) vSemaphoreDelete(display->vsync);
+        if (display->frame_complete) vSemaphoreDelete(display->frame_complete);
         free(display);
         last_error = ESP_ERR_NO_MEM;
         return NULL;
@@ -75,7 +96,7 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         },
         .data_width = 16,
         .in_color_format = LCD_COLOR_FMT_RGB565,
-        .num_fbs = 1,
+        .num_fbs = framebuffer_count,
         .dma_burst_size = 64,
         .hsync_gpio_num = hsync_pin,
         .vsync_gpio_num = vsync_pin,
@@ -90,18 +111,26 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
     if (result == ESP_OK) {
         const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
             .on_vsync = bmx_esp32_rgb_display_on_vsync,
+            .on_frame_buf_complete = bmx_esp32_rgb_display_on_frame_complete,
         };
         result = esp_lcd_rgb_panel_register_event_callbacks(display->panel,
             &callbacks, display);
     }
     if (result == ESP_OK) result = esp_lcd_panel_reset(display->panel);
     if (result == ESP_OK) result = esp_lcd_panel_init(display->panel);
-    if (result == ESP_OK) result = esp_lcd_rgb_panel_get_frame_buffer(
-        display->panel, 1, (void **)&display->framebuffer);
+    if (result == ESP_OK && framebuffer_count == 1) {
+        result = esp_lcd_rgb_panel_get_frame_buffer(display->panel, 1,
+            (void **)&display->framebuffers[0]);
+    } else if (result == ESP_OK) {
+        result = esp_lcd_rgb_panel_get_frame_buffer(display->panel, 2,
+            (void **)&display->framebuffers[0], (void **)&display->framebuffers[1]);
+    }
     if (result == ESP_OK) result = esp_lcd_panel_disp_on_off(display->panel, true);
-    if (result != ESP_OK || !display->framebuffer) {
+    if (result != ESP_OK || !display->framebuffers[0] ||
+            (framebuffer_count == 2 && !display->framebuffers[1])) {
         if (display->panel) esp_lcd_panel_del(display->panel);
         vSemaphoreDelete(display->vsync);
+        vSemaphoreDelete(display->frame_complete);
         free(display);
         last_error = result != ESP_OK ? result : ESP_ERR_NO_MEM;
         return NULL;
@@ -109,12 +138,19 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
     display->width = width;
     display->height = height;
     display->stride = width * 2;
-    memset(display->framebuffer, 0, (size_t)display->stride * (size_t)height);
+    display->framebuffer_count = framebuffer_count;
+    display->scan_index = 0;
+    display->render_index = framebuffer_count == 2 ? 1 : 0;
+    memset(display->framebuffers[0], 0, (size_t)display->stride * (size_t)height);
+    if (framebuffer_count == 2) {
+        memset(display->framebuffers[1], 0, (size_t)display->stride * (size_t)height);
+    }
     result = esp_lcd_panel_draw_bitmap(display->panel, 0, 0, width, height,
-        display->framebuffer);
+        display->framebuffers[display->scan_index]);
     if (result != ESP_OK) {
         esp_lcd_panel_del(display->panel);
         vSemaphoreDelete(display->vsync);
+        vSemaphoreDelete(display->frame_complete);
         free(display);
         last_error = result;
         return NULL;
@@ -128,12 +164,18 @@ void bmx_esp32_rgb_display_delete(void *handle) {
     if (!display) return;
     if (display->panel) esp_lcd_panel_del(display->panel);
     if (display->vsync) vSemaphoreDelete(display->vsync);
+    if (display->frame_complete) vSemaphoreDelete(display->frame_complete);
     free(display);
 }
 
 uint8_t *bmx_esp32_rgb_display_framebuffer(void *handle) {
     bmx_esp32_rgb_display_t *display = handle;
-    return display ? display->framebuffer : NULL;
+    return display ? display->framebuffers[display->render_index] : NULL;
+}
+
+int32_t bmx_esp32_rgb_display_framebuffer_count(void *handle) {
+    bmx_esp32_rgb_display_t *display = handle;
+    return display ? display->framebuffer_count : 0;
 }
 
 int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
@@ -149,11 +191,39 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
     if (x1 > display->width) x1 = display->width;
     if (y1 > display->height) y1 = display->height;
     if (x0 >= x1 || y0 >= y1) return ESP_ERR_INVALID_ARG;
-    if (pixels != display->framebuffer &&
+    if (display->framebuffer_count == 1 && pixels != display->framebuffers[0] &&
             (x0 != 0 || y0 != 0 || x1 != display->width || y1 != display->height)) {
         return ESP_ERR_NOT_SUPPORTED;
     }
-    return esp_lcd_panel_draw_bitmap(display->panel, x0, y0, x1, y1, pixels);
+    if (display->framebuffer_count == 1) {
+        return esp_lcd_panel_draw_bitmap(display->panel, x0, y0, x1, y1, pixels);
+    }
+
+    uint8_t *render = display->framebuffers[display->render_index];
+    const size_t row_bytes = (size_t)(x1 - x0) * 2;
+    if (pixels != render) {
+        for (int32_t row = y0; row < y1; ++row) {
+            memcpy(render + (size_t)row * display->stride + (size_t)x0 * 2,
+                pixels + (size_t)row * stride + (size_t)x0 * 2, row_bytes);
+        }
+    }
+
+    xSemaphoreTake(display->frame_complete, 0);
+    esp_err_t result = esp_lcd_panel_draw_bitmap(display->panel, x0, y0, x1, y1, render);
+    if (result != ESP_OK) return result;
+    if (xSemaphoreTake(display->frame_complete, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    const int32_t old_scan_index = display->scan_index;
+    display->scan_index = display->render_index;
+    display->render_index = old_scan_index;
+    uint8_t *next_render = display->framebuffers[display->render_index];
+    for (int32_t row = y0; row < y1; ++row) {
+        memcpy(next_render + (size_t)row * display->stride + (size_t)x0 * 2,
+            render + (size_t)row * display->stride + (size_t)x0 * 2, row_bytes);
+    }
+    return ESP_OK;
 }
 
 int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {
@@ -181,16 +251,18 @@ void *bmx_esp32_rgb_display_create(int32_t width, int32_t height,
         int32_t vsync_front_porch, int32_t hsync_pin, int32_t vsync_pin,
         int32_t data_enable_pin, int32_t pixel_clock_pin,
         int32_t display_enable_pin, const int32_t *data_pins,
-        int32_t pixel_clock_active_negative, int32_t display_enable_active_low) {
+        int32_t pixel_clock_active_negative, int32_t display_enable_active_low,
+        int32_t framebuffer_count) {
     (void)width; (void)height; (void)pixel_clock_hz;
     (void)hsync_pulse_width; (void)hsync_back_porch; (void)hsync_front_porch;
     (void)vsync_pulse_width; (void)vsync_back_porch; (void)vsync_front_porch;
     (void)hsync_pin; (void)vsync_pin; (void)data_enable_pin; (void)pixel_clock_pin;
     (void)display_enable_pin; (void)data_pins; (void)pixel_clock_active_negative;
-    (void)display_enable_active_low; return NULL;
+    (void)display_enable_active_low; (void)framebuffer_count; return NULL;
 }
 void bmx_esp32_rgb_display_delete(void *handle) { (void)handle; }
 uint8_t *bmx_esp32_rgb_display_framebuffer(void *handle) { (void)handle; return NULL; }
+int32_t bmx_esp32_rgb_display_framebuffer_count(void *handle) { (void)handle; return 0; }
 int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
         int32_t stride, int32_t x, int32_t y, int32_t width, int32_t height) {
     (void)handle; (void)pixels; (void)stride; (void)x; (void)y; (void)width; (void)height;

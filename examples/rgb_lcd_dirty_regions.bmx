@@ -26,17 +26,23 @@ SetColorValue Lane
 FillRoundRect 24, 132, 752, 156, 28
 SetColor 104, 132, 168
 DrawText "Only the moving union is presented", 126, 350
+Local initialPixels:Byte Ptr = frame.Pixels()
+Local preservedPixel:UInt = frame.Pixel(400, 150)
 If Present() <= 0 Then RuntimeError "Could not present initial RGB framebuffer"
+If display.HasCapability(DisplayCapabilityBufferSwap) Then
+	If frame.Pixels() = initialPixels Then RuntimeError "RGB framebuffer did not swap"
+	If frame.Pixel(400, 150) <> preservedPixel Then RuntimeError "RGB back buffer lost frame contents"
+End If
 
 SetDirtyTracking True
 Local x:Int = 48
 Local previousX:Int = x
 Local direction:Int = 4
 While True
-	' This RGB panel continuously scans the framebuffer. Start the small in-place
-	' update at a frame boundary so clearing and redrawing are not exposed midway
-	' through the panel scan.
-	If Not display.WaitVSync() Then RuntimeError "Timed out waiting for RGB VSYNC"
+	' Single-buffer panels expose live scanout storage and must begin mutations at
+	' a frame boundary. Double-buffer panels draw invisibly and swap on PresentDirty.
+	If display.HasCapability(DisplayCapabilityLiveFramebuffer) And ..
+			Not display.WaitVSync() Then RuntimeError "Timed out waiting for RGB VSYNC"
 	SetColorValue Lane
 	FillRect previousX, 170, 72, 72
 
@@ -56,6 +62,13 @@ While True
 	DrawLine x + 44, 194, x + 54, 206
 	DrawLine x + 44, 218, x + 54, 206
 
+	Local renderPixels:Byte Ptr = frame.Pixels()
+	Local renderedPixel:UInt = frame.Pixel(x + 36, 206)
 	If PresentDirty() <= 0 Then RuntimeError "Could not present dirty RGB region"
+	If display.HasCapability(DisplayCapabilityBufferSwap) Then
+		If frame.Pixels() = renderPixels Then RuntimeError "RGB framebuffer did not swap"
+		If frame.Pixel(x + 36, 206) <> renderedPixel Then ..
+			RuntimeError "RGB dirty union was not preserved"
+	End If
 	previousX = x
 Wend

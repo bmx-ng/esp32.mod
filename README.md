@@ -142,10 +142,20 @@ bmk makeapp -a -r -board esp32_s31_korvo_1 -x \
 
 `examples/rgb_lcd_dirty_regions.bmx` demonstrates opt-in dirty-region tracking.
 Parallel RGB panels continuously scan their framebuffer, so the example also
-uses `TESP32RGBDisplay.WaitVSync()` before modifying the live pixels. Dirty
-tracking limits the region reported to the driver; VSYNC synchronization avoids
-showing an in-progress clear/redraw operation. Transfer-backed displays do not
-normally need this RGB-specific synchronization step.
+uses `TESP32RGBDisplay.WaitVSync()` before modifying live pixels when configured
+with one framebuffer. The S31 panel profile requests two PSRAM framebuffers, so
+the same application instead draws invisibly and swaps at a safe frame boundary.
+After each swap the adapter copies only the presented dirty union into the next
+render buffer, preserving partial-update coherence. Dirty tracking limits update
+scope; buffering or VSYNC controls when changes become visible.
+`examples/rgb_lcd_double_buffer.bmx` complements it with a complete 800x480
+redraw on every frame, a moving object, and a measured presentation-rate
+readout. An RGB565 buffer at that resolution occupies 768,000 bytes; the two
+buffers used by this profile therefore reserve 1,536,000 bytes of PSRAM.
+Full-frame presentation preserves the newly displayed image in the next render
+buffer, so applications may safely mix complete and partial updates. That
+coherence copy is intentionally correctness-first and has a measurable cost for
+full-screen animation; dirty-region presentation copies only the dirty union.
 
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.
@@ -364,7 +374,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
-| Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
+| Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_double_buffer.bmx`](examples/rgb_lcd_double_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
