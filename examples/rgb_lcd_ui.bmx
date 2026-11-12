@@ -120,6 +120,7 @@ StartButton.OnClick(Started)
 PauseButton.OnClick(Paused)
 ResetButton.OnClick(ResetState)
 PauseButton.SetEnabled(False)
+UI.SetFocus(StartButton)
 
 If Not UI.Present() Then RuntimeError "Could not present embedded UI"
 Print "Embedded.UI touch example active"
