@@ -166,6 +166,12 @@ operations are sent to that hardware automatically; smaller operations and
 targets without PPA retain the portable native fallback. Applications can test
 `DisplayCapabilityAcceleratedFill` when reporting or tuning their rendering
 strategy, but drawing code does not need a separate PPA-specific API.
+Compatible RGB565 image scaling and mirroring also use the PPA when the source
+is in DMA-accessible memory and the requested scale is exactly representable by
+the hardware. Firmware-resident images, clipped operations, and unsupported
+ratios retain the shared native raster path. See
+`examples/rgb_lcd_image_acceleration.bmx` for a generated DMA-accessible image
+drawn normally and mirrored at three times its source size.
 
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.
@@ -384,7 +390,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
-| Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
+| Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_image_acceleration.bmx`](examples/rgb_lcd_image_acceleration.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |

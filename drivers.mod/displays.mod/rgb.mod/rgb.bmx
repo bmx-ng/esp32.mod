@@ -170,6 +170,7 @@ Type TESP32RGBDisplay Extends TDisplay
 			result :| DisplayCapabilityLiveFramebuffer
 		End If
 		If acceleratedFill Then result :| DisplayCapabilityAcceleratedFill
+		If acceleratedFill Then result :| DisplayCapabilityAcceleratedBlit
 		Return result
 	End Method
 
