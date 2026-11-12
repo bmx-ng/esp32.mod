@@ -96,6 +96,22 @@ RAM offset. The shared SSD1306 example builds and uploads with:
 bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042.bmx
 ```
 
+`examples/oled_042_subset.bmx` demonstrates an application-specific font. Its
+manifest keeps only the characters used by the fixed UI and selects `?` as a
+visible fallback. The displayed Greek omega is deliberately absent and is
+therefore rendered as `?`:
+
+```sh
+bdf2embeddedfont spleen-5x8.bdf examples/assets/oled_042_subset.ebf \
+    --manifest examples/assets/oled_042_subset.manifest --if-needed
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042_subset.bmx
+```
+
+With ESP-IDF 6.1, the complete 472-glyph example produced a 202,944-byte
+application image. The 21-glyph subset reduced the font from 11,360 to 536
+bytes and the application image to 192,464 bytes, saving 10,480 bytes of flash.
+Exact application sizes can vary with the compiler and ESP-IDF version.
+
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.
 
