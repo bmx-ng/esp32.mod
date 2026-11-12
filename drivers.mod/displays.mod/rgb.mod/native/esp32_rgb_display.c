@@ -179,7 +179,8 @@ int32_t bmx_esp32_rgb_display_framebuffer_count(void *handle) {
 }
 
 int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
-        int32_t stride, int32_t x, int32_t y, int32_t width, int32_t height) {
+        int32_t stride, int32_t x, int32_t y, int32_t width, int32_t height,
+        int32_t preserve_contents) {
     bmx_esp32_rgb_display_t *display = handle;
     if (!display || !pixels || stride != display->stride || width <= 0 || height <= 0) {
         return ESP_ERR_INVALID_ARG;
@@ -218,10 +219,12 @@ int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
     const int32_t old_scan_index = display->scan_index;
     display->scan_index = display->render_index;
     display->render_index = old_scan_index;
-    uint8_t *next_render = display->framebuffers[display->render_index];
-    for (int32_t row = y0; row < y1; ++row) {
-        memcpy(next_render + (size_t)row * display->stride + (size_t)x0 * 2,
-            render + (size_t)row * display->stride + (size_t)x0 * 2, row_bytes);
+    if (preserve_contents) {
+        uint8_t *next_render = display->framebuffers[display->render_index];
+        for (int32_t row = y0; row < y1; ++row) {
+            memcpy(next_render + (size_t)row * display->stride + (size_t)x0 * 2,
+                render + (size_t)row * display->stride + (size_t)x0 * 2, row_bytes);
+        }
     }
     return ESP_OK;
 }
@@ -264,8 +267,10 @@ void bmx_esp32_rgb_display_delete(void *handle) { (void)handle; }
 uint8_t *bmx_esp32_rgb_display_framebuffer(void *handle) { (void)handle; return NULL; }
 int32_t bmx_esp32_rgb_display_framebuffer_count(void *handle) { (void)handle; return 0; }
 int32_t bmx_esp32_rgb_display_present(void *handle, uint8_t *pixels,
-        int32_t stride, int32_t x, int32_t y, int32_t width, int32_t height) {
+        int32_t stride, int32_t x, int32_t y, int32_t width, int32_t height,
+        int32_t preserve_contents) {
     (void)handle; (void)pixels; (void)stride; (void)x; (void)y; (void)width; (void)height;
+    (void)preserve_contents;
     return -1;
 }
 int32_t bmx_esp32_rgb_display_set_enabled(void *handle, int32_t enabled) {

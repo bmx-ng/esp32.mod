@@ -11,6 +11,8 @@ Local display:TESP32RGBDisplay = TESP32RGBDisplay.Create(ESP32S31Korvo1ST7262Con
 If Not display Then RuntimeError "Could not initialize RGB display: " + RGBDisplayLastError()
 If Not display.HasCapability(DisplayCapabilityBufferSwap) Or display.FramebufferCount() <> 2 Then ..
 	RuntimeError "This specimen requires two RGB framebuffers"
+If Not display.HasCapability(DisplayCapabilityDiscardPresent) Then ..
+	RuntimeError "This specimen requires discard presentation"
 
 Local frame:TDisplayBuffer = display.CreateBuffer()
 If Not frame Then RuntimeError "Could not access RGB render framebuffer"
@@ -48,7 +50,7 @@ While True
 	SetColor 255, 221, 72
 	FillCircle ballX, 408, 34
 
-	If Present() <= 0 Then RuntimeError "Could not swap RGB framebuffers"
+	If PresentDiscard() <= 0 Then RuntimeError "Could not swap RGB framebuffers"
 	If frame.Pixels() = oldPixels Then RuntimeError "RGB framebuffer did not swap"
 
 	ballX :+ ballStep

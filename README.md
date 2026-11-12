@@ -152,10 +152,11 @@ scope; buffering or VSYNC controls when changes become visible.
 redraw on every frame, a moving object, and a measured presentation-rate
 readout. An RGB565 buffer at that resolution occupies 768,000 bytes; the two
 buffers used by this profile therefore reserve 1,536,000 bytes of PSRAM.
-Full-frame presentation preserves the newly displayed image in the next render
-buffer, so applications may safely mix complete and partial updates. That
-coherence copy is intentionally correctness-first and has a measurable cost for
-full-screen animation; dirty-region presentation copies only the dirty union.
+Normal full-frame presentation preserves the newly displayed image in the next
+render buffer, so applications may safely mix complete and partial updates.
+The specimen instead uses `PresentDiscard` because it redraws every pixel; this
+explicitly omits the coherence copy for faster full-screen animation. Dirty-
+region presentation copies only the dirty union.
 
 Visually similar revisions disagree about their onboard LED, so the profile
 does not claim one without separate hardware verification.

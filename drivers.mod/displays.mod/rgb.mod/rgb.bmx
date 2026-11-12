@@ -51,7 +51,7 @@ Extern "C"
 	Function _RGBDisplayFramebuffer:Byte Ptr(handle:Byte Ptr) = "bmx_esp32_rgb_display_framebuffer"
 	Function _RGBDisplayFramebufferCount:Int(handle:Byte Ptr) = "bmx_esp32_rgb_display_framebuffer_count"
 	Function _RGBDisplayPresent:Int(handle:Byte Ptr, pixels:Byte Ptr, stride:Int, ..
-		x:Int, y:Int, width:Int, height:Int) = "bmx_esp32_rgb_display_present"
+		x:Int, y:Int, width:Int, height:Int, preserveContents:Int) = "bmx_esp32_rgb_display_present"
 	Function _RGBDisplaySetEnabled:Int(handle:Byte Ptr, enabled:Int) = "bmx_esp32_rgb_display_set_enabled"
 	Function _RGBDisplayWaitVSync:Int(handle:Byte Ptr, timeoutMs:Int) = "bmx_esp32_rgb_display_wait_vsync"
 	Function _RGBDisplayLastError:Int() = "bmx_esp32_rgb_display_last_error"
@@ -152,7 +152,7 @@ Type TESP32RGBDisplay Extends TDisplay
 	Method Capabilities:Int() Override
 		Local result:Int = DisplayCapabilityPartialPresent | DisplayCapabilityVSync
 		If framebufferCount > 1 Then
-			result :| DisplayCapabilityBufferSwap
+			result :| DisplayCapabilityBufferSwap | DisplayCapabilityDiscardPresent
 		Else
 			result :| DisplayCapabilityLiveFramebuffer
 		End If
@@ -172,7 +172,21 @@ Type TESP32RGBDisplay Extends TDisplay
 		If Not handle Or Not pixels Then Return DisplayErrorInvalidArgument
 		If format <> DisplayPixelFormatRGB565 Then Return DisplayErrorUnsupportedFormat
 		If stride <> displayWidth * 2 Then Return DisplayErrorInvalidArgument
-		If _RGBDisplayPresent(handle, pixels, stride, x, y, width, height) <> 0 Then ..
+		If _RGBDisplayPresent(handle, pixels, stride, x, y, width, height, True) <> 0 Then ..
+			Return DisplayErrorGeneric
+		If framebufferCount > 1 Then
+			framebuffer = _RGBDisplayFramebuffer(handle)
+			If Not framebuffer Or Not buffer.RetargetExternal(framebuffer) Then ..
+				Return DisplayErrorGeneric
+		End If
+		Return True
+	End Method
+
+	Method PresentPixelsDiscard:Int(pixels:Byte Ptr, stride:Int, format:Int) Override
+		If Not handle Or Not pixels Then Return DisplayErrorInvalidArgument
+		If format <> DisplayPixelFormatRGB565 Then Return DisplayErrorUnsupportedFormat
+		If stride <> displayWidth * 2 Then Return DisplayErrorInvalidArgument
+		If _RGBDisplayPresent(handle, pixels, stride, 0, 0, displayWidth, displayHeight, False) <> 0 Then ..
 			Return DisplayErrorGeneric
 		If framebufferCount > 1 Then
 			framebuffer = _RGBDisplayFramebuffer(handle)
