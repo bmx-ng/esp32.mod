@@ -35,16 +35,6 @@ static int bmx_esp32_ppa_ensure_srm_client(void) {
     return ppa_register_client(&config, &bmx_esp32_ppa_srm_client) == ESP_OK;
 }
 
-static int bmx_esp32_ppa_exact_scale(int32_t source, int32_t destination,
-        float *scale) {
-    const uint32_t fixed = (uint32_t)(((uint64_t)(uint32_t)destination * 16U +
-        (uint32_t)source - 1U) / (uint32_t)source);
-    if (!fixed || fixed >= 4096U ||
-            ((uint64_t)(uint32_t)source * fixed) / 16U !=
-                (uint32_t)destination) return 0;
-    *scale = (float)fixed / 16.0f;
-    return 1;
-}
 #endif
 
 typedef int32_t (*bmx_embedded_display_fill_rgb565_accelerator_t)(
@@ -58,10 +48,11 @@ extern void bmx_embedded_display_set_fill_rgb565_accelerator(
 typedef int32_t (*bmx_embedded_display_blit_rgb565_accelerator_t)(
     uint8_t *target, int32_t target_stride, int32_t target_width,
     int32_t target_height, const uint8_t *source, int32_t source_stride,
-    int32_t source_width, int32_t source_height, int32_t destination_x,
-    int32_t destination_y, int32_t destination_width,
+    int32_t source_width, int32_t source_height, int32_t source_format,
+    int32_t destination_x, int32_t destination_y, int32_t destination_width,
     int32_t destination_height, int32_t clip_x, int32_t clip_y,
-    int32_t clip_width, int32_t clip_height, int32_t draw_flags);
+    int32_t clip_width, int32_t clip_height, uint32_t tint,
+    int32_t opacity, int32_t draw_flags);
 
 extern void bmx_embedded_display_set_blit_rgb565_accelerator(
     bmx_embedded_display_blit_rgb565_accelerator_t accelerator)
@@ -74,10 +65,10 @@ int32_t bmx_embedded_display_accelerate_fill_rgb565(uint8_t *pixels,
 int32_t bmx_embedded_display_accelerate_blit_rgb565(uint8_t *target,
     int32_t target_stride, int32_t target_width, int32_t target_height,
     const uint8_t *source, int32_t source_stride, int32_t source_width,
-    int32_t source_height, int32_t destination_x, int32_t destination_y,
-    int32_t destination_width, int32_t destination_height, int32_t clip_x,
-    int32_t clip_y, int32_t clip_width, int32_t clip_height,
-    int32_t draw_flags);
+    int32_t source_height, int32_t source_format, int32_t destination_x,
+    int32_t destination_y, int32_t destination_width, int32_t destination_height,
+    int32_t clip_x, int32_t clip_y, int32_t clip_width, int32_t clip_height,
+    uint32_t tint, int32_t opacity, int32_t draw_flags);
 
 int32_t bmx_esp32_display_acceleration_initialize(void) {
 #if SOC_PPA_SUPPORTED
@@ -96,23 +87,40 @@ int32_t bmx_esp32_display_acceleration_initialize(void) {
 int32_t bmx_embedded_display_accelerate_blit_rgb565(uint8_t *target,
         int32_t target_stride, int32_t target_width, int32_t target_height,
         const uint8_t *source, int32_t source_stride, int32_t source_width,
-        int32_t source_height, int32_t destination_x, int32_t destination_y,
-        int32_t destination_width, int32_t destination_height,
+        int32_t source_height, int32_t source_format, int32_t destination_x,
+        int32_t destination_y, int32_t destination_width, int32_t destination_height,
         int32_t clip_x, int32_t clip_y, int32_t clip_width,
-        int32_t clip_height, int32_t draw_flags) {
+        int32_t clip_height, uint32_t tint, int32_t opacity,
+        int32_t draw_flags) {
 #if SOC_PPA_SUPPORTED
-    float scale_x;
-    float scale_y;
+    const int32_t source_bytes_per_pixel = source_format == 2 ? 2 : 3;
     if (!target || !source || target_stride != target_width * 2 ||
-            source_stride != source_width * 2 || destination_x < 0 ||
+            (source_format != 2 && source_format != 3) ||
+            source_stride != source_width * source_bytes_per_pixel ||
+            tint != 0xFFFFFFU || destination_x < 0 ||
             destination_y < 0 || destination_x + destination_width > target_width ||
             destination_y + destination_height > target_height ||
             clip_x != destination_x || clip_y != destination_y ||
             clip_width != destination_width || clip_height != destination_height ||
-            !(esp_ptr_dma_capable(source) || esp_ptr_external_ram(source)) ||
-            !bmx_esp32_ppa_exact_scale(source_width, destination_width, &scale_x) ||
-            !bmx_esp32_ppa_exact_scale(source_height, destination_height, &scale_y) ||
-            !bmx_esp32_ppa_ensure_srm_client()) return 0;
+            !(esp_ptr_dma_capable(source) || esp_ptr_external_ram(source))) return 0;
+
+    /* PPA RGB888 conversion rounds channels differently from the shared
+     * truncating RGB565 contract. Keep conversion on the native fallback so
+     * the same source produces identical pixels on all embedded targets. */
+    if (source_format != 2) return 0;
+
+    /* PPA scaling samples at a different phase from the shared deterministic
+     * nearest-neighbour contract. Only exact-size copies and mirrors are
+     * eligible for hardware acceleration. */
+    if (source_width != destination_width ||
+            source_height != destination_height) return 0;
+
+    /* The PPA blend engine's fixed-point alpha rounding differs from the
+     * shared 0..255 source-over contract. Decline compositing so the optimized
+     * native fallback preserves identical pixels on every target. */
+    if (opacity != 255) return 0;
+
+    if (!bmx_esp32_ppa_ensure_srm_client()) return 0;
 
     const ppa_srm_oper_config_t config = {
         .in = {
@@ -134,8 +142,8 @@ int32_t bmx_embedded_display_accelerate_blit_rgb565(uint8_t *target,
             .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
         },
         .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
-        .scale_x = scale_x,
-        .scale_y = scale_y,
+        .scale_x = 1.0f,
+        .scale_y = 1.0f,
         .mirror_x = (draw_flags & 1) != 0,
         .mirror_y = (draw_flags & 2) != 0,
         .mode = PPA_TRANS_MODE_BLOCKING,
@@ -150,6 +158,7 @@ int32_t bmx_embedded_display_accelerate_blit_rgb565(uint8_t *target,
     (void)source_stride;
     (void)source_width;
     (void)source_height;
+    (void)source_format;
     (void)destination_x;
     (void)destination_y;
     (void)destination_width;
@@ -158,6 +167,8 @@ int32_t bmx_embedded_display_accelerate_blit_rgb565(uint8_t *target,
     (void)clip_y;
     (void)clip_width;
     (void)clip_height;
+    (void)tint;
+    (void)opacity;
     (void)draw_flags;
     return 0;
 #endif

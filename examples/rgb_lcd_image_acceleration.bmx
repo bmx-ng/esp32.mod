@@ -67,17 +67,17 @@ SetFont Terminus12x24BoldFont()
 SetClsColor 9, 15, 30
 Cls
 SetColor 255, 255, 255
-DrawText "PPA RGB565 IMAGE SCALE + MIRROR", 190, 34
+DrawText "PPA RGB565 IMAGE COPY + MIRROR", 190, 84
 
 Local started:ULong = MonotonicMicroseconds()
-DrawImageRect image, 8, 110, 384, 288
-DrawImageRect image, 408, 110, 384, 288, ImageFlipX
+DrawImage image, 264, 160
+DrawImage image, 408, 160, ImageFlipX
 Local elapsed:ULong = MonotonicMicroseconds() - started
 
 SetColor 255, 220, 80
-DrawText "two 128x96 -> 384x288 blits: " + elapsed + " us", 135, 424
+DrawText "two exact-size 128x96 blits: " + elapsed + " us", 180, 310
 If Present() <= 0 Then RuntimeError "Could not present RGB framebuffer"
-Print "PPA image specimen drew two scaled RGB565 images in " + elapsed + " us"
+Print "PPA image specimen drew two exact-size RGB565 images in " + elapsed + " us"
 
 While True
 	Delay 1000
