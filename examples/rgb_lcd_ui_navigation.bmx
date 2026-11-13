@@ -5,6 +5,7 @@ Import BRL.System
 Import BRL.SystemDefault
 Import Embedded.Drivers.Display.Fonts.Spleen.Size5x8
 Import Embedded.UI
+Import Embedded.UI.Interactive
 Import ESP32.Drivers.Displays.RGB
 Import ESP32.Drivers.Touch.GT1151
 
@@ -49,7 +50,7 @@ theme.button.SetPaddingEdges(16, 10, 16, 10)
 theme.buttonPressed.SetPaddingEdges(16, 10, 16, 10)
 theme.buttonDisabled.SetPaddingEdges(16, 10, 16, 10)
 
-UI = TUIContext.Create(display, touch, theme)
+UI = TUITouchInput.CreateContext(display, touch, theme)
 If Not UI Then RuntimeError "Could not create embedded UI"
 
 Local page:TUIColumn = UI.Root()

@@ -8,6 +8,7 @@ Import BRL.System
 Import BRL.SystemDefault
 Import Embedded.Drivers.Display.Fonts.Spleen.Size5x8
 Import Embedded.UI
+Import Embedded.UI.Interactive
 Import ESP32.Drivers.Displays.RGB
 Import ESP32.Drivers.Touch.GT1151
 
@@ -57,14 +58,16 @@ If Not touch Then RuntimeError "Could not initialize GT1151 touch: " + GT1151Las
 If Not touch.StartEvents() Then RuntimeError "Could not start GT1151 touch events"
 
 Local theme:TUITheme = TUITheme.Dark(Spleen5x8Font())
-theme.SetFont(Spleen5x8Font(), 3)
+theme.SetFont(Spleen5x8Font(), 2)
+theme.SetButtonMinimumHeight(52)
+theme.SetSelectionMinimumHeight(52)
 theme.screen.background = $0b1119
 theme.button.background = $173451
 theme.buttonPressed.background = $20b8ea
 theme.controlActive.background = $20b8ea
 theme.controlActive.foreground = $eaffff
 
-UI = TUIContext.Create(display, touch, theme)
+UI = TUITouchInput.CreateContext(display, touch, theme)
 If Not UI Then RuntimeError "Could not create embedded UI"
 
 Local root:TUIColumn = UI.Root()
@@ -75,22 +78,53 @@ Navigation.SetGrow(1)
 ' Home is the first page, so it becomes the stack root automatically.
 HomePage = Navigation.Page("Home")
 HomePage.SetGap(12)
-Local homeTitle:TUILabel = HomePage.Label("Embedded.UI pages")
-homeTitle.Style().fontScale = 4
-homeTitle.Style().foreground = $5ccfff
-Local homeCopy:TUILabel = HomePage.Label("Pages retain their controls and return to the previous focus.")
-homeCopy.SetWordWrap(True)
-Local homeButtons:TUIRow = HomePage.Row()
-homeButtons.SetGrow(1)
-homeButtons.SetGap(18)
-Local settingsButton:TUIButton = homeButtons.Button("Settings")
+Local homeHeader:TUIHeader = HomePage.Header("Device dashboard")
+homeHeader.TitleLabel().Style().fontScale = 4
+homeHeader.TitleLabel().Style().foreground = $5ccfff
+homeHeader.Action("Settings", OpenSettings)
+
+Local dashboard:TUIGrid = HomePage.Grid(3)
+dashboard.SetGrow(1)
+dashboard.SetGap(12)
+dashboard.SetRowHeight(122)
+
+Local systemCard:TUICard = dashboard.Card("System")
+systemCard.TitleLabel().Style().foreground = $5ccfff
+systemCard.StatusIndicator("Display online", True)
+systemCard.StatusIndicator("Touch online", True)
+
+Local networkCard:TUICard = dashboard.Card("Network")
+networkCard.TitleLabel().Style().foreground = $5ccfff
+Local networkState:TUILabel = networkCard.Label("Connected")
+networkState.Style().foreground = $55e88b
+networkCard.Label("LAN  192.168.1.42")
+
+Local loadCard:TUICard = dashboard.Card("Activity")
+loadCard.TitleLabel().Style().foreground = $5ccfff
+loadCard.ProgressBar(0, 100, 68)
+loadCard.Label("Load  68%")
+
+Local quickCard:TUICard = dashboard.Card("Quick actions")
+quickCard.SetGridSpan(2)
+quickCard.TitleLabel().Style().foreground = $5ccfff
+Local quickActions:TUIRow = quickCard.Row()
+quickActions.SetGap(10)
+Local settingsButton:TUIButton = quickActions.Button("Settings")
 settingsButton.SetGrow(1)
 settingsButton.OnClick(OpenSettings)
-Local diagnosticsButton:TUIButton = homeButtons.Button("Diagnostics")
+Local diagnosticsButton:TUIButton = quickActions.Button("Diagnostics")
 diagnosticsButton.SetGrow(1)
 diagnosticsButton.OnClick(OpenDiagnostics)
-Local homeHint:TUILabel = HomePage.Label("Open a page, make a change, then return here.")
-homeHint.Style().foreground = $ffd84a
+
+Local storageCard:TUICard = dashboard.Card("Storage")
+storageCard.TitleLabel().Style().foreground = $5ccfff
+storageCard.Label("SD card ready")
+storageCard.ProgressBar(0, 100, 34)
+
+Local homeNav:TUINavigationBar = HomePage.NavigationBar()
+homeNav.Action("Home")
+homeNav.Action("Settings", OpenSettings)
+homeNav.Action("Diagnostics", OpenDiagnostics)
 
 SettingsPage = Navigation.Page("Settings")
 SettingsPage.SetGap(12)
@@ -130,7 +164,8 @@ orientation.AddItem("Landscape inverted")
 orientation.SetSelectedIndex(0)
 Local automaticRow:TUIRow = DisplayPage.Row()
 automaticRow.SetGap(16)
-automaticRow.Label("Automatic orientation")
+Local automaticLabel:TUILabel = automaticRow.Label("Automatic orientation")
+automaticLabel.SetAlign(UIAlignCenter)
 Local displaySwitch:TUISwitch = automaticRow.Switch(True)
 Local displayNote:TUILabel = DisplayPage.Label("Back returns to Settings and restores its focused control.")
 displayNote.SetWordWrap(True)
@@ -168,6 +203,6 @@ Print "Embedded.UI page navigation example active"
 
 While True
 	PollSystem()
-	UI.Present()
+	If UI.Present() <= 0 Then RuntimeError "Could not present embedded UI frame"
 	Delay(5)
 Wend

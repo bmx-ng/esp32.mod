@@ -323,6 +323,7 @@ addoption esp32.target "baguette_s3"
 addoption esp32.port "/dev/cu.usbmodem101"
 addoption esp32.board.dirs "/path/to/custom/board/profiles"
 addoption esp32.heap.region "psram"
+addoption esp32.stack "16k"
 ```
 
 The corresponding environment variables are:
@@ -336,6 +337,7 @@ The corresponding environment variables are:
 | `esp32.board.dirs` | `ESP32_BOARD_DIRS` | Additional board-profile roots |
 | `esp32.target` | — | Default board profile when `-board` is omitted |
 | `esp32.heap.region` | — | Default managed-heap region, `sram` or `psram` |
+| `esp32.stack` | — | ESP-IDF main-task stack size; defaults to `16k` for BlitzMax precise-GC call frames |
 
 A command-line `-board` or `-heap-region` overrides the applicable persistent
 default. For settings with both forms, the `custom.bmk` option takes precedence
