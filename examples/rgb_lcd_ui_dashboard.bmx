@@ -21,7 +21,9 @@ Global LastSample:UInt
 
 Function SetPointChanged(dial:TUIRotaryDial)
 	LoadGauge.SetValue(dial.Value())
-	Status.SetText("Set point: " + dial.Value() + "%")
+	' The footer already owns the full page width, so changing this readout does
+	' not need to lay out the complete dashboard again.
+	Status.SetText("Set point: " + dial.Value() + "%", False)
 End Function
 
 Function UpdateDashboard()
