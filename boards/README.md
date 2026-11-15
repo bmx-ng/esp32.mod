@@ -49,6 +49,12 @@ one. Clock-source constraints belong in the profile's `sdkconfig.defaults`.
 These fields describe fixed board wiring; they do not claim that a cable, DHCP
 server, or reachable network is present.
 
+An onboard display resource records its controller `driver`, named `bus`, bus
+`address` where applicable, visible `width` and `height`, `pixel_format`, and
+any controller-RAM `x_offset`, `y_offset`, or mounting `rotation`. These are physical panel
+properties. Higher-level drawing and UI libraries consume them through the
+shared display driver rather than owning the board transport.
+
 Use `bmk boardinfo -l esp32 -board <profile>` to inspect the resolved data.
 Extra board roots can be configured with `esp32.board.dirs` in `custom.bmk` or
 the platform path-list environment variable `ESP32_BOARD_DIRS`. A custom

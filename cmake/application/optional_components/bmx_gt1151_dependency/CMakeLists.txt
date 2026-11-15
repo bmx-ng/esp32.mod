@@ -1,0 +1,1 @@
+idf_component_register(REQUIRES espressif__esp_lcd_touch_gt1151)

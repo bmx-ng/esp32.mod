@@ -18,6 +18,7 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S3 | Xtensa | `esp32s3_44pin_n16r8` | 16 MiB flash, 8 MiB PSRAM, dual USB-C |
 | ESP32-S3 | Xtensa | `xiao_esp32s3_plus` | 16 MiB flash, 8 MiB PSRAM, native USB, no onboard SD slot |
 | ESP32-C3 | 32-bit RISC-V | `baguette_c3` | 4 MiB flash, no SD slot or PSRAM |
+| ESP32-C3 | 32-bit RISC-V | `esp32c3_oled_042` | 4 MiB flash, native USB, 72x40 SSD1306 OLED |
 | ESP32-C6 | 32-bit RISC-V | `esp32_c6_supermini` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C6 | 32-bit RISC-V | `xiao_esp32c6` | 4 MiB flash, native USB, no PSRAM |
 | ESP32-C5 | 32-bit RISC-V | `xiao_esp32c5` | 8 MiB flash, 8 MiB PSRAM, native USB |
@@ -27,6 +28,7 @@ The currently validated targets use ESP-IDF 6.1:
 | ESP32-S31 | 32-bit RISC-V | `esp32_s31_function_coreboard_1` | 16 MiB flash, 16 MiB PSRAM, Gigabit Ethernet, audio, USB host; ESP-IDF preview target |
 
 The ESP32-WROOM-32D, Baguette S3, ESP32-S3 44-pin N16R8, XIAO ESP32-S3 Plus, Baguette C3,
+ESP32-C3 0.42-inch OLED,
 ESP32-C6 SuperMini, XIAO ESP32-C6, XIAO ESP32-C5, Waveshare H2 Dev Kit N4,
 M5Stack Stamp-P4, ESP32-S31-Korvo-1, and ESP32-S31-Function-CoreBoard-1
 profiles have been tested on their respective physical boards. Additional
@@ -84,6 +86,126 @@ For a Baguette C3, select its board profile instead:
 ```sh
 bmk makeapp -a -r -board baguette_c3 -heap 64k -x hello.bmx
 ```
+
+For the compact ESP32-C3 board with a 0.42-inch OLED, use
+`-board esp32c3_oled_042`. The profile records the verified 72x40 display at
+I2C address `0x3c`, with SDA on GPIO5, SCL on GPIO6, and a 28-column controller
+RAM offset. The shared SSD1306 example builds and uploads with:
+
+```sh
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042.bmx
+```
+
+`examples/oled_042_subset.bmx` demonstrates an application-specific font. Its
+manifest keeps only the characters used by the fixed UI and selects `?` as a
+visible fallback. The displayed Greek omega is deliberately absent and is
+therefore rendered as `?`. The example also uses the familiar global drawing
+functions from `Embedded.Graphics2D`:
+
+```sh
+bdf2embeddedfont spleen-5x8.bdf examples/assets/oled_042_subset.ebf \
+    --manifest examples/assets/oled_042_subset.manifest --if-needed
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042_subset.bmx
+```
+
+With ESP-IDF 6.1, the complete 472-glyph example produced a 202,944-byte
+application image. The 21-glyph subset reduced the font from 11,360 to 536
+bytes and the application image to 192,464 bytes, saving 10,480 bytes of flash.
+Exact application sizes can vary with the compiler and ESP-IDF version.
+
+`examples/oled_042_image.bmx` demonstrates firmware-resident images, including
+one-bit transparency, tinting, native drawing, and nearest-neighbour scaling.
+Its small SVG source is converted on the desktop to the 96-byte EBI1 asset
+included by the application:
+
+```sh
+image2embedded examples/assets/oled_042_image.svg \
+    examples/assets/oled_042_image.ebi --format mono1 --mask auto
+bmk makeapp -a -r -board esp32c3_oled_042 -x examples/oled_042_image.bmx
+```
+
+The converter source is provided by `embedded.mod/tools/image2embedded.bmx` and
+uses the standard BlitzMax `image.mod` loaders; image decoding is not linked
+into the ESP32 firmware.
+
+On RGB displays, `examples/rgb_lcd_image_options.bmx` shows horizontal and
+combined flips, source-over opacity, and magenta colour-key transparency. Its
+unmasked RGB565 asset deliberately retains the magenta pixels so the key can
+be selected at draw time:
+
+```sh
+image2embedded examples/assets/rgb_lcd_image_options.svg \
+    examples/assets/rgb_lcd_image_options.ebi --format rgb565 --mask none
+bmk makeapp -a -r -board esp32_s31_korvo_1 -x \
+    examples/rgb_lcd_image_options.bmx
+```
+
+`examples/rgb_lcd_dirty_regions.bmx` demonstrates opt-in dirty-region tracking.
+Parallel RGB panels continuously scan their framebuffer, so the example also
+uses `TESP32RGBDisplay.WaitVSync()` before modifying live pixels when configured
+with one framebuffer. The S31 panel profile requests two PSRAM framebuffers, so
+the same application instead draws invisibly and swaps at a safe frame boundary.
+After each swap the adapter copies only the presented dirty regions into the next
+render buffer, preserving partial-update coherence. Dirty tracking limits update
+scope; buffering or VSYNC controls when changes become visible.
+`examples/rgb_lcd_triple_buffer.bmx` complements it with a complete 800x480
+redraw on every frame, a moving object, and measured render and presentation
+times. An RGB565 buffer at that resolution occupies 768,000 bytes. The S31
+profile defaults to two buffers (1,536,000 bytes of PSRAM), while this animation
+explicitly requests three (2,304,000 bytes) so rendering can continue while the
+previous frame waits to be scanned out. One buffer remains the general driver
+default; applications opt into the memory/performance tradeoff through
+`TESP32RGBDisplayConfig.framebufferCount`.
+Normal full-frame presentation preserves the newly displayed image in the next
+render buffer, so applications may safely mix complete and partial updates.
+The specimen instead uses `PresentDiscard` because it redraws every pixel; this
+explicitly omits the coherence copy for faster full-screen animation. Dirty-
+region presentation submits one framebuffer swap and copies each independent
+region without copying unchanged gaps. On ESP32 targets with a Pixel
+Processing Accelerator (PPA), sufficiently large RGB565 `Cls` and `FillRect`
+operations are sent to that hardware automatically; smaller operations and
+targets without PPA retain the portable native fallback. Applications can test
+`DisplayCapabilityAcceleratedFill` when reporting or tuning their rendering
+strategy, but drawing code does not need a separate PPA-specific API.
+Compatible exact-size RGB565 image copies and mirroring also use the PPA when
+the source is in DMA-accessible memory. Firmware-resident images and clipped
+operations retain the shared native raster path. Scaling, RGB888-to-RGB565
+conversion, tinting, and opacity blending use that optimized native path as
+well: the PPA's sampling, conversion, and alpha rounding do not exactly match
+the cross-target pixel contract, so they are deliberately not substituted. See
+`examples/rgb_lcd_image_acceleration.bmx` for a generated DMA-accessible image
+drawn normally and mirrored at its native size, and
+`examples/rgb_lcd_image_compositing.bmx` for conversion and opacity equivalence
+checks.
+
+`examples/rgb_lcd_sprite_atlas.bmx` demonstrates the complete sprite workflow.
+Six independently trimmed SVG frames are packed into one atlas by
+`spriteatlas`, converted to a masked RGB565 EBI asset, and played on their
+original 128x128 logical canvas. Two players animate in distant parts of the
+screen, demonstrating independent old/new dirty bounds presented in one frame.
+Masked RGB565 draws use the native raster path for
+clipping, mirroring, tint, and opacity; an untinted opaque sprite takes the
+direct-copy fast path. Regenerate and run the example from `esp32.mod` with:
+
+```sh
+spriteatlas examples/assets/rgb_lcd_sprite_atlas --symbol VisualBot \
+    --page-size 512 --padding 2 --alpha-threshold 128 \
+    --animation run=run0:90,run1:90,run2:90,run3:90,run4:90,run5:90 \
+    run0=examples/assets/rgb_lcd_sprite_frames/run0.svg \
+    run1=examples/assets/rgb_lcd_sprite_frames/run1.svg \
+    run2=examples/assets/rgb_lcd_sprite_frames/run2.svg \
+    run3=examples/assets/rgb_lcd_sprite_frames/run3.svg \
+    run4=examples/assets/rgb_lcd_sprite_frames/run4.svg \
+    run5=examples/assets/rgb_lcd_sprite_frames/run5.svg
+image2embedded examples/assets/rgb_lcd_sprite_atlas.png \
+    examples/assets/rgb_lcd_sprite_atlas.ebi \
+    --format auto --mask auto --alpha-threshold 128
+bmk makeapp -a -r -board esp32_s31_korvo_1 -x \
+    examples/rgb_lcd_sprite_atlas.bmx
+```
+
+Visually similar revisions disagree about their onboard LED, so the profile
+does not claim one without separate hardware verification.
 
 For an ESP32-WROOM-32D module with 4 MiB flash, use
 `-board esp32_wroom_32d`. Upload and console output use UART0 through the
@@ -201,6 +323,7 @@ addoption esp32.target "baguette_s3"
 addoption esp32.port "/dev/cu.usbmodem101"
 addoption esp32.board.dirs "/path/to/custom/board/profiles"
 addoption esp32.heap.region "psram"
+addoption esp32.stack "16k"
 ```
 
 The corresponding environment variables are:
@@ -214,6 +337,7 @@ The corresponding environment variables are:
 | `esp32.board.dirs` | `ESP32_BOARD_DIRS` | Additional board-profile roots |
 | `esp32.target` | — | Default board profile when `-board` is omitted |
 | `esp32.heap.region` | — | Default managed-heap region, `sram` or `psram` |
+| `esp32.stack` | — | ESP-IDF main-task stack size; defaults to `16k` for BlitzMax precise-GC call frames |
 
 A command-line `-board` or `-heap-region` overrides the applicable persistent
 default. For settings with both forms, the `custom.bmk` option takes precedence
@@ -223,6 +347,25 @@ exactly matching single connected device automatically.
 An installation created by Espressif's installer normally needs no entries in
 `custom.bmk`. If `esp32.idf` and `IDF_PATH` are both absent, `bmk` searches
 `~/.espressif/v*/esp-idf` and selects the newest recognized version.
+
+### Main-task stack
+
+`esp32.stack` controls the ESP-IDF main-task stack on which the BlitzMax
+application runs. It accepts a byte count or a size with a `k` or `m` suffix,
+such as `24576`, `24k`, or `1m`. The default is `16k`; the minimum is 4 KiB,
+`auto` is not supported, and bmk rounds the value up to a 16-byte boundary.
+
+Use `addoption esp32.stack "32k"` in `bin/custom.bmk` for a machine-wide
+default. A `pre.bmk` beside the source applies to applications in that
+directory; name it `<output-name>.pre.bmk` to limit it to one application
+output. In either kind of application configuration file, use:
+
+```bmk
+setoption esp32.stack 32k
+```
+
+Changing the value refreshes the generated ESP-IDF configuration on the next
+build. The selected byte count is also printed in the ESP32 build summary.
 
 A manual installation may keep the ESP-IDF checkout elsewhere while retaining
 downloaded tools under `~/.espressif/tools` and versioned Python environments
@@ -299,6 +442,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
+| Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_image_acceleration.bmx`](examples/rgb_lcd_image_acceleration.bmx), [`rgb_lcd_image_compositing.bmx`](examples/rgb_lcd_image_compositing.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |

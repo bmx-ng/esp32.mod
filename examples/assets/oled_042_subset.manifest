@@ -1,0 +1,5 @@
+# Fixed UI text for the OLED subset example.
+chars-file=oled_042_subset.txt
+
+# Spleen declares space as its BDF default. Use '?' as a visible replacement.
+fallback=003f
