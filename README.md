@@ -348,6 +348,25 @@ An installation created by Espressif's installer normally needs no entries in
 `custom.bmk`. If `esp32.idf` and `IDF_PATH` are both absent, `bmk` searches
 `~/.espressif/v*/esp-idf` and selects the newest recognized version.
 
+### Main-task stack
+
+`esp32.stack` controls the ESP-IDF main-task stack on which the BlitzMax
+application runs. It accepts a byte count or a size with a `k` or `m` suffix,
+such as `24576`, `24k`, or `1m`. The default is `16k`; the minimum is 4 KiB,
+`auto` is not supported, and bmk rounds the value up to a 16-byte boundary.
+
+Use `addoption esp32.stack "32k"` in `bin/custom.bmk` for a machine-wide
+default. A `pre.bmk` beside the source applies to applications in that
+directory; name it `<output-name>.pre.bmk` to limit it to one application
+output. In either kind of application configuration file, use:
+
+```bmk
+setoption esp32.stack 32k
+```
+
+Changing the value refreshes the generated ESP-IDF configuration on the next
+build. The selected byte count is also printed in the ESP32 build summary.
+
 A manual installation may keep the ESP-IDF checkout elsewhere while retaining
 downloaded tools under `~/.espressif/tools` and versioned Python environments
 under `~/.espressif/python_env`. `bmk` honours `IDF_TOOLS_PATH` and
