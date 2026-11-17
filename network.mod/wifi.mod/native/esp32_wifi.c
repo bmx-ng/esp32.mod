@@ -56,6 +56,7 @@ static bool bmx_wifi_ap_active;
 static int32_t bmx_wifi_link_status;
 
 extern uint32_t bmx_embedded_net_active_socket_count(void) __attribute__((weak));
+extern int32_t bmx_esp32_espnow_initialized(void) __attribute__((weak));
 
 static uint32_t bmx_wifi_pack_ip(esp_ip4_addr_t address) {
     return address.addr;
@@ -231,6 +232,7 @@ int32_t bmx_embedded_wifi_initialize(uint32_t country) {
 int32_t bmx_embedded_wifi_deinitialize(void) {
     if (!bmx_wifi_initialized) return ESP_OK;
     if (bmx_wifi_scan_active) return ESP_ERR_INVALID_STATE;
+    if (bmx_esp32_espnow_initialized && bmx_esp32_espnow_initialized()) return ESP_ERR_INVALID_STATE;
     if (bmx_embedded_net_active_socket_count &&
             bmx_embedded_net_active_socket_count()) return ESP_ERR_INVALID_STATE;
     esp_err_t result = esp_wifi_stop();

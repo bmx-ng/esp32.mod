@@ -54,6 +54,12 @@ if (BLITZMAX_ESP32_WIFI_ENABLED)
         "${ESP32_MODULE_ROOT}/network.mod/wifi.mod/native/esp32_wifi.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_event esp_netif esp_wifi nvs_flash)
 endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_network_espnow_espnow" BLITZMAX_ESP32_ESPNOW_INDEX)
+if (NOT BLITZMAX_ESP32_ESPNOW_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
+        "${ESP32_MODULE_ROOT}/network.mod/espnow.mod/native/esp32_espnow.c")
+    list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS esp_wifi)
+endif()
 if (BLITZMAX_ESP32_ETHERNET_ENABLED)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
         "${ESP32_MODULE_ROOT}/network.mod/ethernet.mod/native/esp32_ethernet.c")
