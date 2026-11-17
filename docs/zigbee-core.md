@@ -102,8 +102,11 @@ writes then reads back its IdentifyTime attribute.
 
 ## Examples
 
-- `examples/zigbee_core_light.bmx`: coordinator/light on H2.
-- `examples/zigbee_core_switch.bmx`: end-device/switch on C6.
+- `examples/zigbee_core_light.bmx`: coordinator with two light endpoints and a
+  custom scalar cluster; run with a `zczr` build on H2 or C6.
+- `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
+  commands, reporting, groups, and custom attribute reads and writes; run with
+  a `zed` build on H2 or C6.
 - `examples/zigbee_core_lifecycle.bmx`: two bounded start/stop cycles.
 
 Use each board's `ESPPORT` and the normal `bmk makeapp -a -r -x -l esp32 -g
@@ -117,8 +120,8 @@ network. The saved network belongs to the previous role and topology.
 The public API covers multiple standard On/Off light or switch endpoints and
 custom scalar clusters on those endpoints. Custom endpoint profiles, broader
 standard cluster templates, nonscalar attribute types, broader group management,
-security configuration, OTA, and application-managed
-sleep are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
+security configuration, OTA, and application-managed sleep are further work.
+`ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
 
 ## Hardware checks on 17 November 2026
