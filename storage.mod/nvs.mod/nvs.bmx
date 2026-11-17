@@ -14,7 +14,7 @@ End Rem
 Module ESP32.Storage.NVS
 ?esp32
 
-ModuleInfo "Version: 0.1"
+ModuleInfo "Version: 0.2"
 ModuleInfo "License: zlib/libpng"
 
 Rem
@@ -137,32 +137,27 @@ bbdoc: The NVS partition uses a format newer than this ESP-IDF runtime supports.
 End Rem
 Const NVSErrorNewVersionFound:Int = NVSErrorBase + $10
 
+Private
+
 Extern "C"
-	Rem
-	bbdoc: Initializes the default NVS partition.
-	returns: ESP_OK on success or an ESP-IDF error code.
-	about: #OpenNVS initializes the default partition automatically, so most
-	applications do not need to call this function directly.
-	End Rem
-	Function NVSInitialize:Int() = "bmx_esp32_nvs_initialize"
-	Rem
-	bbdoc: Returns the result from the most recent failed or successful #OpenNVS call.
-	returns: An ESP-IDF result code.
-	End Rem
-	Function NVSLastOpenError:Int() = "bmx_esp32_nvs_last_open_error"
-	Rem
-	bbdoc: Returns the symbolic ESP-IDF name for an NVS result code.
-	param: Result code returned by an NVS operation.
-	returns: A name such as `ESP_OK` or `ESP_ERR_NVS_NOT_FOUND`.
-	End Rem
-	Function NVSResultName:String(result:Int) = "bmx_esp32_nvs_result_name"
+	Function _NVSInitialize:Int() = "bmx_esp32_nvs_initialize"
+	Function _NVSInitializePartition:Int(partitionName:String) = "bmx_esp32_nvs_initialize_partition"
+	Function _NVSDeinitialize:Int() = "bmx_esp32_nvs_deinitialize"
+	Function _NVSDeinitializePartition:Int(partitionName:String) = "bmx_esp32_nvs_deinitialize_partition"
+	Function _NVSLastOpenError:Int() = "bmx_esp32_nvs_last_open_error"
+	Function _NVSResultName:String(result:Int) = "bmx_esp32_nvs_result_name"
 	Function _NVSOpen:Byte Ptr(name:String, mode:Int) = "bmx_esp32_nvs_open"
+	Function _NVSOpenPartition:Byte Ptr(partitionName:String, name:String, mode:Int) = "bmx_esp32_nvs_open_partition"
 	Function _NVSClose(handle:Byte Ptr) = "bmx_esp32_nvs_close"
 	Function _NVSLastError:Int(handle:Byte Ptr) = "bmx_esp32_nvs_last_error"
 	Function _NVSCommit:Int(handle:Byte Ptr) = "bmx_esp32_nvs_commit"
 	Function _NVSEraseKey:Int(handle:Byte Ptr, key:String) = "bmx_esp32_nvs_erase_key"
 	Function _NVSEraseAll:Int(handle:Byte Ptr) = "bmx_esp32_nvs_erase_all"
 	Function _NVSValueType:Int(handle:Byte Ptr, key:String) = "bmx_esp32_nvs_value_type"
+	Function _NVSSetInt8:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_i8"
+	Function _NVSSetUInt8:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_u8"
+	Function _NVSSetInt16:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_i16"
+	Function _NVSSetUInt16:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_u16"
 	Function _NVSSetInt:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_i32"
 	Function _NVSSetUInt:Int(handle:Byte Ptr, key:String, value:UInt) = "bmx_esp32_nvs_set_u32"
 	Function _NVSSetLong:Int(handle:Byte Ptr, key:String, value:Long) = "bmx_esp32_nvs_set_i64"
@@ -172,6 +167,10 @@ Extern "C"
 	Function _NVSSetString:Int(handle:Byte Ptr, key:String, value:String) = "bmx_esp32_nvs_set_string"
 	Function _NVSSetBytes:Int(handle:Byte Ptr, key:String, value:Byte[]) = "bmx_esp32_nvs_set_blob"
 	Function _NVSSetMemory:Int(handle:Byte Ptr, key:String, data:Byte Ptr, size:UInt) = "bmx_esp32_nvs_set_memory"
+	Function _NVSGetInt8:Int(handle:Byte Ptr, key:String, value:Int Var) = "bmx_esp32_nvs_get_i8"
+	Function _NVSGetUInt8:Int(handle:Byte Ptr, key:String, value:Int Var) = "bmx_esp32_nvs_get_u8"
+	Function _NVSGetInt16:Int(handle:Byte Ptr, key:String, value:Int Var) = "bmx_esp32_nvs_get_i16"
+	Function _NVSGetUInt16:Int(handle:Byte Ptr, key:String, value:Int Var) = "bmx_esp32_nvs_get_u16"
 	Function _NVSGetInt:Int(handle:Byte Ptr, key:String, value:Int Var) = "bmx_esp32_nvs_get_i32"
 	Function _NVSGetUInt:Int(handle:Byte Ptr, key:String, value:UInt Var) = "bmx_esp32_nvs_get_u32"
 	Function _NVSGetLong:Int(handle:Byte Ptr, key:String, value:Long Var) = "bmx_esp32_nvs_get_i64"
@@ -181,11 +180,80 @@ Extern "C"
 	Function _NVSGetString:String(handle:Byte Ptr, key:String) = "bmx_esp32_nvs_get_string"
 	Function _NVSGetBytes:Byte[](handle:Byte Ptr, key:String) = "bmx_esp32_nvs_get_blob"
 	Function _NVSGetMemory:Int(handle:Byte Ptr, key:String, data:Byte Ptr, capacity:UInt, actualSize:UInt Var) = "bmx_esp32_nvs_get_memory"
-	Function _NVSStatistics:Int(used:UInt Var, free:UInt Var, total:UInt Var, namespaces:UInt Var) = "bmx_esp32_nvs_statistics"
+	Function _NVSUsedEntryCount:Int(handle:Byte Ptr, used:UInt Var) = "bmx_esp32_nvs_used_entry_count"
+	Function _NVSOpenIterator:Byte Ptr(handle:Byte Ptr, valueType:Int) = "bmx_esp32_nvs_open_iterator"
+	Function _NVSCloseIterator(handle:Byte Ptr) = "bmx_esp32_nvs_close_iterator"
+	Function _NVSIteratorNext:Int(handle:Byte Ptr) = "bmx_esp32_nvs_iterator_next"
+	Function _NVSIteratorLastError:Int(handle:Byte Ptr) = "bmx_esp32_nvs_iterator_last_error"
+	Function _NVSIteratorNamespace:String(handle:Byte Ptr) = "bmx_esp32_nvs_iterator_namespace"
+	Function _NVSIteratorKey:String(handle:Byte Ptr) = "bmx_esp32_nvs_iterator_key"
+	Function _NVSIteratorType:Int(handle:Byte Ptr) = "bmx_esp32_nvs_iterator_type"
+	Function _NVSStatistics:Int(used:UInt Var, free:UInt Var, available:UInt Var, ..
+		total:UInt Var, namespaces:UInt Var) = "bmx_esp32_nvs_statistics"
+	Function _NVSPartitionStatistics:Int(partitionName:String, used:UInt Var, free:UInt Var, available:UInt Var, ..
+		total:UInt Var, namespaces:UInt Var) = "bmx_esp32_nvs_partition_statistics"
 End Extern
 
+Public
+
 Rem
-bbdoc: Storage usage statistics for the default NVS partition.
+bbdoc: Initializes the default NVS partition.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: #OpenNVS initializes the default partition automatically, so most
+applications do not need to call this function directly.
+End Rem
+Function NVSInitialize:Int()
+	Return _NVSInitialize()
+End Function
+
+Rem
+bbdoc: Initializes a named NVS partition.
+param: ASCII partition label from the active partition table.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: #OpenNVSPartition initializes its selected partition automatically.
+End Rem
+Function NVSInitializePartition:Int(partitionName:String)
+	Return _NVSInitializePartition(partitionName)
+End Function
+
+Rem
+bbdoc: Deinitializes the default NVS partition.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: Close every namespace using the partition before deinitializing it.
+End Rem
+Function NVSDeinitialize:Int()
+	Return _NVSDeinitialize()
+End Function
+
+Rem
+bbdoc: Deinitializes a named NVS partition.
+param: ASCII partition label from the active partition table.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: Close every namespace using the partition before deinitializing it.
+End Rem
+Function NVSDeinitializePartition:Int(partitionName:String)
+	Return _NVSDeinitializePartition(partitionName)
+End Function
+
+Rem
+bbdoc: Returns the result from the most recent failed or successful namespace open.
+returns: An ESP-IDF result code.
+End Rem
+Function NVSLastOpenError:Int()
+	Return _NVSLastOpenError()
+End Function
+
+Rem
+bbdoc: Returns the symbolic ESP-IDF name for an NVS result code.
+param: Result code returned by an NVS operation.
+returns: A name such as `ESP_OK` or `ESP_ERR_NVS_NOT_FOUND`.
+End Rem
+Function NVSResultName:String(result:Int)
+	Return _NVSResultName(result)
+End Function
+
+Rem
+bbdoc: Storage usage statistics for one NVS partition.
 about: NVS stores metadata as entries as well as application values. Strings
 and blobs may occupy multiple entries, so an entry count is not a key count.
 End Rem
@@ -199,7 +267,11 @@ Struct SNVSStatistics
 	End Rem
 	Field freeEntries:UInt
 	Rem
-	bbdoc: Total number of entries in the default NVS partition.
+	bbdoc: Number of entries currently available for application data.
+	End Rem
+	Field availableEntries:UInt
+	Rem
+	bbdoc: Total number of entries in the selected NVS partition.
 	End Rem
 	Field totalEntries:UInt
 	Rem
@@ -209,7 +281,83 @@ Struct SNVSStatistics
 End Struct
 
 Rem
-bbdoc: An open namespace in the default NVS partition.
+bbdoc: Iterator over keys in one open NVS namespace.
+about: The iterator initially refers to the first matching entry. Read its
+properties, then call #Next until that method returns #NVSErrorNotFound. Close
+the iterator early when the application does not consume every entry.
+End Rem
+Type TNVSEntryIterator Final
+	Rem
+	bbdoc: Native iterator handle used by this wrapper.
+	about: Application code should treat this field as opaque.
+	End Rem
+	Field handle:Byte Ptr
+	Rem
+	bbdoc: Closes the native iterator and releases its resources.
+	End Rem
+	Method Close()
+		If handle Then
+			_NVSCloseIterator(handle)
+			handle = Null
+		End If
+	End Method
+
+	Rem
+	bbdoc: Closes the iterator when the object is collected.
+	End Rem
+	Method Delete()
+		Close()
+	End Method
+
+	Rem
+	bbdoc: Advances to the next matching entry.
+	returns: ESP_OK when another entry is available, #NVSErrorNotFound after the
+	final entry, or another ESP-IDF error code.
+	End Rem
+	Method Next:Int()
+		If Not handle Then Return NVSErrorInvalidHandle
+		Return _NVSIteratorNext(handle)
+	End Method
+
+	Rem
+	bbdoc: Returns the result of the most recent iterator operation.
+	returns: An ESP-IDF result code, or #NVSErrorInvalidHandle when closed.
+	End Rem
+	Method LastError:Int()
+		If Not handle Then Return NVSErrorInvalidHandle
+		Return _NVSIteratorLastError(handle)
+	End Method
+
+	Rem
+	bbdoc: Returns the namespace containing the current entry.
+	returns: The namespace name, or an empty string when closed.
+	End Rem
+	Method NamespaceName:String()
+		If Not handle Then Return ""
+		Return _NVSIteratorNamespace(handle)
+	End Method
+
+	Rem
+	bbdoc: Returns the key name of the current entry.
+	returns: The key name, or an empty string when closed.
+	End Rem
+	Method Key:String()
+		If Not handle Then Return ""
+		Return _NVSIteratorKey(handle)
+	End Method
+
+	Rem
+	bbdoc: Returns the native type of the current entry.
+	returns: One of the NVSType constants, or -1 when closed.
+	End Rem
+	Method ValueType:Int()
+		If Not handle Then Return -1
+		Return _NVSIteratorType(handle)
+	End Method
+End Type
+
+Rem
+bbdoc: An open namespace in an NVS partition.
 about: Close a namespace when it is no longer needed. Uncommitted writes are
 not made durable merely by closing or deleting the handle.
 End Rem
@@ -290,6 +438,71 @@ Type TNVSNamespace
 	End Rem
 	Method ValueType:Int(key:String)
 		Return _NVSValueType(handle, key)
+	End Method
+
+	Rem
+	bbdoc: Counts NVS entries occupied by values in this namespace.
+	param: Receives the used entry count, excluding the namespace metadata entry.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	about: Strings and blobs may occupy multiple entries, so this is not a key count.
+	End Rem
+	Method UsedEntryCount:Int(count:UInt Var)
+		Return _NVSUsedEntryCount(handle, count)
+	End Method
+
+	Rem
+	bbdoc: Opens an iterator over keys in this namespace.
+	param: NVSTypeAny or a specific NVSType constant used as a filter.
+	returns: An iterator positioned at the first match, or Null when no entry
+	matches or another error occurs.
+	about: Inspect #LastError when this method returns Null.
+	End Rem
+	Method OpenIterator:TNVSEntryIterator(valueType:Int = NVSTypeAny)
+		Local nativeHandle:Byte Ptr = _NVSOpenIterator(handle, valueType)
+		If Not nativeHandle Then Return Null
+		Local result:TNVSEntryIterator = New TNVSEntryIterator
+		result.handle = nativeHandle
+		Return result
+	End Method
+
+	Rem
+	bbdoc: Stores a signed 8-bit integer.
+	param: ASCII key name of at most 15 characters.
+	param: Value from -128 through 127.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method SetInt8:Int(key:String, value:Int)
+		Return _NVSSetInt8(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Stores an unsigned 8-bit integer.
+	param: ASCII key name of at most 15 characters.
+	param: Value from 0 through 255.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method SetUInt8:Int(key:String, value:Int)
+		Return _NVSSetUInt8(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Stores a signed 16-bit integer.
+	param: ASCII key name of at most 15 characters.
+	param: Value from -32768 through 32767.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method SetInt16:Int(key:String, value:Int)
+		Return _NVSSetInt16(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Stores an unsigned 16-bit integer.
+	param: ASCII key name of at most 15 characters.
+	param: Value from 0 through 65535.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method SetUInt16:Int(key:String, value:Int)
+		Return _NVSSetUInt16(handle, key, value)
 	End Method
 
 	Rem
@@ -382,6 +595,46 @@ Type TNVSNamespace
 	End Rem
 	Method SetBytes:Int(key:String, data:Byte Ptr, size:UInt)
 		Return _NVSSetMemory(handle, key, data, size)
+	End Method
+
+	Rem
+	bbdoc: Reads a signed 8-bit integer into an Int.
+	param: ASCII key name of at most 15 characters.
+	param: Receives a value from -128 through 127.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method GetInt8:Int(key:String, value:Int Var)
+		Return _NVSGetInt8(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Reads an unsigned 8-bit integer into an Int.
+	param: ASCII key name of at most 15 characters.
+	param: Receives a value from 0 through 255.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method GetUInt8:Int(key:String, value:Int Var)
+		Return _NVSGetUInt8(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Reads a signed 16-bit integer into an Int.
+	param: ASCII key name of at most 15 characters.
+	param: Receives a value from -32768 through 32767.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method GetInt16:Int(key:String, value:Int Var)
+		Return _NVSGetInt16(handle, key, value)
+	End Method
+
+	Rem
+	bbdoc: Reads an unsigned 16-bit integer into an Int.
+	param: ASCII key name of at most 15 characters.
+	param: Receives a value from 0 through 65535.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	End Rem
+	Method GetUInt16:Int(key:String, value:Int Var)
+		Return _NVSGetUInt16(handle, key, value)
 	End Method
 
 	Rem
@@ -523,11 +776,36 @@ Function OpenNVS:TNVSNamespace(name:String, openReadOnly:Int = False)
 End Function
 
 Rem
-bbdoc: Reads usage statistics for the default NVS partition.
+bbdoc: Opens a namespace in a named NVS partition.
+param: ASCII partition label from the active partition table.
+param: Non-empty ASCII namespace name of at most 15 characters.
+param: True to require an existing namespace and prohibit writes.
+returns: An open namespace, or Null on failure.
+about: The selected partition is initialized automatically. When this function
+returns Null, call #NVSLastOpenError for the ESP-IDF result code.
+End Rem
+Function OpenNVSPartition:TNVSNamespace(partitionName:String, name:String, openReadOnly:Int = False)
+	Local mode:Int = NVSReadWrite
+	If openReadOnly Then mode = NVSReadOnly
+	Local nativeHandle:Byte Ptr = _NVSOpenPartition(partitionName, name, mode)
+	If Not nativeHandle Then Return Null
+	Local result:TNVSNamespace = New TNVSNamespace
+	result.handle = nativeHandle
+	Return result
+End Function
+
+Rem
+bbdoc: Reads usage statistics for an NVS partition.
 param: Receives the partition statistics.
+param: Optional ASCII partition label; an empty string selects the default NVS partition.
 returns: ESP_OK on success or an ESP-IDF error code.
 End Rem
-Function NVSStatistics:Int(statistics:SNVSStatistics Var)
-	Return _NVSStatistics(statistics.usedEntries, statistics.freeEntries, statistics.totalEntries, statistics.namespaceCount)
+Function NVSStatistics:Int(statistics:SNVSStatistics Var, partitionName:String = "")
+	If partitionName Then
+		Return _NVSPartitionStatistics(partitionName, statistics.usedEntries, statistics.freeEntries, ..
+			statistics.availableEntries, statistics.totalEntries, statistics.namespaceCount)
+	End If
+	Return _NVSStatistics(statistics.usedEntries, statistics.freeEntries, ..
+		statistics.availableEntries, statistics.totalEntries, statistics.namespaceCount)
 End Function
 ?

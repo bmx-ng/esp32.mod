@@ -72,6 +72,10 @@ distinguished from an error, then inspect `LastError` for the precise cause.
 
 | BlitzMax API | Stored NVS type |
 | --- | --- |
+| `SetInt8` / `GetInt8` | Signed 8-bit integer |
+| `SetUInt8` / `GetUInt8` | Unsigned 8-bit integer |
+| `SetInt16` / `GetInt16` | Signed 16-bit integer |
+| `SetUInt16` / `GetUInt16` | Unsigned 16-bit integer |
 | `SetInt` / `GetInt` | Signed 32-bit integer |
 | `SetUInt` / `GetUInt` | Unsigned 32-bit integer |
 | `SetLong` / `GetLong` | Signed 64-bit integer |
@@ -84,6 +88,50 @@ distinguished from an error, then inspect `LastError` for the precise cause.
 Blobs can use managed `Byte[]` values or caller-owned `Byte Ptr` memory. The raw
 read reports the required size in `actualSize`; when the supplied capacity is
 too small it returns `NVSErrorInvalidLength` without overflowing the buffer.
+
+## Inspecting a namespace
+
+`UsedEntryCount` measures the entries occupied by values in one namespace. It
+is useful for capacity diagnostics, but it is not a key count because strings
+and blobs can span multiple entries.
+
+Use `OpenIterator` to enumerate keys, optionally filtering by an `NVSType`
+constant:
+
+```blitzmax
+Local iterator:TNVSEntryIterator = settings.OpenIterator()
+If iterator Then
+	While True
+		Print iterator.Key() + ": type " + iterator.ValueType()
+		Local result:Int = iterator.Next()
+		If result = NVSErrorNotFound Then Exit
+		If result <> 0 Then RuntimeError NVSResultName(result)
+	Wend
+	iterator.Close()
+Else If settings.LastError() <> NVSErrorNotFound Then
+	RuntimeError NVSResultName(settings.LastError())
+End If
+```
+
+The iterator starts on its first entry. Close it when finished, particularly
+when leaving the loop before its natural end.
+
+## Named NVS partitions
+
+`OpenNVS` uses the standard partition labelled `nvs`. A custom partition table
+may provide additional `data,nvs` partitions; open one explicitly with:
+
+```blitzmax
+Local factory:TNVSNamespace = OpenNVSPartition("factory_nvs", "calibration", True)
+```
+
+The partition label is independent of the namespace name. The selected
+partition is initialized automatically. `NVSInitializePartition`,
+`NVSDeinitializePartition`, and the optional partition argument to
+`NVSStatistics` provide explicit lifecycle and diagnostics when required.
+
+Deinitialization invalidates handles associated with that partition. Close all
+of them first.
 
 ## Commit and lifetime
 
@@ -136,9 +184,12 @@ maintenance mode, or preserve the partition for diagnosis.
 
 ## Capacity, wear, and security
 
-`NVSStatistics` reports usage for the default partition. Entry counts are not
-key counts: namespaces consume metadata, and strings and blobs may span several
-entries.
+`NVSStatistics` reports used, free, available, and total entries plus the
+namespace count for the default or a named partition. `freeEntries` includes
+space reserved internally by NVS; `availableEntries` is the more useful figure
+for estimating how much application data can still be stored. Entry counts are
+not key counts: namespaces consume metadata, and strings and blobs may span
+several entries.
 
 NVS wear-levelling makes occasional settings and state updates practical, but
 applications should still avoid committing unchanged values in a tight loop.
@@ -159,4 +210,3 @@ security configuration protects the partition.
 - [`nvs_storage.bmx`](../../examples/nvs_storage.bmx) is the exhaustive
   regression test. It exercises every current value type, raw memory, read-only
   handles, persistence across a deliberate reboot, statistics, and cleanup.
-
