@@ -3,6 +3,7 @@
 #include "esp_err.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
+#include "soc/soc_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -225,6 +226,7 @@ int32_t bmx_esp32_power_deep_sleep_until_gpio(uint32_t pin, int32_t high) {
     if (gpio_get_level((gpio_num_t)pin) == (high != 0))
         return BMX_POWER_PRECONDITION_NOT_MET;
 
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
 #if SOC_PM_SUPPORT_EXT1_WAKEUP_MODE_PER_PIN
     esp_sleep_ext1_wakeup_mode_t mode = high ? ESP_EXT1_WAKEUP_ANY_HIGH :
         ESP_EXT1_WAKEUP_ANY_LOW;
@@ -233,6 +235,14 @@ int32_t bmx_esp32_power_deep_sleep_until_gpio(uint32_t pin, int32_t high) {
         ESP_EXT1_WAKEUP_ALL_LOW;
 #endif
     esp_err_t result = esp_sleep_enable_ext1_wakeup_io(1ULL << pin, mode);
+#elif SOC_GPIO_SUPPORT_HP_PERIPH_PD_SLEEP_WAKEUP
+    esp_sleep_gpio_wake_up_mode_t mode = high ? ESP_GPIO_WAKEUP_GPIO_HIGH :
+        ESP_GPIO_WAKEUP_GPIO_LOW;
+    esp_err_t result = esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(
+        1ULL << pin, mode);
+#else
+    return BMX_POWER_UNAVAILABLE;
+#endif
     if (result != ESP_OK) return bmx_esp32_power_result(result);
     esp_deep_sleep_start();
     return BMX_POWER_ERROR;
@@ -245,5 +255,19 @@ uint32_t bmx_esp32_power_wake_causes(void) {
 uint64_t bmx_esp32_power_wake_gpios(void) {
     if (bmx_esp32_power_last_wake_gpios)
         return bmx_esp32_power_last_wake_gpios;
+#if SOC_PM_SUPPORT_EXT1_WAKEUP
     return esp_sleep_get_ext1_wakeup_status();
+#elif SOC_GPIO_SUPPORT_HP_PERIPH_PD_SLEEP_WAKEUP
+    uint64_t status = esp_sleep_get_gpio_wakeup_status();
+    uint64_t gpio_mask = 0;
+    for (uint32_t bit = 0; status && bit < 64u; ++bit) {
+        if (!(status & (1ULL << bit))) continue;
+        status &= ~(1ULL << bit);
+        gpio_num_t gpio = esp_sleep_wakeup_io_bit2num(bit);
+        if (gpio >= 0 && gpio < 64) gpio_mask |= 1ULL << gpio;
+    }
+    return gpio_mask;
+#else
+    return 0;
+#endif
 }

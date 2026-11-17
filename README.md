@@ -444,6 +444,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
 | Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_image_acceleration.bmx`](examples/rgb_lcd_image_acceleration.bmx), [`rgb_lcd_image_compositing.bmx`](examples/rgb_lcd_image_compositing.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
+| Pulse and quadrature counting | `ESP32.Hardware.PulseCounter` | [`pulse_counter.bmx`](examples/pulse_counter.bmx), [`pulse_counter_xiao_c6.bmx`](examples/pulse_counter_xiao_c6.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades; ESP32 hardware fades and light-sleep PWM policy | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
 | Watchdog and identity | `Embedded.Hardware.Watchdog`, `Embedded.System.Device`, ESP32 facades | [`watchdog_device.bmx`](examples/watchdog_device.bmx) |
@@ -469,6 +470,15 @@ never calls BlitzMax or retains a managed array. The WS2812 example shows how
 to build an LED protocol on this general API, using the 44-pin S3 board's
 GPIO48 LED. Change the pin and color order for other boards.
 The loopback example tests reception with a jumper from GPIO4 to GPIO5.
+
+`ESP32.Hardware.PulseCounter` uses the PCNT peripheral to count pulses or
+decode quadrature inputs without polling in application code. Channels define
+the signed count action for each edge and can use a second GPIO to select or
+invert direction. An optional hardware glitch filter rejects short input
+pulses. Configured counters start, stop, clear, and read without managed-memory
+allocation. Check `PulseCounterSupported` because PCNT availability varies by
+ESP32 family. The examples generate and observe pulses on one GPIO, so their
+hardware smoke test needs no jumper wire.
 
 `Embedded.System.Power.SetSleepGPIOWake` configures one or more GPIO levels to
 wake returning light sleep. `ESP32.System.Power.DeepSleepUntilGPIO` provides the
