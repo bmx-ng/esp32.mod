@@ -75,11 +75,11 @@ serial error or timeout.
   did not include the Zigbee component.
 - An absolute-path custom Zigbee partition table built successfully.
 - The C6 USB console stopped accepting the flash tool after a later serial
-  reset sequence, while the C6 continued transmitting Zigbee toggles. The new
-  read-back request compiled but has not yet been observed over serial. The
-  two-board regression test timed out after 22 seconds with both H2 light
-  states observed but no C6 serial lines. Reset or reconnect the C6 before
-  using that test to validate read-back.
+  reset sequence, while the C6 continued transmitting Zigbee toggles. A manual
+  RESET restored the port. The updated C6 image then flashed successfully.
+- The two-board regression test passed after the reset: C6 logged successful
+  toggle and read requests, H2 logged both On/Off states, and C6 read back
+  `On/Off=1`. The test completed in about 20 seconds with a 55-second timeout.
 
 The bring-up source is adapted from Espressif's current
 [on/off light](https://github.com/espressif/esp-zigbee-sdk/tree/main/examples/home_automation_devices/on_off_light)
