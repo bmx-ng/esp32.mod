@@ -16,13 +16,18 @@ Local lightEndpoint:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
+Local nextRevision:UInt = MilliSecs() + 3000
+Local nextIdentifyWrite:UInt = MilliSecs() + 5000
+Local nextIdentifyRead:UInt
 Local nextToggle:UInt = MilliSecs() + 10000
 Local nextRead:UInt
 Local event:SZigbeeEvent
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
-			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value
+			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value + ..
+			" cluster=" + event.cluster + " attribute=" + event.attribute + " type=" + event.dataType + ..
+			" size=" + event.valueSize
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
 		If event.kind = ZigbeeEventStartup And Not event.factoryNew Then joined = True
 		If event.kind = ZigbeeEventOnOffMatch Then
@@ -53,6 +58,22 @@ While True
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)
 		Print "Add group submission=" + result
 		nextGroup = MilliSecs() + 10000
+	End If
+	If bound And MilliSecs() >= nextRevision Then
+		result = ZigbeeReadAttribute(1, lightAddress, lightEndpoint, 6, $fffd)
+		Print "Cluster revision read submission=" + result
+		nextRevision = MilliSecs() + 15000
+	End If
+	If bound And MilliSecs() >= nextIdentifyWrite Then
+		result = ZigbeeWriteScalar(1, lightAddress, lightEndpoint, 3, 0, ZigbeeTypeUInt16, 3)
+		Print "Identify write submission=" + result
+		If result = 0 Then nextIdentifyRead = MilliSecs() + 200
+		nextIdentifyWrite = MilliSecs() + 15000
+	End If
+	If nextIdentifyRead And MilliSecs() >= nextIdentifyRead Then
+		result = ZigbeeReadAttribute(1, lightAddress, lightEndpoint, 3, 0)
+		Print "Identify read submission=" + result
+		nextIdentifyRead = 0
 	End If
 	If joined And bound And MilliSecs() >= nextToggle Then
 		If groupReady Then

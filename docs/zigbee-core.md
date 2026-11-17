@@ -68,6 +68,16 @@ manage a remote light's membership, with response events for the outcome.
 `ZigbeeSendGroupOnOff` sends an On/Off command to every endpoint in the group.
 The switch example uses group 4660 after the Add Group response succeeds.
 
+`ZigbeeReadAttribute` reads one attribute from any remote cluster. A
+`ZigbeeEventRead` provides its ZCL `dataType`, `valueSize`, and `value` for
+Boolean, 8-bit, 16-bit, and 32-bit integer, bitmap, enum, and raw data types.
+Signed values are sign-extended in `value`; for a 32-bit unsigned value, use
+its raw bit pattern. An unsupported type has `valueSize` zero. The same scalar
+fields are available on incoming attribute reports. `ZigbeeWriteScalar`
+writes one of those scalar types, with a `ZigbeeEventWrite` response carrying
+the remote status. The switch example reads the light's cluster revision and
+writes then reads back its IdentifyTime attribute.
+
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator/light on H2.
@@ -83,9 +93,9 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API currently covers one standard On/Off endpoint. Generic endpoint
-and cluster registration, arbitrary attribute types, generic reporting,
-broader group management, security configuration, OTA, and application-managed sleep
-are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
+and cluster registration, nonscalar attribute types, generic reporting,
+broader group management, security configuration, OTA, and application-managed
+sleep are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
 
 ## Hardware checks on 17 November 2026
@@ -105,3 +115,7 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   report as well as toggles and a read response.
 - `tests/zigbee_core_pair.py --require-report --require-group` passed after the
   H2 switch added the C6 light to a group and sent a group-addressed toggle.
+- `tests/zigbee_core_pair.py --require-report --require-group --require-scalar
+  --require-write` passed after the H2 switch read the C6 light's 16-bit
+  cluster revision, wrote its 16-bit IdentifyTime attribute, and read back
+  the changed value.

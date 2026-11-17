@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.6"
+ModuleInfo "Version: 0.7"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -174,6 +174,39 @@ Rem
 bbdoc: A remote endpoint replied to Remove Group; value is the group identifier.
 End Rem
 Const ZigbeeEventGroupRemoved:Int = 17
+Rem
+bbdoc: A remote scalar Write Attribute request completed.
+End Rem
+Const ZigbeeEventWrite:Int = 18
+
+Rem
+bbdoc: ZCL Boolean scalar data type.
+End Rem
+Const ZigbeeTypeBool:Int = $10
+Rem
+bbdoc: ZCL unsigned 8-bit scalar data type.
+End Rem
+Const ZigbeeTypeUInt8:Int = $20
+Rem
+bbdoc: ZCL unsigned 16-bit scalar data type.
+End Rem
+Const ZigbeeTypeUInt16:Int = $21
+Rem
+bbdoc: ZCL unsigned 32-bit scalar data type.
+End Rem
+Const ZigbeeTypeUInt32:Int = $23
+Rem
+bbdoc: ZCL signed 8-bit scalar data type.
+End Rem
+Const ZigbeeTypeInt8:Int = $28
+Rem
+bbdoc: ZCL signed 16-bit scalar data type.
+End Rem
+Const ZigbeeTypeInt16:Int = $29
+Rem
+bbdoc: ZCL signed 32-bit scalar data type.
+End Rem
+Const ZigbeeTypeInt32:Int = $2b
 
 Rem
 bbdoc: One Zigbee event copied from a native bounded queue.
@@ -225,6 +258,14 @@ Struct SZigbeeEvent
 	bbdoc: True when a startup event found no saved Zigbee network state.
 	End Rem
 	Field factoryNew:Int
+	Rem
+	bbdoc: ZCL data type for a scalar attribute event.
+	End Rem
+	Field dataType:Int
+	Rem
+	bbdoc: Number of scalar value bytes copied, or zero for unsupported types.
+	End Rem
+	Field valueSize:Int
 End Struct
 
 Rem
@@ -275,7 +316,8 @@ Extern "C"
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_read_onoff"
 	Function _ZigbeeCorePoll:Int(kind:Int Var, status:Int Var, signal:Int Var, endpoint:Int Var, ..
 		cluster:Int Var, attribute:Int Var, value:Int Var, shortAddress:Int Var, ..
-		panId:Int Var, channel:Int Var, factoryNew:Int Var) = "bmx_esp32_zigbee_core_poll"
+		panId:Int Var, channel:Int Var, factoryNew:Int Var, dataType:Int Var, ..
+		valueSize:Int Var) = "bmx_esp32_zigbee_core_poll"
 	Function _ZigbeeCoreDropped:UInt() = "bmx_esp32_zigbee_core_dropped"
 	Function _ZigbeeCoreFindOnOff:Int() = "bmx_esp32_zigbee_core_find_onoff"
 	Function _ZigbeeCoreBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -291,6 +333,12 @@ Extern "C"
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_remove_group"
 	Function _ZigbeeCoreGroupOnOff:Int(sourceEndpoint:Int, groupId:Int, command:Int) = ..
 		"bmx_esp32_zigbee_core_group_onoff"
+	Function _ZigbeeCoreReadAttribute:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int) = ..
+		"bmx_esp32_zigbee_core_read_attribute"
+	Function _ZigbeeCoreWriteScalar:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, dataType:Int, value:Int) = ..
+		"bmx_esp32_zigbee_core_write_scalar"
 End Extern
 Public
 
@@ -469,6 +517,29 @@ Function ZigbeeSendGroupOnOff:Int(sourceEndpoint:Int, groupId:Int, command:Int)
 End Function
 
 Rem
+bbdoc: Requests one attribute from any remote cluster.
+about: The response is a ZigbeeEventRead. Boolean, 8-bit, 16-bit and 32-bit
+integer, bitmap, enum and raw data types are copied into value with their
+ZCL dataType and valueSize. Other types report valueSize zero.
+End Rem
+Function ZigbeeReadAttribute:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int)
+	Return _ZigbeeCoreReadAttribute(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId)
+End Function
+
+Rem
+bbdoc: Writes one remote Boolean or 8/16/32-bit scalar attribute.
+about: dataType is a ZCL scalar type; value holds the integer or its raw
+32-bit bit pattern. Poll for ZigbeeEventWrite to inspect the remote status.
+End Rem
+Function ZigbeeWriteScalar:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, dataType:Int, value:Int)
+	Return _ZigbeeCoreWriteScalar(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, dataType, value)
+End Function
+
+Rem
 bbdoc: Removes the oldest event from the native Zigbee queue.
 returns: True if an event was returned; False if the queue is empty.
 about: Native callbacks copy primitive values into a bounded queue. The
@@ -477,7 +548,7 @@ End Rem
 Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
 	Return _ZigbeeCorePoll(event.kind, event.status, event.signal, event.endpoint, ..
 		event.cluster, event.attribute, event.value, event.shortAddress, event.panId, ..
-		event.channel, event.factoryNew)
+		event.channel, event.factoryNew, event.dataType, event.valueSize)
 End Function
 
 Rem

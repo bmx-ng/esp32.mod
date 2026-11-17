@@ -30,10 +30,12 @@
 #define ZB_EVENT_REPORT 15
 #define ZB_EVENT_GROUP_ADDED 16
 #define ZB_EVENT_GROUP_REMOVED 17
+#define ZB_EVENT_WRITE 18
 
 typedef struct {
     int32_t kind, status, signal, endpoint, cluster, attribute, value;
     int32_t short_addr, pan_id, channel, factory_new;
+    int32_t data_type, value_size;
 } zb_event_t;
 
 typedef struct {
@@ -67,6 +69,66 @@ static void emit_status(int kind, int status, int signal)
 {
     zb_event_t event = {.kind = kind, .status = status, .signal = signal};
     emit(event);
+}
+
+static void copy_scalar(zb_event_t *event, int type, const void *data)
+{
+    event->data_type = type;
+    if (!data) return;
+    switch (type) {
+        case EZB_ZCL_ATTR_TYPE_BOOL:
+        case EZB_ZCL_ATTR_TYPE_DATA8:
+        case EZB_ZCL_ATTR_TYPE_MAP8:
+        case EZB_ZCL_ATTR_TYPE_UINT8:
+        case EZB_ZCL_ATTR_TYPE_ENUM8:
+            event->value = *(const uint8_t *)data;
+            event->value_size = 1;
+            break;
+        case EZB_ZCL_ATTR_TYPE_INT8:
+            event->value = *(const int8_t *)data;
+            event->value_size = 1;
+            break;
+        case EZB_ZCL_ATTR_TYPE_DATA16:
+        case EZB_ZCL_ATTR_TYPE_MAP16:
+        case EZB_ZCL_ATTR_TYPE_UINT16:
+        case EZB_ZCL_ATTR_TYPE_ENUM16: {
+            uint16_t value;
+            memcpy(&value, data, sizeof(value));
+            event->value = value;
+            event->value_size = 2;
+            break;
+        }
+        case EZB_ZCL_ATTR_TYPE_INT16: {
+            int16_t value;
+            memcpy(&value, data, sizeof(value));
+            event->value = value;
+            event->value_size = 2;
+            break;
+        }
+        case EZB_ZCL_ATTR_TYPE_DATA32:
+        case EZB_ZCL_ATTR_TYPE_MAP32:
+        case EZB_ZCL_ATTR_TYPE_UINT32: {
+            uint32_t value;
+            memcpy(&value, data, sizeof(value));
+            event->value = (int32_t)value;
+            event->value_size = 4;
+            break;
+        }
+        case EZB_ZCL_ATTR_TYPE_INT32:
+            memcpy(&event->value, data, sizeof(event->value));
+            event->value_size = 4;
+            break;
+        default:
+            break;
+    }
+}
+
+static int scalar_size(int type)
+{
+    zb_event_t event = {0};
+    uint32_t zero = 0;
+    copy_scalar(&event, type, &zero);
+    return event.value_size;
 }
 
 static bool signal_handler(const ezb_app_signal_t *signal)
@@ -121,9 +183,8 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
                             .endpoint = attribute->info.dst_ep,
                             .cluster = attribute->info.cluster_id,
                             .attribute = attribute->in.attribute.id};
-        if (attribute->in.attribute.data.value && event.cluster == EZB_ZCL_CLUSTER_ID_ON_OFF &&
-                event.attribute == EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID)
-            event.value = *(const uint8_t *)attribute->in.attribute.data.value;
+        copy_scalar(&event, attribute->in.attribute.data.type,
+                attribute->in.attribute.data.value);
         emit(event);
     } else if (action == EZB_ZCL_CORE_READ_ATTR_RSP_CB_ID && message) {
         const ezb_zcl_cmd_read_attr_rsp_message_t *response = message;
@@ -133,10 +194,18 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
                                 .endpoint = response->info.dst_ep,
                                 .cluster = response->info.cluster_id,
                                 .attribute = attribute->attr_id};
-            if (attribute->status == EZB_ZCL_STATUS_SUCCESS && attribute->attr_value &&
-                    event.cluster == EZB_ZCL_CLUSTER_ID_ON_OFF &&
-                    event.attribute == EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID)
-                event.value = *(const uint8_t *)attribute->attr_value;
+            if (attribute->status == EZB_ZCL_STATUS_SUCCESS)
+                copy_scalar(&event, attribute->attr_type, attribute->attr_value);
+            emit(event);
+        }
+    } else if (action == EZB_ZCL_CORE_WRITE_ATTR_RSP_CB_ID && message) {
+        const ezb_zcl_cmd_write_attr_rsp_message_t *response = message;
+        for (const ezb_zcl_write_attr_rsp_variable_t *attribute = response->in.variables;
+                attribute; attribute = attribute->next) {
+            zb_event_t event = {.kind = ZB_EVENT_WRITE, .status = attribute->status,
+                                .endpoint = response->info.dst_ep,
+                                .cluster = response->info.cluster_id,
+                                .attribute = attribute->attr_id};
             emit(event);
         }
     } else if (action == EZB_ZCL_CORE_CONFIG_REPORT_RSP_CB_ID && message) {
@@ -160,10 +229,7 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
                                 .endpoint = report->info.dst_ep,
                                 .cluster = report->info.cluster_id,
                                 .attribute = attribute->attr_id};
-            if (attribute->attr_value && event.cluster == EZB_ZCL_CLUSTER_ID_ON_OFF &&
-                    event.attribute == EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID &&
-                    attribute->attr_type == EZB_ZCL_ATTR_TYPE_BOOL)
-                event.value = *(const uint8_t *)attribute->attr_value;
+            copy_scalar(&event, attribute->attr_type, attribute->attr_value);
             if (report->in.header && report->in.header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT)
                 event.short_addr = report->in.header->src_addr.u.short_addr;
             emit(event);
@@ -463,6 +529,47 @@ int bmx_esp32_zigbee_core_read_onoff(int source_ep, int destination_addr, int de
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
+int bmx_esp32_zigbee_core_read_attribute(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id)
+{
+    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 || cluster_id < 0 || cluster_id > 65535 ||
+            attribute_id < 0 || attribute_id > 65535) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t attribute = (uint16_t)attribute_id;
+    ezb_zcl_read_attr_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep,
+        .cluster_id = (uint16_t)cluster_id,
+    }, .payload = {.attr_number = 1, .attr_field = &attribute}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_read_attr_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_write_scalar(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id, int data_type, int32_t value)
+{
+    int size = scalar_size(data_type);
+    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 || cluster_id < 0 || cluster_id > 65535 ||
+            attribute_id < 0 || attribute_id > 65535 || !size) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_attribute_t attribute = {.id = (uint16_t)attribute_id,
+                                     .data = {.type = (uint8_t)data_type,
+                                              .size = (uint16_t)size, .value = &value}};
+    ezb_zcl_write_attr_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep,
+        .cluster_id = (uint16_t)cluster_id,
+    }, .payload = {.attr_number = 1, .attr_field = &attribute}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_write_attr_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_find_onoff(void)
 {
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -618,10 +725,10 @@ int bmx_esp32_zigbee_core_group_onoff(int source_ep, int group_id, int command)
 
 int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoint,
         int *cluster, int *attribute, int *value, int *short_addr, int *pan_id,
-        int *channel, int *factory_new)
+        int *channel, int *factory_new, int *data_type, int *value_size)
 {
     if (!kind || !status || !signal || !endpoint || !cluster || !attribute || !value ||
-            !short_addr || !pan_id || !channel || !factory_new) return 0;
+            !short_addr || !pan_id || !channel || !factory_new || !data_type || !value_size) return 0;
     portENTER_CRITICAL(&queue_lock);
     if (queue_read == queue_write) {
         portEXIT_CRITICAL(&queue_lock);
@@ -635,6 +742,7 @@ int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoin
     *attribute = event.attribute; *value = event.value;
     *short_addr = event.short_addr; *pan_id = event.pan_id;
     *channel = event.channel; *factory_new = event.factory_new;
+    *data_type = event.data_type; *value_size = event.value_size;
     return 1;
 }
 
