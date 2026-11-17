@@ -38,6 +38,8 @@ def main():
                         help="also require discovery of the second light endpoint")
     parser.add_argument("--require-custom-cluster", action="store_true",
                         help="also require discovery, write, and readback of a custom cluster")
+    parser.add_argument("--require-local-update", action="store_true",
+                        help="also require a remote read of a local custom attribute update")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -48,7 +50,7 @@ def main():
     deadline = time.monotonic() + args.timeout
     states = set()
     toggle = read = report = group = group_change = scalar = write = write_readback = extra = False
-    custom_match = custom_write = custom_read = False
+    custom_match = custom_write = custom_read = custom_local = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -87,6 +89,9 @@ def main():
                 if ("cluster=64512 attribute=1" in line and "type=33" in line
                         and "size=2" in line and "value=43 " in line):
                     custom_read = True
+                if ("cluster=64512 attribute=1" in line and "type=33" in line
+                        and "size=2" in line and "value=44 " in line):
+                    custom_local = True
             if name == "switch" and "Zigbee event 15 status=0" in line:
                 report = True
             if (name == "switch" and "Zigbee event 18 status=0" in line
@@ -102,19 +107,22 @@ def main():
                     and (write and write_readback or not args.require_write)
                     and (extra or not args.require_extra_endpoint)
                     and (custom_match and custom_write and custom_read
-                         or not args.require_custom_cluster)):
+                         or not args.require_custom_cluster)
+                    and (custom_local or not args.require_local_update)):
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
                       + (", and read a typed scalar" if args.require_scalar else "")
                       + (", and wrote and read back a scalar" if args.require_write else "")
                       + (", and found a second endpoint" if args.require_extra_endpoint else "")
-                      + (", and checked a custom cluster" if args.require_custom_cluster else ""), flush=True)
+                      + (", and checked a custom cluster" if args.require_custom_cluster else "")
+                      + (", and read a local update" if args.require_local_update else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
               f"report={report}, group={group}, group_change={group_change}, scalar={scalar}, "
               f"write={write}, write_readback={write_readback}, extra={extra}, "
-              f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}",
+              f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}, "
+              f"custom_local={custom_local}",
               flush=True)
         return 1
     finally:

@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.1"
+ModuleInfo "Version: 1.2"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -364,6 +364,8 @@ Extern "C"
 		destinationEndpoint:Int, clusterId:Int) = "bmx_esp32_zigbee_core_bind_cluster"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
+	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
@@ -587,6 +589,17 @@ the application is responsible for applying the state to its physical output.
 End Rem
 Function ZigbeeSetLocalOnOff:Int(endpoint:Int, on:Int)
 	Return _ZigbeeCoreSetLocalOnOff(endpoint, on)
+End Function
+
+Rem
+bbdoc: Updates one local custom scalar server attribute.
+about: The attribute must have been registered before ZigbeeStart. The value
+uses its registered ZCL type. For a 32-bit unsigned attribute, pass the raw
+bit pattern in value. This updates the Zigbee data model; the application
+must also update any physical output.
+End Rem
+Function ZigbeeSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, value:Int)
+	Return _ZigbeeCoreSetCustomScalar(endpoint, clusterId, attributeId, value)
 End Function
 
 Rem

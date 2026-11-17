@@ -849,6 +849,32 @@ int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
 }
 
+int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,
+        int attribute_id, int32_t value)
+{
+    if (!endpoint_kind(endpoint) || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
+            cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    zb_custom_attribute_t *attribute = NULL;
+    for (unsigned i = 0; i < custom_attribute_count; ++i) {
+        if (custom_attributes[i].endpoint == endpoint &&
+                custom_attributes[i].cluster == cluster_id &&
+                custom_attributes[i].attribute == attribute_id) {
+            attribute = &custom_attributes[i];
+            break;
+        }
+    }
+    if (!attribute) return ESP_ERR_INVALID_ARG;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            (uint16_t)cluster_id, EZB_ZCL_CLUSTER_SERVER, (uint16_t)attribute_id,
+            EZB_ZCL_STD_MANUF_CODE, &value, false);
+    if (result == EZB_ZCL_STATUS_SUCCESS) attribute->value = value;
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_addr,
         int destination_ep, int cluster_id, int attribute_id, int data_type,
         int min_interval, int max_interval, int32_t reportable_change)

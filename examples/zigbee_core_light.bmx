@@ -14,6 +14,7 @@ If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee coordinator/light starting"
 
 Local event:SZigbeeEvent
+Local nextCustomUpdate:UInt = MilliSecs() + 20000
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
@@ -24,6 +25,8 @@ While True
 			Print "Initial light state result=" + result
 			result = ZigbeeSetLocalOnOff(11, 0)
 			Print "Second light state result=" + result
+			result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
+			Print "Custom local state result=" + result
 		End If
 		If event.kind = ZigbeeEventDeviceAnnounced Then
 			result = ZigbeeBindCluster(10, event.shortAddress, 1, 6)
@@ -37,5 +40,10 @@ While True
 			Print "Permit joining result=" + result
 		End If
 	Wend
+	If MilliSecs() >= nextCustomUpdate Then
+		result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
+		Print "Custom local update result=" + result
+		nextCustomUpdate = MilliSecs() + 20000
+	End If
 	Delay 20
 Wend

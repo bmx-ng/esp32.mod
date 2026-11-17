@@ -66,6 +66,8 @@ eight custom clusters and 32 custom scalar attributes may be configured;
 `ZigbeeClearCustomClusters` clears them while stopped. The C6 light example
 adds cluster 0xFC00 on endpoint 11, with a writable 16-bit attribute. The H2
 switch discovers the cluster, writes the attribute, and reads it back.
+`ZigbeeSetCustomScalar` updates a local custom server attribute from the
+application, so a remote client can read its new value.
 
 `ZigbeeFindServers` broadcasts a match request for any server cluster and
 returns `ZigbeeEventMatch` records with address, endpoint, and cluster.
@@ -147,3 +149,6 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   the reporting, group, scalar read, and write checks.
 - With custom cluster 0xFC00 on endpoint 11, the H2 switch discovered the
   cluster and wrote then read back the 16-bit value 43.
+- The C6 application then updated that local custom attribute to 44;
+  `tests/zigbee_core_pair.py --require-local-update` confirmed the H2 read
+  back 44 while the other pair checks still passed.

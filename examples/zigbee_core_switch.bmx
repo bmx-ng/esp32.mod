@@ -50,6 +50,7 @@ While True
 		If event.kind = ZigbeeEventMatch And event.cluster = $fc00 Then
 			customAddress = event.shortAddress
 			customEndpoint = event.endpoint
+			If Not customFound Then nextCustomRead = MilliSecs() + 100
 			customFound = True
 		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
@@ -80,7 +81,7 @@ While True
 	If nextCustomRead And MilliSecs() >= nextCustomRead Then
 		result = ZigbeeReadAttribute(1, customAddress, customEndpoint, $fc00, 1)
 		Print "Custom read submission=" + result
-		nextCustomRead = 0
+		nextCustomRead = MilliSecs() + 5000
 	End If
 	If bound And Not reportingConfigured And MilliSecs() >= nextReporting Then
 		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)
