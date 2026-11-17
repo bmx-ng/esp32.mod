@@ -17,6 +17,8 @@ set(BLITZMAX_ESP32_NETWORK_SOURCES)
 set(BLITZMAX_ESP32_NETWORK_REQUIREMENTS)
 set(BLITZMAX_ESP32_RMT_SOURCES)
 set(BLITZMAX_ESP32_RMT_REQUIREMENTS)
+set(BLITZMAX_ESP32_PULSE_COUNTER_SOURCES)
+set(BLITZMAX_ESP32_GPTIMER_SOURCES)
 set(BLITZMAX_ESP32_DISPLAY_REQUIREMENTS)
 set(BLITZMAX_ESP32_TOUCH_REQUIREMENTS)
 if (BLITZMAX_ESP32_RGB_DISPLAY_ENABLED)
@@ -31,6 +33,16 @@ if (NOT BLITZMAX_ESP32_RMT_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_RMT_SOURCES
         "${ESP32_MODULE_ROOT}/hardware.mod/rmt.mod/native/esp32_rmt.c")
     list(APPEND BLITZMAX_ESP32_RMT_REQUIREMENTS esp_driver_rmt)
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_hardware_pulsecounter_pulsecounter" BLITZMAX_ESP32_PULSE_COUNTER_INDEX)
+if (NOT BLITZMAX_ESP32_PULSE_COUNTER_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_PULSE_COUNTER_SOURCES
+        "${ESP32_MODULE_ROOT}/hardware.mod/pulsecounter.mod/native/esp32_pulse_counter.c")
+endif()
+list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_hardware_gptimer_gptimer" BLITZMAX_ESP32_GPTIMER_INDEX)
+if (NOT BLITZMAX_ESP32_GPTIMER_INDEX EQUAL -1)
+    list(APPEND BLITZMAX_ESP32_GPTIMER_SOURCES
+        "${ESP32_MODULE_ROOT}/hardware.mod/gptimer.mod/native/esp32_gptimer.c")
 endif()
 if (BLITZMAX_ESP32_BLE_ENABLED)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
@@ -141,6 +153,8 @@ set(BLITZMAX_ESP32_SOURCES
     "${ESP32_MODULE_ROOT}/runtime.mod/native/esp32_watchdog.c"
     ${BLITZMAX_ESP32_NETWORK_SOURCES}
     ${BLITZMAX_ESP32_RMT_SOURCES}
+    ${BLITZMAX_ESP32_PULSE_COUNTER_SOURCES}
+    ${BLITZMAX_ESP32_GPTIMER_SOURCES}
     "${BRL_BLITZ_ROOT}/ryu/ryu/f2s.c"
     "${BRL_BLITZ_ROOT}/ryu/ryu/d2s.c"
 )
@@ -160,7 +174,7 @@ idf_component_register(
         "${BLITZMAX_APPLICATION_ROOT}"
         "${BRL_BLITZ_ROOT}"
         "${BRL_BLITZ_ROOT}/ryu"
-    PRIV_REQUIRES app_update bootloader_support esp_adc esp_driver_gpio esp_driver_i2c esp_driver_ledc esp_driver_sdmmc esp_driver_spi esp_driver_uart esp_hw_support esp_partition esp_psram esp_system esp_timer fatfs freertos heap joltwallet__littlefs nvs_flash sdmmc ${BLITZMAX_ESP32_NETWORK_REQUIREMENTS} ${BLITZMAX_ESP32_RMT_REQUIREMENTS} ${BLITZMAX_ESP32_DISPLAY_REQUIREMENTS} ${BLITZMAX_ESP32_TOUCH_REQUIREMENTS}
+    PRIV_REQUIRES app_update bootloader_support esp_adc esp_driver_gpio esp_driver_gptimer esp_driver_i2c esp_driver_ledc esp_driver_pcnt esp_driver_sdmmc esp_driver_spi esp_driver_uart esp_hw_support esp_partition esp_psram esp_system esp_timer fatfs freertos heap joltwallet__littlefs nvs_flash sdmmc ${BLITZMAX_ESP32_NETWORK_REQUIREMENTS} ${BLITZMAX_ESP32_RMT_REQUIREMENTS} ${BLITZMAX_ESP32_DISPLAY_REQUIREMENTS} ${BLITZMAX_ESP32_TOUCH_REQUIREMENTS}
 )
 if (BLITZMAX_ESP32_RGB_DISPLAY_ENABLED)
     # The project seeds these drivers during component discovery. Link their

@@ -439,13 +439,15 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | --- | --- | --- |
 | GPIO | `Embedded.Hardware.GPIO`, `ESP32.Hardware.GPIO` | [`gpio_mirrored.bmx`](examples/gpio_mirrored.bmx), [`gpio_events.bmx`](examples/gpio_events.bmx) |
 | Time and calendar | `Embedded.System.Time`, `ESP32.System.Time`, `ESP32.System.Calendar` | [`time_alarm.bmx`](examples/time_alarm.bmx), [`calendar.bmx`](examples/calendar.bmx) |
-| Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx) |
+| Power | `Embedded.System.Power`, `ESP32.System.Power` | [`power.bmx`](examples/power.bmx), [`power_gpio_wake.bmx`](examples/power_gpio_wake.bmx), [`power_gpio_wake_xiao_c6.bmx`](examples/power_gpio_wake_xiao_c6.bmx) |
 | UART | `Embedded.Hardware.UART`, `Embedded.IO.BufferedUART`, `ESP32.Hardware.UART` | [`uart_controller.bmx`](examples/uart_controller.bmx), [`buffered_uart.bmx`](examples/buffered_uart.bmx) |
 | I2C and SPI | `Embedded.Hardware.I2C`, `Embedded.Hardware.SPI`, ESP32 facades | [`i2c_controller.bmx`](examples/i2c_controller.bmx), [`spi_controller.bmx`](examples/spi_controller.bmx) |
 | Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_image_acceleration.bmx`](examples/rgb_lcd_image_acceleration.bmx), [`rgb_lcd_image_compositing.bmx`](examples/rgb_lcd_image_compositing.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
+| Pulse and quadrature counting | `ESP32.Hardware.PulseCounter` | [`pulse_counter.bmx`](examples/pulse_counter.bmx), [`pulse_counter_xiao_c6.bmx`](examples/pulse_counter_xiao_c6.bmx) |
+| General-purpose hardware timers | `ESP32.Hardware.GPTimer` | [`gptimer.bmx`](examples/gptimer.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
-| ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
+| ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades; ESP32 hardware fades and light-sleep PWM policy | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
 | Watchdog and identity | `Embedded.Hardware.Watchdog`, `Embedded.System.Device`, ESP32 facades | [`watchdog_device.bmx`](examples/watchdog_device.bmx) |
 | PSRAM | `ESP32.Hardware.PSRAM` | [`psram_info.bmx`](examples/psram_info.bmx) |
 | Filesystems | `ESP32.Storage.LittleFS`, `ESP32.Storage.SDCard` | [`storage_smoke.bmx`](examples/storage_smoke.bmx) |
@@ -469,6 +471,29 @@ never calls BlitzMax or retains a managed array. The WS2812 example shows how
 to build an LED protocol on this general API, using the 44-pin S3 board's
 GPIO48 LED. Change the pin and color order for other boards.
 The loopback example tests reception with a jumper from GPIO4 to GPIO5.
+
+`ESP32.Hardware.PulseCounter` uses the PCNT peripheral to count pulses or
+decode quadrature inputs without polling in application code. Channels define
+the signed count action for each edge and can use a second GPIO to select or
+invert direction. An optional hardware glitch filter rejects short input
+pulses. Configured counters start, stop, clear, and read without managed-memory
+allocation. Check `PulseCounterSupported` because PCNT availability varies by
+ESP32 family. The examples generate and observe pulses on one GPIO, so their
+hardware smoke test needs no jumper wire.
+
+`ESP32.Hardware.GPTimer` provides independent up/down hardware counters,
+selectable tick resolution, one-shot or automatically reloading alarms, and
+raw counter access. Alarm interrupts place fixed-size records into a bounded
+native queue instead of crossing into managed code. Applications can poll or
+wait for those records and inspect a dropped-record count if they do not drain
+the queue quickly enough.
+
+`Embedded.System.Power.SetSleepGPIOWake` configures one or more GPIO levels to
+wake returning light sleep. `ESP32.System.Power.DeepSleepUntilGPIO` provides the
+separate restart-on-wake form for RTC-capable pins, while `PowerWakeGPIOs`
+identifies the pin after either kind of wake. RTC-capable pins vary by chip and
+are a stricter subset than light-sleep wake pins. The hardware examples cover a
+classic WROOM-32D on GPIO4 and a XIAO ESP32-C6 on D0/GPIO0.
 
 ## Managed memory and PSRAM
 

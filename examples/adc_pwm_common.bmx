@@ -34,7 +34,22 @@ Function RunADCPWMTests(ADCPin:UInt, PWMPin:UInt, SecondPWMPin:UInt, ..
 	Local achieved:UInt = PWMInitPin(PWMPin, 1000, PWMDutyMaximum / 2)
 	passed :& achieved > 0 And PWMChannelForPin(PWMPin) >= 0
 	passed :& PWMTimerForPin(PWMPin) >= 0 And PWMResolutionBitsForPin(PWMPin) > 0
+	passed :& PWMGetPinSleepMode(PWMPin) = EPWMSleepMode.StopOutput
+	passed :& PWMSetPinSleepMode(PWMPin, EPWMSleepMode.KeepOutputAlive)
+	passed :& PWMGetPinSleepMode(PWMPin) = EPWMSleepMode.KeepOutputAlive
+	passed :& PWMSetPinSleepMode(PWMPin, EPWMSleepMode.StopOutput)
 	passed :& PWMSetPinDuty(PWMPin, PWMDutyMaximum / 4)
+	passed :& PWMFadePinDuty(PWMPin, PWMDutyMaximum / 2, 20, True)
+	passed :& PWMGetPinDuty(PWMPin) = PWMDutyMaximum / 2 And Not PWMIsPinFading(PWMPin)
+	Local asyncStarted:Int = PWMFadePinDuty(PWMPin, PWMDutyMaximum / 4, 500)
+	Local asyncActive:Int = PWMIsPinFading(PWMPin)
+	passed :& asyncStarted And asyncActive
+	Delay 50
+	Local activeAfter50:Int = PWMIsPinFading(PWMPin)
+	passed :& activeAfter50
+	Delay 750
+	Local asyncFinished:Int = Not PWMIsPinFading(PWMPin)
+	passed :& PWMGetPinDuty(PWMPin) = PWMDutyMaximum / 4 And asyncFinished
 	passed :& PWMInitPin(SecondPWMPin, 1000, PWMDutyMaximum / 2) = achieved
 	passed :& PWMTimerForPin(SecondPWMPin) = PWMTimerForPin(PWMPin)
 	passed :& PWMSetPinFrequency(PWMPin, 2000) = 0
