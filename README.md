@@ -445,6 +445,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Displays and touch | `Embedded.Drivers.Display`, `Embedded.Drivers.Display.Image`, `Embedded.Drivers.Display.Font`, `Embedded.Graphics2D`, `Embedded.Drivers.Displays.SSD1306`, `ESP32.Drivers.Displays.RGB`, `Embedded.Drivers.Touch`, `ESP32.Drivers.Touch.GT1151` | [`oled_042.bmx`](examples/oled_042.bmx), [`oled_042_subset.bmx`](examples/oled_042_subset.bmx), [`oled_042_image.bmx`](examples/oled_042_image.bmx), [`rgb_lcd_800x480.bmx`](examples/rgb_lcd_800x480.bmx), [`rgb_lcd_fonts.bmx`](examples/rgb_lcd_fonts.bmx), [`rgb_lcd_primitives.bmx`](examples/rgb_lcd_primitives.bmx), [`rgb_lcd_text_layout.bmx`](examples/rgb_lcd_text_layout.bmx), [`rgb_lcd_image_options.bmx`](examples/rgb_lcd_image_options.bmx), [`rgb_lcd_image_acceleration.bmx`](examples/rgb_lcd_image_acceleration.bmx), [`rgb_lcd_image_compositing.bmx`](examples/rgb_lcd_image_compositing.bmx), [`rgb_lcd_dirty_regions.bmx`](examples/rgb_lcd_dirty_regions.bmx), [`rgb_lcd_triple_buffer.bmx`](examples/rgb_lcd_triple_buffer.bmx), [`rgb_lcd_touch.bmx`](examples/rgb_lcd_touch.bmx) |
 | Timed pulses (RMT) | `ESP32.Hardware.RMT` | [`rmt_pulses.bmx`](examples/rmt_pulses.bmx), [`rmt_loopback.bmx`](examples/rmt_loopback.bmx), [`rmt_ws2812_44pin.bmx`](examples/rmt_ws2812_44pin.bmx) |
 | Pulse and quadrature counting | `ESP32.Hardware.PulseCounter` | [`pulse_counter.bmx`](examples/pulse_counter.bmx), [`pulse_counter_xiao_c6.bmx`](examples/pulse_counter_xiao_c6.bmx) |
+| General-purpose hardware timers | `ESP32.Hardware.GPTimer` | [`gptimer.bmx`](examples/gptimer.bmx) |
 | Random data | `Embedded.Random`, `ESP32.Random` | [`random_esp32.bmx`](examples/random_esp32.bmx) |
 | ADC and PWM | `Embedded.Hardware.ADC`, `Embedded.Hardware.PWM`, ESP32 facades; ESP32 hardware fades and light-sleep PWM policy | [`adc_pwm.bmx`](examples/adc_pwm.bmx) |
 | Watchdog and identity | `Embedded.Hardware.Watchdog`, `Embedded.System.Device`, ESP32 facades | [`watchdog_device.bmx`](examples/watchdog_device.bmx) |
@@ -479,6 +480,13 @@ pulses. Configured counters start, stop, clear, and read without managed-memory
 allocation. Check `PulseCounterSupported` because PCNT availability varies by
 ESP32 family. The examples generate and observe pulses on one GPIO, so their
 hardware smoke test needs no jumper wire.
+
+`ESP32.Hardware.GPTimer` provides independent up/down hardware counters,
+selectable tick resolution, one-shot or automatically reloading alarms, and
+raw counter access. Alarm interrupts place fixed-size records into a bounded
+native queue instead of crossing into managed code. Applications can poll or
+wait for those records and inspect a dropped-record count if they do not drain
+the queue quickly enough.
 
 `Embedded.System.Power.SetSleepGPIOWake` configures one or more GPIO levels to
 wake returning light sleep. `ESP32.System.Power.DeepSleepUntilGPIO` provides the
