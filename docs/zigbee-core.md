@@ -58,6 +58,15 @@ an On/Off server and reports changes as `ZigbeeEventAttribute`.
 its own hardware controls the light. The application must also update its
 physical output.
 
+Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
+cluster (ID 0x8000 through 0xFFFF) to any configured standard endpoint.
+`ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
+Boolean or 8/16/32-bit scalar attribute to a custom server cluster. Up to
+eight custom clusters and 32 custom scalar attributes may be configured;
+`ZigbeeClearCustomClusters` clears them while stopped. The C6 light example
+adds cluster 0xFC00 on endpoint 11, with a writable 16-bit attribute. The H2
+switch discovers the cluster, writes the attribute, and reads it back.
+
 `ZigbeeFindServers` broadcasts a match request for any server cluster and
 returns `ZigbeeEventMatch` records with address, endpoint, and cluster.
 `ZigbeeBindCluster` binds any local cluster to a remote endpoint, with a
@@ -103,9 +112,9 @@ network. The saved network belongs to the previous role and topology.
 
 ## Scope
 
-The public API covers multiple standard On/Off light or switch endpoints.
-Custom endpoint profiles and cluster registration, nonscalar attribute types,
-broader group management,
+The public API covers multiple standard On/Off light or switch endpoints and
+custom scalar clusters on those endpoints. Custom endpoint profiles, broader
+standard cluster templates, nonscalar attribute types, broader group management,
 security configuration, OTA, and application-managed
 sleep are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
@@ -136,3 +145,5 @@ device with a longer keepalive; it does not enter low-power sleep itself.
 - With the C6 light exposing endpoints 10 and 11, the H2 switch discovered
   both. `tests/zigbee_core_pair.py --require-extra-endpoint` passed alongside
   the reporting, group, scalar read, and write checks.
+- With custom cluster 0xFC00 on endpoint 11, the H2 switch discovered the
+  cluster and wrote then read back the 16-bit value 43.

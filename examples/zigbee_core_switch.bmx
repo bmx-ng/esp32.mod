@@ -3,6 +3,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Zigbee
 
+If ZigbeeAddCustomCluster(1, $fc00, ZigbeeClusterClient) Then RuntimeError "Custom client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee end-device/switch starting"
@@ -14,7 +15,13 @@ Local reportingConfigured:Int
 Local groupReady:Int
 Local lightAddress:Int
 Local lightEndpoint:Int
+Local customAddress:Int
+Local customEndpoint:Int
+Local customFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
+Local nextCustomFind:UInt = MilliSecs() + 2000
+Local nextCustomWrite:UInt = MilliSecs() + 8000
+Local nextCustomRead:UInt
 Local nextReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
 Local nextRevision:UInt = MilliSecs() + 3000
@@ -40,6 +47,11 @@ While True
 				If result = 0 Then bindPending = True
 			End If
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = $fc00 Then
+			customAddress = event.shortAddress
+			customEndpoint = event.endpoint
+			customFound = True
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -53,6 +65,22 @@ While True
 		result = ZigbeeFindServers(6)
 		Print "Find light submission=" + result
 		nextFind = MilliSecs() + 15000
+	End If
+	If joined And MilliSecs() >= nextCustomFind Then
+		result = ZigbeeFindServers($fc00)
+		Print "Find custom cluster submission=" + result
+		nextCustomFind = MilliSecs() + 15000
+	End If
+	If customFound And MilliSecs() >= nextCustomWrite Then
+		result = ZigbeeWriteScalar(1, customAddress, customEndpoint, $fc00, 1, ZigbeeTypeUInt16, 43)
+		Print "Custom write submission=" + result
+		If result = 0 Then nextCustomRead = MilliSecs() + 200
+		nextCustomWrite = MilliSecs() + 15000
+	End If
+	If nextCustomRead And MilliSecs() >= nextCustomRead Then
+		result = ZigbeeReadAttribute(1, customAddress, customEndpoint, $fc00, 1)
+		Print "Custom read submission=" + result
+		nextCustomRead = 0
 	End If
 	If bound And Not reportingConfigured And MilliSecs() >= nextReporting Then
 		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)

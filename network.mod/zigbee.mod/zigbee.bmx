@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.0"
+ModuleInfo "Version: 1.1"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -217,6 +217,27 @@ End Rem
 Const ZigbeeTypeInt32:Int = $2b
 
 Rem
+bbdoc: Server role for a custom cluster.
+End Rem
+Const ZigbeeClusterServer:Int = 1
+Rem
+bbdoc: Client role for a custom cluster.
+End Rem
+Const ZigbeeClusterClient:Int = 2
+Rem
+bbdoc: Custom attribute can be read remotely.
+End Rem
+Const ZigbeeAttributeRead:Int = 1
+Rem
+bbdoc: Custom attribute can be written remotely.
+End Rem
+Const ZigbeeAttributeWrite:Int = 2
+Rem
+bbdoc: Custom attribute can be reported.
+End Rem
+Const ZigbeeAttributeReport:Int = 4
+
+Rem
 bbdoc: One Zigbee event copied from a native bounded queue.
 about: Fields not relevant to an event kind are zero. For an On/Off attribute,
 value is the Boolean state. Polling never invokes managed code on the Zigbee task.
@@ -310,6 +331,11 @@ Private
 Extern "C"
 	Function _ZigbeeCoreAddEndpoint:Int(device:Int, endpoint:Int) = "bmx_esp32_zigbee_core_add_endpoint"
 	Function _ZigbeeCoreClearEndpoints:Int() = "bmx_esp32_zigbee_core_clear_endpoints"
+	Function _ZigbeeCoreAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_custom_cluster"
+	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		dataType:Int, access:Int, value:Int) = "bmx_esp32_zigbee_core_add_custom_scalar"
+	Function _ZigbeeCoreClearCustomClusters:Int() = "bmx_esp32_zigbee_core_clear_custom_clusters"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
 	Function _ZigbeeCoreState:Int() = "bmx_esp32_zigbee_core_state"
@@ -375,6 +401,35 @@ bbdoc: Removes all extra standard endpoints while the stack is stopped.
 End Rem
 Function ZigbeeClearExtraEndpoints:Int()
 	Return _ZigbeeCoreClearEndpoints()
+End Function
+
+Rem
+bbdoc: Adds a custom server or client cluster to a standard endpoint before ZigbeeStart.
+about: Custom cluster identifiers are 0x8000 to 0xFFFF. The endpoint must be
+the primary endpoint passed to ZigbeeStart or one registered with
+ZigbeeAddOnOffEndpoint. Up to eight custom clusters are supported.
+End Rem
+Function ZigbeeAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int)
+	Return _ZigbeeCoreAddCustomCluster(endpoint, clusterId, role)
+End Function
+
+Rem
+bbdoc: Adds a scalar attribute to a custom server cluster before ZigbeeStart.
+about: Combine ZigbeeAttributeRead, ZigbeeAttributeWrite, and
+ZigbeeAttributeReport for access. The cluster must already be registered with
+ZigbeeAddCustomCluster. Up to 32 custom attributes are supported.
+End Rem
+Function ZigbeeAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		dataType:Int, access:Int, value:Int)
+	Return _ZigbeeCoreAddCustomScalar(endpoint, clusterId, attributeId, dataType, ..
+		access, value)
+End Function
+
+Rem
+bbdoc: Removes custom clusters and attributes while the stack is stopped.
+End Rem
+Function ZigbeeClearCustomClusters:Int()
+	Return _ZigbeeCoreClearCustomClusters()
 End Function
 
 Rem

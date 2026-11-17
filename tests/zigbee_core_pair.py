@@ -36,6 +36,8 @@ def main():
                         help="also require a successful scalar attribute write response")
     parser.add_argument("--require-extra-endpoint", action="store_true",
                         help="also require discovery of the second light endpoint")
+    parser.add_argument("--require-custom-cluster", action="store_true",
+                        help="also require discovery, write, and readback of a custom cluster")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -46,6 +48,7 @@ def main():
     deadline = time.monotonic() + args.timeout
     states = set()
     toggle = read = report = group = group_change = scalar = write = write_readback = extra = False
+    custom_match = custom_write = custom_read = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -71,6 +74,9 @@ def main():
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=11 cluster=6" in line):
                 extra = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=11 cluster=64512" in line):
+                custom_match = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -78,27 +84,37 @@ def main():
                 if ("cluster=3 attribute=0" in line and "type=33" in line
                         and "size=2" in line and "value=0 " not in line):
                     write_readback = True
+                if ("cluster=64512 attribute=1" in line and "type=33" in line
+                        and "size=2" in line and "value=43 " in line):
+                    custom_read = True
             if name == "switch" and "Zigbee event 15 status=0" in line:
                 report = True
             if (name == "switch" and "Zigbee event 18 status=0" in line
                     and "cluster=3" in line):
                 write = True
+            if (name == "switch" and "Zigbee event 18 status=0" in line
+                    and "cluster=64512" in line):
+                custom_write = True
             if (states == {0, 1} and (toggle or group) and read
                     and (report or not args.require_report)
                     and (group_change or not args.require_group)
                     and (scalar or not args.require_scalar)
                     and (write and write_readback or not args.require_write)
-                    and (extra or not args.require_extra_endpoint)):
+                    and (extra or not args.require_extra_endpoint)
+                    and (custom_match and custom_write and custom_read
+                         or not args.require_custom_cluster)):
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
                       + (", and read a typed scalar" if args.require_scalar else "")
                       + (", and wrote and read back a scalar" if args.require_write else "")
-                      + (", and found a second endpoint" if args.require_extra_endpoint else ""), flush=True)
+                      + (", and found a second endpoint" if args.require_extra_endpoint else "")
+                      + (", and checked a custom cluster" if args.require_custom_cluster else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
               f"report={report}, group={group}, group_change={group_change}, scalar={scalar}, "
-              f"write={write}, write_readback={write_readback}, extra={extra}",
+              f"write={write}, write_readback={write_readback}, extra={extra}, "
+              f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}",
               flush=True)
         return 1
     finally:

@@ -4,6 +4,11 @@ Framework BRL.StandardIO
 Import ESP32.Network.Zigbee
 
 If ZigbeeAddOnOffEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Second light endpoint failed"
+If ZigbeeAddCustomCluster(11, $fc00, ZigbeeClusterServer) Then RuntimeError "Custom cluster failed"
+If ZigbeeAddCustomScalar(11, $fc00, 1, ZigbeeTypeUInt16, ..
+		ZigbeeAttributeRead | ZigbeeAttributeWrite | ZigbeeAttributeReport, 42) Then
+	RuntimeError "Custom attribute failed"
+End If
 Local result:Int = ZigbeeStart(ZigbeeRoleCoordinator, ZigbeeDeviceOnOffLight, 10)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee coordinator/light starting"

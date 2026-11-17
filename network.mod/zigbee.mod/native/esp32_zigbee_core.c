@@ -9,10 +9,13 @@
 #include "freertos/task.h"
 #include "esp_zigbee.h"
 #include "ezbee/zha.h"
+#include "ezbee/zcl/cluster/custom.h"
 #include "blitzmax/embedded_system.h"
 
 #define ZB_QUEUE_CAPACITY 64u
 #define ZB_MAX_EXTRA_ENDPOINTS 8u
+#define ZB_MAX_CUSTOM_CLUSTERS 8u
+#define ZB_MAX_CUSTOM_ATTRIBUTES 32u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
 #define ZB_EVENT_STARTUP 2
@@ -48,6 +51,17 @@ typedef struct {
     uint8_t device, endpoint;
 } zb_endpoint_config_t;
 
+typedef struct {
+    uint8_t endpoint, role;
+    uint16_t cluster;
+} zb_custom_cluster_t;
+
+typedef struct {
+    uint8_t endpoint, type, access;
+    uint16_t cluster, attribute;
+    int32_t value;
+} zb_custom_attribute_t;
+
 static zb_event_t event_queue[ZB_QUEUE_CAPACITY];
 static uint32_t queue_write, queue_read, queue_dropped;
 static portMUX_TYPE queue_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -56,6 +70,10 @@ static int32_t state; /* 0 stopped, 1 starting, 2 running, 3 stopping */
 static zb_config_t requested;
 static zb_endpoint_config_t extra_endpoints[ZB_MAX_EXTRA_ENDPOINTS];
 static uint8_t extra_endpoint_count;
+static zb_custom_cluster_t custom_clusters[ZB_MAX_CUSTOM_CLUSTERS];
+static uint8_t custom_cluster_count;
+static zb_custom_attribute_t custom_attributes[ZB_MAX_CUSTOM_ATTRIBUTES];
+static uint8_t custom_attribute_count;
 
 static int endpoint_kind(int endpoint)
 {
@@ -329,6 +347,36 @@ static esp_err_t add_standard_endpoint(ezb_af_device_desc_t device, int kind, in
     return ESP_OK;
 }
 
+static esp_err_t add_custom_clusters(ezb_af_device_desc_t device)
+{
+    for (unsigned i = 0; i < custom_cluster_count; ++i) {
+        const zb_custom_cluster_t *entry = &custom_clusters[i];
+        ezb_af_ep_desc_t endpoint = ezb_af_device_get_endpoint_desc(device, entry->endpoint);
+        if (!endpoint) return ESP_ERR_INVALID_ARG;
+        ezb_zcl_custom_cluster_config_t config = {.cluster_id = entry->cluster};
+        ezb_zcl_cluster_desc_t cluster = ezb_zcl_custom_create_cluster_desc(&config,
+                entry->role);
+        if (!cluster) return ESP_ERR_NO_MEM;
+        esp_err_t result = ESP_OK;
+        for (unsigned j = 0; j < custom_attribute_count; ++j) {
+            zb_custom_attribute_t *attribute = &custom_attributes[j];
+            if (entry->role == EZB_ZCL_CLUSTER_SERVER &&
+                    attribute->endpoint == entry->endpoint &&
+                    attribute->cluster == entry->cluster) {
+                result = ezb_zcl_custom_cluster_desc_add_attr(cluster, attribute->attribute,
+                        attribute->type, attribute->access, &attribute->value);
+                if (result != ESP_OK) break;
+            }
+        }
+        if (result == ESP_OK) result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            return result;
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t register_device(const zb_config_t *options)
 {
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
@@ -337,6 +385,7 @@ static esp_err_t register_device(const zb_config_t *options)
     for (unsigned i = 0; result == ESP_OK && i < extra_endpoint_count; ++i)
         result = add_standard_endpoint(device, extra_endpoints[i].device,
                 extra_endpoints[i].endpoint);
+    if (result == ESP_OK) result = add_custom_clusters(device);
     if (result != ESP_OK) {
         ezb_af_free_device_desc(device);
         return result;
@@ -428,6 +477,85 @@ int bmx_esp32_zigbee_core_clear_endpoints(void)
         return ESP_ERR_INVALID_STATE;
     }
     extra_endpoint_count = 0;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_custom_cluster(int endpoint, int cluster_id, int role)
+{
+    if (endpoint < 1 || endpoint > 240 || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
+            cluster_id > 65535 || (role != EZB_ZCL_CLUSTER_SERVER &&
+            role != EZB_ZCL_CLUSTER_CLIENT)) return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < custom_cluster_count; ++i) {
+        if (custom_clusters[i].endpoint == endpoint &&
+                custom_clusters[i].cluster == cluster_id && custom_clusters[i].role == role) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (custom_cluster_count == ZB_MAX_CUSTOM_CLUSTERS) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    custom_clusters[custom_cluster_count++] = (zb_custom_cluster_t){
+        .endpoint = (uint8_t)endpoint, .cluster = (uint16_t)cluster_id, .role = (uint8_t)role};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_custom_scalar(int endpoint, int cluster_id,
+        int attribute_id, int type, int access, int32_t value)
+{
+    if (endpoint < 1 || endpoint > 240 || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
+            cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
+            !scalar_size(type) || access < 1 || access > 7 || !(access & EZB_ZCL_ATTR_ACCESS_READ))
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    bool found = false;
+    for (unsigned i = 0; i < custom_cluster_count; ++i)
+        if (custom_clusters[i].endpoint == endpoint && custom_clusters[i].cluster == cluster_id &&
+                custom_clusters[i].role == EZB_ZCL_CLUSTER_SERVER) found = true;
+    if (!found) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_ARG;
+    }
+    for (unsigned i = 0; i < custom_attribute_count; ++i) {
+        if (custom_attributes[i].endpoint == endpoint &&
+                custom_attributes[i].cluster == cluster_id &&
+                custom_attributes[i].attribute == attribute_id) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (custom_attribute_count == ZB_MAX_CUSTOM_ATTRIBUTES) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    custom_attributes[custom_attribute_count++] = (zb_custom_attribute_t){
+        .endpoint = (uint8_t)endpoint, .cluster = (uint16_t)cluster_id,
+        .attribute = (uint16_t)attribute_id, .type = (uint8_t)type,
+        .access = (uint8_t)access, .value = value};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_clear_custom_clusters(void)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    custom_cluster_count = custom_attribute_count = 0;
     portEXIT_CRITICAL(&state_lock);
     return ESP_OK;
 }
