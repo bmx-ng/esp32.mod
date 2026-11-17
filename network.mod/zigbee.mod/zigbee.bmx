@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.3"
+ModuleInfo "Version: 0.4"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -265,6 +265,7 @@ Extern "C"
 	Function _ZigbeeCoreBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_bind_onoff"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
+	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
 End Extern
 Public
 
@@ -391,6 +392,15 @@ first; a zero return only confirms submission to the SDK.
 End Rem
 Function ZigbeeSendBoundOnOff:Int(sourceEndpoint:Int, command:Int)
 	Return _ZigbeeCoreBoundOnOff(sourceEndpoint, command)
+End Function
+
+Rem
+bbdoc: Sets a local On/Off light endpoint's server attribute.
+about: Pass zero for Off or one for On. This updates the Zigbee data model;
+the application is responsible for applying the state to its physical output.
+End Rem
+Function ZigbeeSetLocalOnOff:Int(endpoint:Int, on:Int)
+	Return _ZigbeeCoreSetLocalOnOff(endpoint, on)
 End Function
 
 Rem

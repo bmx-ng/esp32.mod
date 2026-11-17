@@ -451,6 +451,20 @@ int bmx_esp32_zigbee_core_bound_onoff(int source_ep, int command)
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
+int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
+{
+    if (endpoint != requested.endpoint || requested.device != 1 || (on != 0 && on != 1))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint8_t value = (uint8_t)on;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_ON_OFF, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, EZB_ZCL_STD_MANUF_CODE, &value, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoint,
         int *cluster, int *attribute, int *value, int *short_addr, int *pan_id,
         int *channel, int *factory_new)

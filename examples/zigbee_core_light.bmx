@@ -12,6 +12,10 @@ While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
 			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value
+		If event.kind = ZigbeeEventStartup And event.status = 0 Then
+			result = ZigbeeSetLocalOnOff(10, 0)
+			Print "Initial light state result=" + result
+		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
 			result = ZigbeePermitJoining(180)

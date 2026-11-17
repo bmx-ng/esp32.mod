@@ -51,6 +51,9 @@ sending to a 16-bit network address; `ZigbeeReadOnOff` requests the remote
 On/Off attribute. A successful return means the SDK accepted the request,
 and a later `ZigbeeEventRead` carries a read response. The light template has
 an On/Off server and reports changes as `ZigbeeEventAttribute`.
+`ZigbeeSetLocalOnOff` lets the application update that server attribute when
+its own hardware controls the light. The application must also update its
+physical output.
 
 ## Examples
 
@@ -82,3 +85,5 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   H2 end-device/switch pair toggled both states and read back the attribute.
 - The H2 switch subsequently used match descriptor discovery and binding to
   toggle the C6 light through the binding table, then read back its state.
+- The C6 light built and flashed with a local attribute initialization call.
+  The two-board bound-toggle and readback regression still passed.
