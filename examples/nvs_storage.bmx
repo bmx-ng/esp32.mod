@@ -128,7 +128,18 @@ Wend
 iterator.Close()
 If iterated < 14 Or Not foundInt8 Then RuntimeError "NVS entry enumeration differs"
 
+RequireSuccess store.SetInt("purge_test", 1), "Create purge test value"
+RequireSuccess store.Commit(), "Commit purge test value"
+RequireSuccess store.EraseKey("purge_test"), "Erase purge test value"
+RequireSuccess store.Commit(), "Commit purge test erasure"
+RequireSuccess store.PurgeAll(), "Purge erased NVS values"
+RequireSuccess store.Commit(), "Commit NVS purge"
+
 store.Close()
+
+Local purgeStore:TNVSNamespace = OpenNVSWithMode(TestNamespace, NVSReadWritePurge)
+If Not purgeStore Then RuntimeError "Could not open NVS in purge mode: " + NVSResultName(NVSLastOpenError())
+purgeStore.Close()
 
 Local reader:TNVSNamespace = OpenNVS(TestNamespace, True)
 If Not reader Then RuntimeError "Could not reopen NVS read-only: " + NVSResultName(NVSLastOpenError())

@@ -28,6 +28,13 @@ End Rem
 Const NVSReadWrite:Int = 1
 
 Rem
+bbdoc: Opens a namespace for reading and writing while physically purging replaced or erased data.
+about: Purging adds flash writes and is intended for sensitive values whose old
+contents must not remain recoverable from ordinary flash inspection.
+End Rem
+Const NVSReadWritePurge:Int = 2
+
+Rem
 bbdoc: Identifies an unsigned 8-bit NVS value.
 End Rem
 Const NVSTypeUInt8:Int = $01
@@ -144,6 +151,8 @@ Extern "C"
 	Function _NVSInitializePartition:Int(partitionName:String) = "bmx_esp32_nvs_initialize_partition"
 	Function _NVSDeinitialize:Int() = "bmx_esp32_nvs_deinitialize"
 	Function _NVSDeinitializePartition:Int(partitionName:String) = "bmx_esp32_nvs_deinitialize_partition"
+	Function _NVSErasePartition:Int() = "bmx_esp32_nvs_erase_partition"
+	Function _NVSEraseNamedPartition:Int(partitionName:String) = "bmx_esp32_nvs_erase_named_partition"
 	Function _NVSLastOpenError:Int() = "bmx_esp32_nvs_last_open_error"
 	Function _NVSResultName:String(result:Int) = "bmx_esp32_nvs_result_name"
 	Function _NVSOpen:Byte Ptr(name:String, mode:Int) = "bmx_esp32_nvs_open"
@@ -153,6 +162,7 @@ Extern "C"
 	Function _NVSCommit:Int(handle:Byte Ptr) = "bmx_esp32_nvs_commit"
 	Function _NVSEraseKey:Int(handle:Byte Ptr, key:String) = "bmx_esp32_nvs_erase_key"
 	Function _NVSEraseAll:Int(handle:Byte Ptr) = "bmx_esp32_nvs_erase_all"
+	Function _NVSPurgeAll:Int(handle:Byte Ptr) = "bmx_esp32_nvs_purge_all"
 	Function _NVSValueType:Int(handle:Byte Ptr, key:String) = "bmx_esp32_nvs_value_type"
 	Function _NVSSetInt8:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_i8"
 	Function _NVSSetUInt8:Int(handle:Byte Ptr, key:String, value:Int) = "bmx_esp32_nvs_set_u8"
@@ -233,6 +243,30 @@ about: Close every namespace using the partition before deinitializing it.
 End Rem
 Function NVSDeinitializePartition:Int(partitionName:String)
 	Return _NVSDeinitializePartition(partitionName)
+End Function
+
+Rem
+bbdoc: Erases every value and namespace in the default NVS partition.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: This operation is destructive and deinitializes the partition. Every
+existing handle becomes invalid; call #NVSInitialize or #OpenNVS afterwards to
+use the empty partition again. It is intended for explicit factory reset or
+carefully chosen recovery logic, never routine startup.
+End Rem
+Function NVSEraseDefaultPartition:Int()
+	Return _NVSErasePartition()
+End Function
+
+Rem
+bbdoc: Erases every value and namespace in a named NVS partition.
+param: ASCII partition label from the active partition table.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: This operation is destructive and deinitializes the partition. Every
+existing handle becomes invalid; call #NVSInitializePartition or
+#OpenNVSPartition afterwards to use the empty partition again.
+End Rem
+Function NVSErasePartition:Int(partitionName:String)
+	Return _NVSEraseNamedPartition(partitionName)
 End Function
 
 Rem
@@ -428,6 +462,17 @@ Type TNVSNamespace
 	End Rem
 	Method EraseAll:Int()
 		Return _NVSEraseAll(handle)
+	End Method
+
+	Rem
+	bbdoc: Physically purges flash occupied by values already marked as erased.
+	returns: ESP_OK on success or an ESP-IDF error code.
+	about: Call #Commit to make the purge durable. This adds flash write cycles.
+	Use it when a namespace previously used ordinary read/write mode and stale
+	sensitive values need to be removed. It does not erase current live keys.
+	End Rem
+	Method PurgeAll:Int()
+		Return _NVSPurgeAll(handle)
 	End Method
 
 	Rem
@@ -768,6 +813,19 @@ End Rem
 Function OpenNVS:TNVSNamespace(name:String, openReadOnly:Int = False)
 	Local mode:Int = NVSReadWrite
 	If openReadOnly Then mode = NVSReadOnly
+	Return OpenNVSWithMode(name, mode)
+End Function
+
+Rem
+bbdoc: Opens a namespace in the default NVS partition with an explicit mode.
+param: Non-empty ASCII namespace name of at most 15 characters.
+param: NVSReadOnly, NVSReadWrite, or NVSReadWritePurge.
+returns: An open namespace, or Null on failure.
+about: The default NVS partition is initialized automatically. Purge mode is
+available with ESP-IDF 6.1 and later. When this function returns Null, call
+#NVSLastOpenError for the ESP-IDF result code.
+End Rem
+Function OpenNVSWithMode:TNVSNamespace(name:String, mode:Int)
 	Local nativeHandle:Byte Ptr = _NVSOpen(name, mode)
 	If Not nativeHandle Then Return Null
 	Local result:TNVSNamespace = New TNVSNamespace
@@ -787,6 +845,20 @@ End Rem
 Function OpenNVSPartition:TNVSNamespace(partitionName:String, name:String, openReadOnly:Int = False)
 	Local mode:Int = NVSReadWrite
 	If openReadOnly Then mode = NVSReadOnly
+	Return OpenNVSPartitionWithMode(partitionName, name, mode)
+End Function
+
+Rem
+bbdoc: Opens a namespace in a named NVS partition with an explicit mode.
+param: ASCII partition label from the active partition table.
+param: Non-empty ASCII namespace name of at most 15 characters.
+param: NVSReadOnly, NVSReadWrite, or NVSReadWritePurge.
+returns: An open namespace, or Null on failure.
+about: The partition is initialized automatically. Purge mode is available
+with ESP-IDF 6.1 and later. When this function returns Null, call
+#NVSLastOpenError for the ESP-IDF result code.
+End Rem
+Function OpenNVSPartitionWithMode:TNVSNamespace(partitionName:String, name:String, mode:Int)
 	Local nativeHandle:Byte Ptr = _NVSOpenPartition(partitionName, name, mode)
 	If Not nativeHandle Then Return Null
 	Local result:TNVSNamespace = New TNVSNamespace

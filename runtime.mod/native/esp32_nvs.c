@@ -57,6 +57,18 @@ int32_t bmx_esp32_nvs_deinitialize_partition(const BMXEmbeddedString *partition)
     return (int32_t)error;
 }
 
+int32_t bmx_esp32_nvs_erase_partition(void) {
+    return (int32_t)bmx_esp32_nvs_partition_error(nvs_flash_erase());
+}
+
+int32_t bmx_esp32_nvs_erase_named_partition(const BMXEmbeddedString *partition) {
+    char *native_partition = bmx_esp32_nvs_utf8(partition);
+    if (!native_partition) return ESP_ERR_NO_MEM;
+    esp_err_t error = bmx_esp32_nvs_partition_error(nvs_flash_erase_partition(native_partition));
+    bbMemFree(native_partition);
+    return (int32_t)error;
+}
+
 int32_t bmx_esp32_nvs_last_open_error(void) {
     return (int32_t)bmx_esp32_nvs_open_error;
 }
@@ -76,6 +88,12 @@ static void *bmx_esp32_nvs_open_common(const BMXEmbeddedString *partition,
         bmx_esp32_nvs_open_error = ESP_ERR_NO_MEM;
         return NULL;
     }
+    if (mode != NVS_READONLY && mode != NVS_READWRITE && mode != NVS_READWRITE_PURGE) {
+        if (native_partition) bbMemFree(native_partition);
+        bbMemFree(native_name);
+        bmx_esp32_nvs_open_error = ESP_ERR_INVALID_ARG;
+        return NULL;
+    }
     esp_err_t error = native_partition ? nvs_flash_init_partition(native_partition) : nvs_flash_init();
     error = bmx_esp32_nvs_partition_error(error);
     BMXESP32NVSHandle *result = NULL;
@@ -84,7 +102,7 @@ static void *bmx_esp32_nvs_open_common(const BMXEmbeddedString *partition,
         if (!result) {
             error = ESP_ERR_NO_MEM;
         } else {
-            nvs_open_mode_t open_mode = mode == NVS_READONLY ? NVS_READONLY : NVS_READWRITE;
+            nvs_open_mode_t open_mode = (nvs_open_mode_t)mode;
             error = native_partition ?
                 nvs_open_from_partition(native_partition, native_name, open_mode, &result->value) :
                 nvs_open(native_name, open_mode, &result->value);
@@ -149,6 +167,12 @@ int32_t bmx_esp32_nvs_erase_all(void *opaque) {
     BMXESP32NVSHandle *handle = (BMXESP32NVSHandle *)opaque;
     return (int32_t)bmx_esp32_nvs_set_error(handle,
         handle ? nvs_erase_all(handle->value) : ESP_ERR_NVS_INVALID_HANDLE);
+}
+
+int32_t bmx_esp32_nvs_purge_all(void *opaque) {
+    BMXESP32NVSHandle *handle = (BMXESP32NVSHandle *)opaque;
+    return (int32_t)bmx_esp32_nvs_set_error(handle,
+        handle ? nvs_purge_all(handle->value) : ESP_ERR_NVS_INVALID_HANDLE);
 }
 
 int32_t bmx_esp32_nvs_value_type(void *opaque, const BMXEmbeddedString *key) {

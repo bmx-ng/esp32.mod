@@ -162,6 +162,29 @@ Local settings:TNVSNamespace = OpenNVS("settings", True)
 Opening a missing namespace read-only fails with `NVSErrorNotFound`, available
 through `NVSLastOpenError`.
 
+## Purging sensitive values
+
+Ordinary NVS updates and erasures mark old data as deleted, allowing flash
+space to be reclaimed efficiently but potentially leaving the old bytes
+physically recoverable. ESP-IDF 6.1 adds continuous purge mode:
+
+```blitzmax
+Local secrets:TNVSNamespace = OpenNVSWithMode("secrets", NVSReadWritePurge)
+```
+
+In this mode, later updates and erasures physically purge the replaced flash
+data. It costs additional flash write cycles. Opening in purge mode does not
+remove stale data left by earlier ordinary writes; call `PurgeAll` followed by
+`Commit` once when migrating an existing namespace:
+
+```blitzmax
+Local result:Int = secrets.PurgeAll()
+If result = 0 Then result = secrets.Commit()
+```
+
+Purging reduces recovery of deleted plaintext but is not a substitute for NVS
+encryption, flash encryption, secure boot, or careful key management.
+
 ## Error handling
 
 Zero is success. Most operations return an ESP-IDF result code directly:
@@ -182,6 +205,12 @@ problems. Recovery may require erasing stored data, so this module does not do
 that silently. A product should decide whether to restore defaults, enter a
 maintenance mode, or preserve the partition for diagnosis.
 
+`NVSEraseDefaultPartition` and `NVSErasePartition` are explicit destructive
+operations for a deliberate factory reset or recovery policy. They erase every
+namespace in the selected partition and invalidate all of its open handles.
+They are intentionally separate from initialization and ordinary namespace
+erasure.
+
 ## Capacity, wear, and security
 
 `NVSStatistics` reports used, free, available, and total entries plus the
@@ -200,6 +229,13 @@ Ordinary NVS data should not be treated as secret. Without ESP-IDF flash and NVS
 encryption, someone with physical flash access can read or alter it. Do not
 store passwords or long-term private keys here unless the complete device
 security configuration protects the partition.
+
+When NVS encryption is enabled in the ESP-IDF build and the required key
+partition is present, normal initialization of the default NVS partition uses
+that configuration automatically. Provisioning encryption keys and manually
+selecting security schemes for custom partitions are device-manufacturing and
+firmware-security concerns; this module does not generate or export those keys
+at runtime.
 
 ## Examples
 
