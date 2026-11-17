@@ -21,6 +21,7 @@ Const PowerCapabilitySleepTimer:UInt = $04
 Const PowerCapabilityDormantGPIO:UInt = $08
 Const PowerCapabilityDormantTimer:UInt = $10
 Const PowerCapabilityLowLeakagePins:UInt = $20
+Const PowerCapabilitySleepGPIORetention:UInt = $40
 
 Enum EPowerResult:Int
 	Success = 0
@@ -44,6 +45,18 @@ Extern "C"
 	Function DormantSleep:EPowerResult(milliseconds:UInt) = "bmx_embedded_power_dormant_for_ms"
 	Function DormantSleepUntilGPIO:EPowerResult(pin:UInt, edge:Int, high:Int) = "bmx_embedded_power_dormant_until_gpio"
 	Function SetUnusedPinsLowLeakage:EPowerResult(excludeMask:ULong = 0) = "bmx_embedded_power_set_unused_pins_low_leakage"
+
+	Rem
+	bbdoc: Enables or disables retention of a GPIO's current output state during returning light sleep.
+	param: Output-capable GPIO number whose configured state is to be retained.
+	param: True to retain the GPIO during subsequent sleeps; False to stop retaining it.
+	returns: Success or an error describing an invalid GPIO or state.
+	about: The GPIO remains usable while awake. It must be configured as an output
+	when retention is enabled and whenever light sleep begins. ESP-IDF pad hold is
+	applied only while #LowPowerSleep or #LowPowerSleepUntilInterrupt is active.
+	This policy does not apply to deep sleep.
+	End Rem
+	Function SetSleepGPIORetention:EPowerResult(pin:UInt, enabled:Int = True) = "bmx_embedded_power_set_sleep_gpio_retention"
 
 	Rem
 	bbdoc: Enters deep sleep and restarts after approximately milliseconds.

@@ -104,6 +104,27 @@ int32_t bmx_embedded_gpio_get_output(uint32_t gpio) {
     return bmx_esp32_gpio_output[gpio] != 0;
 }
 
+/* Restore cached GPIO state while a sleep hold still protects the pad. The
+   hold is released by the power adapter only after these register writes. */
+int32_t bmx_esp32_gpio_restore_held(uint32_t gpio) {
+    if (!bmx_embedded_gpio_is_output_capable(gpio) ||
+            !bmx_esp32_gpio_direction[gpio]) return 0;
+    gpio_pull_mode_t pull_mode;
+    if (bmx_esp32_gpio_pull_up[gpio] && bmx_esp32_gpio_pull_down[gpio]) {
+        pull_mode = GPIO_PULLUP_PULLDOWN;
+    } else if (bmx_esp32_gpio_pull_up[gpio]) {
+        pull_mode = GPIO_PULLUP_ONLY;
+    } else if (bmx_esp32_gpio_pull_down[gpio]) {
+        pull_mode = GPIO_PULLDOWN_ONLY;
+    } else {
+        pull_mode = GPIO_FLOATING;
+    }
+    if (gpio_set_level((gpio_num_t)gpio,
+            bmx_esp32_gpio_output[gpio] != 0) != ESP_OK) return 0;
+    if (gpio_set_pull_mode((gpio_num_t)gpio, pull_mode) != ESP_OK) return 0;
+    return gpio_set_direction((gpio_num_t)gpio, GPIO_MODE_INPUT_OUTPUT) == ESP_OK;
+}
+
 int32_t bmx_embedded_gpio_set_pulls(uint32_t gpio, int32_t pull_up, int32_t pull_down) {
     if (!bmx_embedded_gpio_is_pull_capable(gpio)) return 0;
     gpio_pull_mode_t mode;
