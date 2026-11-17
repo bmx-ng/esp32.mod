@@ -4,14 +4,15 @@
 SuperStrict
 
 Rem
-bbdoc: ESP32 Zigbee v2 SDK bring-up module for ESP32-H2 and ESP32-C6.
-about: This initial module only verifies the Espressif Zigbee v2 component in the
-BlitzMax build. The public stack and data-model API will follow hardware bring-up.
+bbdoc: ESP32 Zigbee v2 stack and standard-device support for ESP32-H2 and ESP32-C6.
+about: This module provides a configurable stack lifecycle, a safe native event
+queue, commissioning controls, network information, and standard On/Off devices.
+The diagnostic ZigbeeBringup functions remain for the initial hardware test.
 End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.1"
+ModuleInfo "Version: 0.2"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -55,5 +56,321 @@ Returns an ESP-IDF error code for request submission.
 End Rem
 Function ZigbeeBringupRead:Int()
 	Return _ZigbeeBringupRead()
+End Function
+
+' The v2 stack calls native callbacks on its own task. This API only transfers
+' primitive records across that boundary; managed objects stay on the caller.
+
+Rem
+bbdoc: Build-time Zigbee role for forming a network.
+End Rem
+Const ZigbeeRoleCoordinator:Int = 1
+Rem
+bbdoc: Build-time Zigbee role for forwarding traffic and admitting children.
+End Rem
+Const ZigbeeRoleRouter:Int = 2
+Rem
+bbdoc: Build-time Zigbee role for a non-routing end device.
+End Rem
+Const ZigbeeRoleEndDevice:Int = 3
+Rem
+bbdoc: End-device role prepared for low-power operation.
+about: This uses the end-device stack library. Application-managed sleep policy
+will be added after wake and polling behaviour has been tested on hardware.
+End Rem
+Const ZigbeeRoleSleepyEndDevice:Int = 4
+
+Rem
+bbdoc: Standard Home Automation On/Off light endpoint template.
+End Rem
+Const ZigbeeDeviceOnOffLight:Int = 1
+Rem
+bbdoc: Standard Home Automation On/Off switch endpoint template.
+End Rem
+Const ZigbeeDeviceOnOffSwitch:Int = 2
+
+Rem
+bbdoc: Zigbee stack is stopped.
+End Rem
+Const ZigbeeStateStopped:Int = 0
+Rem
+bbdoc: Zigbee stack task is starting.
+End Rem
+Const ZigbeeStateStarting:Int = 1
+Rem
+bbdoc: Zigbee stack is running and accepts commands.
+End Rem
+Const ZigbeeStateRunning:Int = 2
+Rem
+bbdoc: Zigbee stack is stopping; wait for a stopped event before restarting.
+End Rem
+Const ZigbeeStateStopping:Int = 3
+
+Rem
+bbdoc: The Zigbee stack has started.
+End Rem
+Const ZigbeeEventStarted:Int = 1
+Rem
+bbdoc: The Zigbee stack completed its startup or reboot procedure.
+End Rem
+Const ZigbeeEventStartup:Int = 2
+Rem
+bbdoc: Network formation completed; inspect the status field.
+End Rem
+Const ZigbeeEventFormed:Int = 3
+Rem
+bbdoc: Network steering completed; inspect the status field.
+End Rem
+Const ZigbeeEventJoined:Int = 4
+Rem
+bbdoc: Permit-joining duration changed; value is seconds remaining.
+End Rem
+Const ZigbeeEventPermitJoin:Int = 5
+Rem
+bbdoc: A device announced itself on the network.
+End Rem
+Const ZigbeeEventDeviceAnnounced:Int = 6
+Rem
+bbdoc: An endpoint attribute changed.
+End Rem
+Const ZigbeeEventAttribute:Int = 7
+Rem
+bbdoc: A remote attribute read response arrived.
+End Rem
+Const ZigbeeEventRead:Int = 8
+Rem
+bbdoc: The device left its network.
+End Rem
+Const ZigbeeEventLeft:Int = 9
+Rem
+bbdoc: The Zigbee stack stopped and can be started again.
+End Rem
+Const ZigbeeEventStopped:Int = 10
+Rem
+bbdoc: A native Zigbee operation failed; inspect status and signal.
+End Rem
+Const ZigbeeEventError:Int = 11
+
+Rem
+bbdoc: One Zigbee event copied from a native bounded queue.
+about: Fields not relevant to an event kind are zero. For an On/Off attribute,
+value is the Boolean state. Polling never invokes managed code on the Zigbee task.
+End Rem
+Struct SZigbeeEvent
+	Rem
+	bbdoc: One of the ZigbeeEvent constants.
+	End Rem
+	Field kind:Int
+	Rem
+	bbdoc: SDK status for the event; zero means success.
+	End Rem
+	Field status:Int
+	Rem
+	bbdoc: Raw ESP Zigbee SDK signal identifier, when applicable.
+	End Rem
+	Field signal:Int
+	Rem
+	bbdoc: Local destination endpoint for attribute events.
+	End Rem
+	Field endpoint:Int
+	Rem
+	bbdoc: Cluster identifier for attribute events.
+	End Rem
+	Field cluster:Int
+	Rem
+	bbdoc: Attribute identifier for attribute events.
+	End Rem
+	Field attribute:Int
+	Rem
+	bbdoc: On/Off value or permit-joining duration, according to kind.
+	End Rem
+	Field value:Int
+	Rem
+	bbdoc: Network address of an announced device or this device after commissioning.
+	End Rem
+	Field shortAddress:Int
+	Rem
+	bbdoc: Network PAN identifier after commissioning.
+	End Rem
+	Field panId:Int
+	Rem
+	bbdoc: IEEE 802.15.4 channel after commissioning.
+	End Rem
+	Field channel:Int
+	Rem
+	bbdoc: True when a startup event found no saved Zigbee network state.
+	End Rem
+	Field factoryNew:Int
+End Struct
+
+Rem
+bbdoc: Current Zigbee network identity and persistence state.
+End Rem
+Struct SZigbeeNetworkInfo
+	Rem
+	bbdoc: True when the device belongs to a Zigbee network.
+	End Rem
+	Field joined:Int
+	Rem
+	bbdoc: True when Zigbee persistent state is factory new.
+	End Rem
+	Field factoryNew:Int
+	Rem
+	bbdoc: Current 16-bit PAN identifier.
+	End Rem
+	Field panId:Int
+	Rem
+	bbdoc: Current 16-bit network address.
+	End Rem
+	Field shortAddress:Int
+	Rem
+	bbdoc: Current IEEE 802.15.4 channel.
+	End Rem
+	Field channel:Int
+	Rem
+	bbdoc: Current 64-bit extended PAN identifier.
+	End Rem
+	Field extendedPanId:Long
+End Struct
+
+Private
+Extern "C"
+	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
+		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
+	Function _ZigbeeCoreState:Int() = "bmx_esp32_zigbee_core_state"
+	Function _ZigbeeCoreStop:Int() = "bmx_esp32_zigbee_core_stop"
+	Function _ZigbeeCoreForm:Int() = "bmx_esp32_zigbee_core_form"
+	Function _ZigbeeCoreJoin:Int() = "bmx_esp32_zigbee_core_join"
+	Function _ZigbeeCorePermitJoin:Int(seconds:Int) = "bmx_esp32_zigbee_core_permit_join"
+	Function _ZigbeeCoreReset:Int() = "bmx_esp32_zigbee_core_reset"
+	Function _ZigbeeCoreNetwork:Int(joined:Int Var, factoryNew:Int Var, panId:Int Var, ..
+		shortAddress:Int Var, channel:Int Var, extendedPanId:Long Var) = "bmx_esp32_zigbee_core_network"
+	Function _ZigbeeCoreOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_onoff"
+	Function _ZigbeeCoreReadOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_read_onoff"
+	Function _ZigbeeCorePoll:Int(kind:Int Var, status:Int Var, signal:Int Var, endpoint:Int Var, ..
+		cluster:Int Var, attribute:Int Var, value:Int Var, shortAddress:Int Var, ..
+		panId:Int Var, channel:Int Var, factoryNew:Int Var) = "bmx_esp32_zigbee_core_poll"
+	Function _ZigbeeCoreDropped:UInt() = "bmx_esp32_zigbee_core_dropped"
+End Extern
+Public
+
+Rem
+bbdoc: Starts the Zigbee stack with a standard light or switch endpoint.
+param: Coordinator, router, end-device or sleepy-end-device role.
+param: Standard on/off light or switch device template.
+param: Zigbee endpoint number from 1 to 240.
+param: Primary channel bitmask; bit n selects IEEE 802.15.4 channel n (11 to 26).
+param: Secondary channel bitmask used after primary-channel scanning.
+param: True to form or seek a network automatically when factory new.
+returns: ESP_OK when the asynchronous start was accepted, otherwise an ESP-IDF error code.
+about: Coordinator and router need a `zczr` stack build; end devices need `zed`.
+Set BMX_ESP32_ZIGBEE_STACK_MODE before bmk to override the board default. The
+stack's callbacks are delivered through ZigbeePollEvent.
+End Rem
+Function ZigbeeStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt = 1 Shl 15, ..
+		secondaryMask:UInt = 0, autoCommission:Int = True)
+	Return _ZigbeeCoreStart(role, device, endpoint, primaryMask, secondaryMask, autoCommission)
+End Function
+
+Rem
+bbdoc: Returns the current local Zigbee stack state.
+End Rem
+Function ZigbeeState:Int()
+	Return _ZigbeeCoreState()
+End Function
+
+Rem
+bbdoc: Requests a clean asynchronous Zigbee stack shutdown.
+about: Poll for ZigbeeEventStopped before starting again.
+End Rem
+Function ZigbeeStop:Int()
+	Return _ZigbeeCoreStop()
+End Function
+
+Rem
+bbdoc: Requests network formation for a coordinator.
+about: Call after a successful ZigbeeEventStartup when autoCommission is False.
+End Rem
+Function ZigbeeFormNetwork:Int()
+	Return _ZigbeeCoreForm()
+End Function
+
+Rem
+bbdoc: Starts network steering to join an available Zigbee network.
+about: Call after a successful ZigbeeEventStartup when autoCommission is False.
+End Rem
+Function ZigbeeJoinNetwork:Int()
+	Return _ZigbeeCoreJoin()
+End Function
+
+Rem
+bbdoc: Allows new devices to join for the given number of seconds.
+param: Duration from 1 to 254 seconds, or zero to close joining.
+End Rem
+Function ZigbeePermitJoining:Int(seconds:Int)
+	Return _ZigbeeCorePermitJoin(seconds)
+End Function
+
+Rem
+bbdoc: Leaves the network and clears Zigbee persistent state.
+about: This only takes effect while joined to a network. The SDK retains its
+outgoing network frame counter. This operation is asynchronous; poll for
+ZigbeeEventLeft before starting a new commissioning flow.
+End Rem
+Function ZigbeeFactoryReset:Int()
+	Return _ZigbeeCoreReset()
+End Function
+
+Rem
+bbdoc: Gets the current network identity from the running stack.
+returns: ESP_OK on success, or an ESP-IDF error code.
+End Rem
+Function ZigbeeGetNetworkInfo:Int(info:SZigbeeNetworkInfo Var)
+	Return _ZigbeeCoreNetwork(info.joined, info.factoryNew, info.panId, ..
+		info.shortAddress, info.channel, info.extendedPanId)
+End Function
+
+Rem
+bbdoc: Sends an On/Off cluster command to a 16-bit network address.
+param: Local source endpoint containing the On/Off client cluster.
+param: Remote 16-bit network address.
+param: Remote On/Off server endpoint.
+param: Zero turns off, one turns on, and two toggles.
+returns: ESP_OK when the SDK accepts the command for transmission.
+End Rem
+Function ZigbeeSendOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, command:Int)
+	Return _ZigbeeCoreOnOff(sourceEndpoint, destinationAddress, destinationEndpoint, command)
+End Function
+
+Rem
+bbdoc: Requests the remote On/Off attribute value.
+about: Poll for a ZigbeeEventRead carrying cluster 6, attribute 0. The return
+value only reports whether the request was accepted for transmission.
+End Rem
+Function ZigbeeReadOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
+	Return _ZigbeeCoreReadOnOff(sourceEndpoint, destinationAddress, destinationEndpoint)
+End Function
+
+Rem
+bbdoc: Removes the oldest event from the native Zigbee queue.
+returns: True if an event was returned; False if the queue is empty.
+about: Native callbacks copy primitive values into a bounded queue. The
+application thread is the only place this function creates a BlitzMax value.
+End Rem
+Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
+	Return _ZigbeeCorePoll(event.kind, event.status, event.signal, event.endpoint, ..
+		event.cluster, event.attribute, event.value, event.shortAddress, event.panId, ..
+		event.channel, event.factoryNew)
+End Function
+
+Rem
+bbdoc: Returns the number of Zigbee events discarded because the queue filled.
+about: This count resets on each ZigbeeStart and saturates at the UInt maximum.
+End Rem
+Function ZigbeeDroppedEvents:UInt()
+	Return _ZigbeeCoreDropped()
 End Function
 ?

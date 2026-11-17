@@ -1,9 +1,8 @@
 # ESP Zigbee SDK v2 bring-up
 
-This is the first H2/C6 hardware tranche. It proves the official Espressif v2
-component with the existing bmk and ESP-IDF 6.1 toolchain. The Zigbee module
-currently exposes diagnostic entry points only; its production lifecycle,
-endpoint, attribute, reporting, reset and event APIs are still to be built.
+This was the first H2/C6 hardware tranche. It proved the official Espressif v2
+component with the existing bmk and ESP-IDF 6.1 toolchain. For the new public
+stack and On/Off API, see [zigbee-core.md](zigbee-core.md).
 
 ## Dependency and configuration
 
@@ -16,9 +15,11 @@ ESP-IDF and is target-dependent, so this template does not commit a single
 shared lock file for both H2 and C6. Offline builds require a populated
 Component Manager cache.
 
-The Zigbee import uses a separate `sdkconfig.zigbee` file and
-`zigbee.partitions.csv`. H2 selects coordinator/router stack libraries; C6
-selects end-device libraries. The default 4 MiB Zigbee layout retains both
+The Zigbee import uses a separate `sdkconfig.zigbee.<mode>` file and
+`zigbee.partitions.csv`. By default, H2 selects coordinator/router stack
+libraries and C6 selects end-device libraries. The current public API allows
+either board to select the other library with `BMX_ESP32_ZIGBEE_STACK_MODE`.
+The default 4 MiB Zigbee layout retains both
 1.5 MiB OTA slots and the normal `nvs`, `otadata` and LittleFS partitions. It
 adds `zb_storage` as NVS and `zb_fct` as FAT data. The test passes `zb_storage`
 to the SDK as its persistent storage partition. The normal board profiles and
@@ -52,8 +53,7 @@ for the C6 to join and bind. Expected serial messages include `Startup
 status=0`, `Commissioning`, `Binding light`, `Switch binding complete`,
 `Toggle request result=0`, `Light On/Off=`, and `Read light On/Off=`. Reboot
 both boards and check `factory_new=0` and subsequent toggles. The probe never
-erases Zigbee state; a deliberate factory reset API will be added before this
-becomes a production module.
+erases Zigbee state. The public API now includes `ZigbeeFactoryReset`.
 
 With both probes running, the bounded serial regression test is:
 
@@ -75,7 +75,7 @@ serial error or timeout.
   did not include the Zigbee component.
 - An absolute-path custom Zigbee partition table built successfully.
 - The C6 USB console stopped accepting the flash tool after a later serial
-  reset sequence, while the C6 continued transmitting Zigbee toggles. A manual
+reset sequence, while the C6 continued transmitting Zigbee toggles. A manual
   RESET restored the port. The updated C6 image then flashed successfully.
 - The two-board regression test passed after the reset: C6 logged successful
   toggle and read requests, H2 logged both On/Off states, and C6 read back

@@ -18,7 +18,8 @@ set(BLITZMAX_ESP32_NETWORK_REQUIREMENTS)
 list(FIND BLITZMAX_ESP32_MODULE_INITIALIZERS "__bb_esp32_network_zigbee_zigbee" BLITZMAX_ESP32_ZIGBEE_INDEX)
 if (NOT BLITZMAX_ESP32_ZIGBEE_INDEX EQUAL -1)
     list(APPEND BLITZMAX_ESP32_NETWORK_SOURCES
-        "${ESP32_MODULE_ROOT}/network.mod/zigbee.mod/native/esp32_zigbee.c")
+        "${ESP32_MODULE_ROOT}/network.mod/zigbee.mod/native/esp32_zigbee.c"
+        "${ESP32_MODULE_ROOT}/network.mod/zigbee.mod/native/esp32_zigbee_core.c")
     list(APPEND BLITZMAX_ESP32_NETWORK_REQUIREMENTS espressif__esp-zigbee-lib nvs_flash)
 endif()
 set(BLITZMAX_ESP32_RMT_SOURCES)
