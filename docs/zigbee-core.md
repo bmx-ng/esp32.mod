@@ -55,12 +55,20 @@ an On/Off server and reports changes as `ZigbeeEventAttribute`.
 its own hardware controls the light. The application must also update its
 physical output.
 
+`ZigbeeFindServers` broadcasts a match request for any server cluster and
+returns `ZigbeeEventMatch` records with address, endpoint, and cluster.
+`ZigbeeBindCluster` binds any local cluster to a remote endpoint, with a
+`ZigbeeEventBound` response. The On/Off functions remain convenience wrappers;
+the switch example uses the general discovery and binding calls.
+
 `ZigbeeConfigureOnOffReporting` requests change and periodic reports from a
 light. The response arrives as `ZigbeeEventReportingConfigured`; incoming
 reports arrive as `ZigbeeEventReport`. The light needs a binding from its On/Off
 server endpoint back to the switch's client endpoint so reports have a
 destination. The light example creates this binding when it sees the switch
-announce itself.
+announce itself. `ZigbeeConfigureReporting` accepts any supported scalar
+attribute and its ZCL type, intervals, and numeric change threshold. The
+switch example uses that general form for the On/Off attribute.
 
 The light template includes a Groups server. The switch template adds a Groups
 client alongside its On/Off client. `ZigbeeAddGroup` and `ZigbeeRemoveGroup`
@@ -93,8 +101,8 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API currently covers one standard On/Off endpoint. Generic endpoint
-and cluster registration, nonscalar attribute types, generic reporting,
-broader group management, security configuration, OTA, and application-managed
+and cluster registration, nonscalar attribute types, broader group management,
+security configuration, OTA, and application-managed
 sleep are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
 
@@ -119,3 +127,5 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   --require-write` passed after the H2 switch read the C6 light's 16-bit
   cluster revision, wrote its 16-bit IdentifyTime attribute, and read back
   the changed value.
+- The same pair test passed after the switch moved to general reporting,
+  discovery, and binding calls.

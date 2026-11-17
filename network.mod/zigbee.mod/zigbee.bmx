@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.7"
+ModuleInfo "Version: 0.9"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -155,9 +155,17 @@ bbdoc: A matching On/Off server was found; shortAddress and endpoint identify it
 End Rem
 Const ZigbeeEventOnOffMatch:Int = 12
 Rem
+bbdoc: A matching server was found; cluster identifies the matched cluster.
+End Rem
+Const ZigbeeEventMatch:Int = 12
+Rem
 bbdoc: A bind request completed; status zero means success.
 End Rem
 Const ZigbeeEventOnOffBound:Int = 13
+Rem
+bbdoc: A cluster bind completed; endpoint and cluster identify its source.
+End Rem
+Const ZigbeeEventBound:Int = 13
 Rem
 bbdoc: A remote Configure Reporting request completed; status zero means success.
 End Rem
@@ -320,13 +328,21 @@ Extern "C"
 		valueSize:Int Var) = "bmx_esp32_zigbee_core_poll"
 	Function _ZigbeeCoreDropped:UInt() = "bmx_esp32_zigbee_core_dropped"
 	Function _ZigbeeCoreFindOnOff:Int() = "bmx_esp32_zigbee_core_find_onoff"
+	Function _ZigbeeCoreFindServers:Int(profileId:Int, clusterId:Int) = ..
+		"bmx_esp32_zigbee_core_find_servers"
 	Function _ZigbeeCoreBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_bind_onoff"
+	Function _ZigbeeCoreBindCluster:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int) = "bmx_esp32_zigbee_core_bind_cluster"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
+	Function _ZigbeeCoreConfigureReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, dataType:Int, ..
+		minInterval:Int, maxInterval:Int, reportableChange:Int) = ..
+		"bmx_esp32_zigbee_core_configure_reporting"
 	Function _ZigbeeCoreAddGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_add_group"
 	Function _ZigbeeCoreRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -450,6 +466,15 @@ Function ZigbeeFindOnOffLights:Int()
 End Function
 
 Rem
+bbdoc: Searches the network for endpoints with a server for a cluster.
+about: Results arrive as ZigbeeEventMatch with shortAddress, endpoint, and
+cluster. The default profile is Home Automation (0x0104).
+End Rem
+Function ZigbeeFindServers:Int(clusterId:Int, profileId:Int = $0104)
+	Return _ZigbeeCoreFindServers(profileId, clusterId)
+End Function
+
+Rem
 bbdoc: Binds a local On/Off endpoint to a remote On/Off endpoint.
 about: The destination short address must resolve to an IEEE address in the
 stack's address table. Bind switch to light for commands; bind light to switch
@@ -457,6 +482,19 @@ for attribute reports. Poll for ZigbeeEventOnOffBound to confirm the result.
 End Rem
 Function ZigbeeBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
 	Return _ZigbeeCoreBindOnOff(sourceEndpoint, destinationAddress, destinationEndpoint)
+End Function
+
+Rem
+bbdoc: Binds one local cluster to a remote endpoint.
+about: The remote short address must resolve to an IEEE address in the stack's
+address table. Poll for ZigbeeEventBound; its cluster and endpoint identify the
+request. Bind server to client for attribute reports, or client to server for
+bound commands.
+End Rem
+Function ZigbeeBindCluster:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int)
+	Return _ZigbeeCoreBindCluster(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId)
 End Function
 
 Rem
@@ -487,6 +525,22 @@ Function ZigbeeConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddres
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int)
 	Return _ZigbeeCoreConfigureOnOffReporting(sourceEndpoint, destinationAddress, ..
 		destinationEndpoint, minInterval, maxInterval)
+End Function
+
+Rem
+bbdoc: Requests reporting for one scalar attribute on a remote endpoint.
+about: The ZCL dataType must match the remote attribute. Intervals are seconds;
+maxInterval 65535 disables periodic reports. For numeric attributes,
+reportableChange is the minimum value change that triggers a report. The
+server needs a binding to the requesting client endpoint to send reports.
+Poll for ZigbeeEventReportingConfigured and ZigbeeEventReport.
+End Rem
+Function ZigbeeConfigureReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, dataType:Int, ..
+		minInterval:Int, maxInterval:Int, reportableChange:Int = 0)
+	Return _ZigbeeCoreConfigureReporting(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, dataType, minInterval, ..
+		maxInterval, reportableChange)
 End Function
 
 Rem

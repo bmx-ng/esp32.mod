@@ -255,7 +255,7 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
 
 static void match_result(const ezb_zdo_match_desc_req_result_t *result, void *context)
 {
-    (void)context;
+    int cluster_id = (int)(uintptr_t)context;
     if (!result || !result->rsp) return; /* End of a broadcast search. */
     if (result->error != EZB_ERR_NONE || result->rsp->status != EZB_ZDP_STATUS_SUCCESS) {
         emit_status(ZB_EVENT_ERROR, result->error ? result->error : result->rsp->status, 0);
@@ -265,15 +265,16 @@ static void match_result(const ezb_zdo_match_desc_req_result_t *result, void *co
         zb_event_t event = {.kind = ZB_EVENT_MATCH,
                             .short_addr = result->rsp->nwk_addr_of_interest,
                             .endpoint = result->rsp->match_list[i],
-                            .cluster = EZB_ZCL_CLUSTER_ID_ON_OFF};
+                            .cluster = cluster_id};
         emit(event);
     }
 }
 
 static void bind_result(const ezb_zdp_bind_req_result_t *result, void *context)
 {
-    zb_event_t event = {.kind = ZB_EVENT_BOUND, .endpoint = (int)(uintptr_t)context,
-                        .cluster = EZB_ZCL_CLUSTER_ID_ON_OFF};
+    uintptr_t identity = (uintptr_t)context;
+    zb_event_t event = {.kind = ZB_EVENT_BOUND, .endpoint = identity & 0xff,
+                        .cluster = (identity >> 8) & 0xffff};
     event.status = !result ? ESP_FAIL : result->error != EZB_ERR_NONE ? result->error :
             !result->rsp ? ESP_FAIL : result->rsp->status;
     emit(event);
@@ -570,16 +571,18 @@ int bmx_esp32_zigbee_core_write_scalar(int source_ep, int destination_addr, int 
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
-int bmx_esp32_zigbee_core_find_onoff(void)
+int bmx_esp32_zigbee_core_find_servers(int profile_id, int cluster_id)
 {
+    if (profile_id < 0 || profile_id > 65535 || cluster_id < 0 || cluster_id > 65535)
+        return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
-    uint16_t cluster = EZB_ZCL_CLUSTER_ID_ON_OFF;
+    uint16_t cluster = (uint16_t)cluster_id;
     ezb_zdo_match_desc_req_t request = {
         .dst_nwk_addr = 0xfffd,
         .field = {.nwk_addr_of_interest = 0xfffd,
-                  .profile_id = EZB_AF_HA_PROFILE_ID,
+                  .profile_id = (uint16_t)profile_id,
                   .num_in_clusters = 1, .cluster_list = &cluster},
-        .cb = match_result,
+        .cb = match_result, .user_ctx = (void *)(uintptr_t)cluster_id,
     };
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
     ezb_err_t result = ezb_zdo_match_desc_req(&request);
@@ -587,16 +590,25 @@ int bmx_esp32_zigbee_core_find_onoff(void)
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
-int bmx_esp32_zigbee_core_bind_onoff(int source_ep, int destination_addr, int destination_ep)
+int bmx_esp32_zigbee_core_find_onoff(void)
+{
+    return bmx_esp32_zigbee_core_find_servers(EZB_AF_HA_PROFILE_ID,
+            EZB_ZCL_CLUSTER_ID_ON_OFF);
+}
+
+int bmx_esp32_zigbee_core_bind_cluster(int source_ep, int destination_addr,
+        int destination_ep, int cluster_id)
 {
     if (source_ep != requested.endpoint ||
             destination_addr < 0 || destination_addr > 65535 ||
-            destination_ep < 1 || destination_ep > 240) return ESP_ERR_INVALID_ARG;
+            destination_ep < 1 || destination_ep > 240 ||
+            cluster_id < 0 || cluster_id > 65535) return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
     ezb_zdo_bind_req_t request = {
-        .field = {.src_ep = source_ep, .cluster_id = EZB_ZCL_CLUSTER_ID_ON_OFF,
+        .field = {.src_ep = source_ep, .cluster_id = (uint16_t)cluster_id,
                   .dst_addr_mode = EZB_ADDR_MODE_EXT, .dst_ep = destination_ep},
-        .cb = bind_result, .user_ctx = (void *)(uintptr_t)source_ep,
+        .cb = bind_result,
+        .user_ctx = (void *)(uintptr_t)(((uint32_t)cluster_id << 8) | source_ep),
     };
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
     request.dst_nwk_addr = ezb_nwk_get_short_address();
@@ -606,6 +618,12 @@ int bmx_esp32_zigbee_core_bind_onoff(int source_ep, int destination_addr, int de
     if (result == EZB_ERR_NONE) result = ezb_zdo_bind_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_bind_onoff(int source_ep, int destination_addr, int destination_ep)
+{
+    return bmx_esp32_zigbee_core_bind_cluster(source_ep, destination_addr,
+            destination_ep, EZB_ZCL_CLUSTER_ID_ON_OFF);
 }
 
 int bmx_esp32_zigbee_core_bound_onoff(int source_ep, int command)
@@ -638,12 +656,16 @@ int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
 }
 
-int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destination_addr,
-        int destination_ep, int min_interval, int max_interval)
+int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_addr,
+        int destination_ep, int cluster_id, int attribute_id, int data_type,
+        int min_interval, int max_interval, int32_t reportable_change)
 {
-    if (source_ep != requested.endpoint || requested.device != 2 ||
-            destination_addr < 0 || destination_addr > 65535 ||
+    int size = scalar_size(data_type);
+    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 ||
+            cluster_id < 0 || cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
+            !size || reportable_change < 0 || (size == 1 && reportable_change > 255) ||
+            (size == 2 && reportable_change > 65535) ||
             min_interval < 0 || min_interval > 65534 ||
             max_interval < 1 || max_interval > 65535 ||
             (max_interval != 65535 && min_interval > max_interval))
@@ -651,21 +673,31 @@ int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destinati
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
     ezb_zcl_config_report_record_t record = {
         .direction = EZB_ZCL_REPORTING_SEND,
-        .attr_id = EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID,
-        .client = {.attr_type = EZB_ZCL_ATTR_TYPE_BOOL,
+        .attr_id = (uint16_t)attribute_id,
+        .client = {.attr_type = (uint8_t)data_type,
                    .min_interval = (uint16_t)min_interval,
-                   .max_interval = (uint16_t)max_interval},
+                   .max_interval = (uint16_t)max_interval,
+                   .reportable_change.u32 = (uint32_t)reportable_change},
     };
     ezb_zcl_config_report_cmd_t request = {
         .cmd_ctrl = {.dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
                      .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep,
-                     .cluster_id = EZB_ZCL_CLUSTER_ID_ON_OFF},
+                     .cluster_id = (uint16_t)cluster_id},
         .payload = {.record_number = 1, .record_field = &record},
     };
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
     ezb_err_t result = ezb_zcl_config_report_cmd_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destination_addr,
+        int destination_ep, int min_interval, int max_interval)
+{
+    if (requested.device != 2) return ESP_ERR_INVALID_ARG;
+    return bmx_esp32_zigbee_core_configure_reporting(source_ep, destination_addr, destination_ep,
+            EZB_ZCL_CLUSTER_ID_ON_OFF, EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, EZB_ZCL_ATTR_TYPE_BOOL,
+            min_interval, max_interval, 0);
 }
 
 int bmx_esp32_zigbee_core_add_group(int source_ep, int destination_addr, int destination_ep,

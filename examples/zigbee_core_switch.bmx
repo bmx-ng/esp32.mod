@@ -30,13 +30,13 @@ While True
 			" size=" + event.valueSize
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
 		If event.kind = ZigbeeEventStartup And Not event.factoryNew Then joined = True
-		If event.kind = ZigbeeEventOnOffMatch Then
+		If event.kind = ZigbeeEventMatch And event.cluster = 6 Then
 			lightAddress = event.shortAddress
 			lightEndpoint = event.endpoint
-			result = ZigbeeBindOnOff(1, lightAddress, lightEndpoint)
+			result = ZigbeeBindCluster(1, lightAddress, lightEndpoint, 6)
 			Print "Bind submission=" + result
 		End If
-		If event.kind = ZigbeeEventOnOffBound And event.status = 0 Then
+		If event.kind = ZigbeeEventBound And event.status = 0 And event.cluster = 6 Then
 			bound = True
 		End If
 		If event.kind = ZigbeeEventReportingConfigured And event.status = 0 Then
@@ -45,12 +45,12 @@ While True
 		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
 	Wend
 	If joined And Not bound And MilliSecs() >= nextFind Then
-		result = ZigbeeFindOnOffLights()
+		result = ZigbeeFindServers(6)
 		Print "Find light submission=" + result
 		nextFind = MilliSecs() + 10000
 	End If
 	If bound And Not reportingConfigured And MilliSecs() >= nextReporting Then
-		result = ZigbeeConfigureOnOffReporting(1, lightAddress, lightEndpoint, 0, 5)
+		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)
 		Print "Reporting submission=" + result
 		nextReporting = MilliSecs() + 10000
 	End If
