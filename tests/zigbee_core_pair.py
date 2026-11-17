@@ -26,6 +26,8 @@ def main():
     parser.add_argument("--light", required=True, help="coordinator/light serial port")
     parser.add_argument("--switch", required=True, help="end-device/switch serial port")
     parser.add_argument("--timeout", type=int, default=70)
+    parser.add_argument("--require-report", action="store_true",
+                        help="also require an On/Off attribute report at the switch")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -35,7 +37,7 @@ def main():
         thread.start()
     deadline = time.monotonic() + args.timeout
     states = set()
-    toggle = read = False
+    toggle = read = report = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -55,10 +57,13 @@ def main():
                 toggle = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
-            if states == {0, 1} and toggle and read:
-                print("PASS: switch toggled both light states and read the attribute", flush=True)
+            if name == "switch" and "Zigbee event 15 status=0" in line:
+                report = True
+            if states == {0, 1} and toggle and read and (report or not args.require_report):
+                print("PASS: switch toggled both light states, read the attribute"
+                      + (", and received a report" if args.require_report else ""), flush=True)
                 return 0
-        print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}", flush=True)
+        print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, report={report}", flush=True)
         return 1
     finally:
         stop.set()

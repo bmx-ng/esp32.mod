@@ -16,6 +16,10 @@ While True
 			result = ZigbeeSetLocalOnOff(10, 0)
 			Print "Initial light state result=" + result
 		End If
+		If event.kind = ZigbeeEventDeviceAnnounced Then
+			result = ZigbeeBindOnOff(10, event.shortAddress, 1)
+			Print "Light report binding result=" + result
+		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
 			result = ZigbeePermitJoining(180)

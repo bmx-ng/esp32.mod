@@ -26,6 +26,8 @@
 #define ZB_EVENT_ERROR 11
 #define ZB_EVENT_MATCH 12
 #define ZB_EVENT_BOUND 13
+#define ZB_EVENT_REPORT_CONFIGURED 14
+#define ZB_EVENT_REPORT 15
 
 typedef struct {
     int32_t kind, status, signal, endpoint, cluster, attribute, value;
@@ -133,6 +135,35 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
                     event.cluster == EZB_ZCL_CLUSTER_ID_ON_OFF &&
                     event.attribute == EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID)
                 event.value = *(const uint8_t *)attribute->attr_value;
+            emit(event);
+        }
+    } else if (action == EZB_ZCL_CORE_CONFIG_REPORT_RSP_CB_ID && message) {
+        const ezb_zcl_cmd_config_report_rsp_message_t *response = message;
+        for (const ezb_zcl_config_report_rsp_variable_t *record = response->in.variables;
+                record; record = record->next) {
+            zb_event_t event = {.kind = ZB_EVENT_REPORT_CONFIGURED,
+                                .status = record->status,
+                                .endpoint = response->info.dst_ep,
+                                .cluster = response->info.cluster_id,
+                                .attribute = record->attr_id,
+                                .value = record->direction};
+            emit(event);
+        }
+    } else if (action == EZB_ZCL_CORE_REPORT_ATTR_CB_ID && message) {
+        const ezb_zcl_cmd_report_attr_message_t *report = message;
+        for (const ezb_zcl_report_attr_variable_t *attribute = report->in.variables;
+                attribute; attribute = attribute->next) {
+            zb_event_t event = {.kind = ZB_EVENT_REPORT,
+                                .status = report->info.status,
+                                .endpoint = report->info.dst_ep,
+                                .cluster = report->info.cluster_id,
+                                .attribute = attribute->attr_id};
+            if (attribute->attr_value && event.cluster == EZB_ZCL_CLUSTER_ID_ON_OFF &&
+                    event.attribute == EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID &&
+                    attribute->attr_type == EZB_ZCL_ATTR_TYPE_BOOL)
+                event.value = *(const uint8_t *)attribute->attr_value;
+            if (report->in.header && report->in.header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT)
+                event.short_addr = report->in.header->src_addr.u.short_addr;
             emit(event);
         }
     }
@@ -416,7 +447,7 @@ int bmx_esp32_zigbee_core_find_onoff(void)
 
 int bmx_esp32_zigbee_core_bind_onoff(int source_ep, int destination_addr, int destination_ep)
 {
-    if (source_ep != requested.endpoint || requested.device != 2 ||
+    if (source_ep != requested.endpoint ||
             destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240) return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -463,6 +494,36 @@ int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
             EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, EZB_ZCL_STD_MANUF_CODE, &value, false);
     esp_zigbee_lock_release();
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destination_addr,
+        int destination_ep, int min_interval, int max_interval)
+{
+    if (source_ep != requested.endpoint || requested.device != 2 ||
+            destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 ||
+            min_interval < 0 || min_interval > 65534 ||
+            max_interval < 1 || max_interval > 65535 ||
+            (max_interval != 65535 && min_interval > max_interval))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_config_report_record_t record = {
+        .direction = EZB_ZCL_REPORTING_SEND,
+        .attr_id = EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID,
+        .client = {.attr_type = EZB_ZCL_ATTR_TYPE_BOOL,
+                   .min_interval = (uint16_t)min_interval,
+                   .max_interval = (uint16_t)max_interval},
+    };
+    ezb_zcl_config_report_cmd_t request = {
+        .cmd_ctrl = {.dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+                     .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep,
+                     .cluster_id = EZB_ZCL_CLUSTER_ID_ON_OFF},
+        .payload = {.record_number = 1, .record_field = &record},
+    };
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_config_report_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
 int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoint,

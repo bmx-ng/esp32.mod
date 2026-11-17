@@ -55,6 +55,13 @@ an On/Off server and reports changes as `ZigbeeEventAttribute`.
 its own hardware controls the light. The application must also update its
 physical output.
 
+`ZigbeeConfigureOnOffReporting` requests change and periodic reports from a
+light. The response arrives as `ZigbeeEventReportingConfigured`; incoming
+reports arrive as `ZigbeeEventReport`. The light needs a binding from its On/Off
+server endpoint back to the switch's client endpoint so reports have a
+destination. The light example creates this binding when it sees the switch
+announce itself.
+
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator/light on H2.
@@ -70,7 +77,7 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API currently covers one standard On/Off endpoint. Generic endpoint
-and cluster registration, arbitrary attribute types, reporting,
+and cluster registration, arbitrary attribute types, generic reporting,
 group commands, security configuration, OTA, and application-managed sleep
 are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
@@ -87,3 +94,6 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   toggle the C6 light through the binding table, then read back its state.
 - The C6 light built and flashed with a local attribute initialization call.
   The two-board bound-toggle and readback regression still passed.
+- After the C6 light bound its server endpoint back to the H2 switch,
+  `tests/zigbee_core_pair.py --require-report` passed with a received On/Off
+  report as well as toggles and a read response.

@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.4"
+ModuleInfo "Version: 0.5"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -158,6 +158,14 @@ Rem
 bbdoc: A bind request completed; status zero means success.
 End Rem
 Const ZigbeeEventOnOffBound:Int = 13
+Rem
+bbdoc: A remote Configure Reporting request completed; status zero means success.
+End Rem
+Const ZigbeeEventReportingConfigured:Int = 14
+Rem
+bbdoc: A remote attribute report arrived; On/Off reports carry value zero or one.
+End Rem
+Const ZigbeeEventReport:Int = 15
 
 Rem
 bbdoc: One Zigbee event copied from a native bounded queue.
@@ -266,6 +274,9 @@ Extern "C"
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_bind_onoff"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
+	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
+		"bmx_esp32_zigbee_core_configure_onoff_reporting"
 End Extern
 Public
 
@@ -377,9 +388,10 @@ Function ZigbeeFindOnOffLights:Int()
 End Function
 
 Rem
-bbdoc: Binds a local On/Off switch endpoint to a discovered light.
+bbdoc: Binds a local On/Off endpoint to a remote On/Off endpoint.
 about: The destination short address must resolve to an IEEE address in the
-stack's address table. Poll for ZigbeeEventOnOffBound to confirm the result.
+stack's address table. Bind switch to light for commands; bind light to switch
+for attribute reports. Poll for ZigbeeEventOnOffBound to confirm the result.
 End Rem
 Function ZigbeeBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
 	Return _ZigbeeCoreBindOnOff(sourceEndpoint, destinationAddress, destinationEndpoint)
@@ -401,6 +413,18 @@ the application is responsible for applying the state to its physical output.
 End Rem
 Function ZigbeeSetLocalOnOff:Int(endpoint:Int, on:Int)
 	Return _ZigbeeCoreSetLocalOnOff(endpoint, on)
+End Function
+
+Rem
+bbdoc: Requests periodic and change-based On/Off reports from a remote light.
+about: Call on a switch endpoint after discovering a light. Intervals are in
+seconds; minimum may be zero, and maximum may be 65535 to disable periodic
+reports. Poll for ZigbeeEventReportingConfigured and ZigbeeEventReport.
+End Rem
+Function ZigbeeConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, minInterval:Int, maxInterval:Int)
+	Return _ZigbeeCoreConfigureOnOffReporting(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, minInterval, maxInterval)
 End Function
 
 Rem
