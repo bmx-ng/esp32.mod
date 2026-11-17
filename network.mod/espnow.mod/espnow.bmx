@@ -64,6 +64,223 @@ End Rem
 Const ESPNowBroadcastAddress:String = "ff:ff:ff:ff:ff:ff"
 
 Rem
+bbdoc: Selects the station Wi-Fi interface for an ESP-NOW peer.
+End Rem
+Const ESPNowInterfaceStation:Int = 0
+
+Rem
+bbdoc: Selects the SoftAP Wi-Fi interface for an ESP-NOW peer.
+End Rem
+Const ESPNowInterfaceAccessPoint:Int = 1
+
+Rem
+bbdoc: Selects Espressif long-range PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYModeLongRange:Int = 0
+
+Rem
+bbdoc: Selects 802.11b PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYMode80211B:Int = 1
+
+Rem
+bbdoc: Selects 802.11g PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYMode80211G:Int = 2
+
+Rem
+bbdoc: Selects 802.11a PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYMode80211A:Int = 3
+
+Rem
+bbdoc: Selects 20 MHz 802.11n PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYModeHT20:Int = 4
+
+Rem
+bbdoc: Selects 40 MHz 802.11n PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYModeHT40:Int = 5
+
+Rem
+bbdoc: Selects 20 MHz 802.11ax PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYModeHE20:Int = 6
+
+Rem
+bbdoc: Selects 20 MHz 802.11ac PHY mode for a peer rate configuration.
+End Rem
+Const ESPNowPHYModeVHT20:Int = 7
+
+Rem
+bbdoc: Selects 1 Mbps with a long preamble.
+End Rem
+Const ESPNowRate1MbpsLong:Int = 0
+
+Rem
+bbdoc: Selects 2 Mbps with a long preamble.
+End Rem
+Const ESPNowRate2MbpsLong:Int = 1
+
+Rem
+bbdoc: Selects 5.5 Mbps with a long preamble.
+End Rem
+Const ESPNowRate5Point5MbpsLong:Int = 2
+
+Rem
+bbdoc: Selects 11 Mbps with a long preamble.
+End Rem
+Const ESPNowRate11MbpsLong:Int = 3
+
+Rem
+bbdoc: Selects 2 Mbps with a short preamble.
+End Rem
+Const ESPNowRate2MbpsShort:Int = 4
+
+Rem
+bbdoc: Selects 5.5 Mbps with a short preamble.
+End Rem
+Const ESPNowRate5Point5MbpsShort:Int = 5
+
+Rem
+bbdoc: Selects 11 Mbps with a short preamble.
+End Rem
+Const ESPNowRate11MbpsShort:Int = 6
+
+Rem
+bbdoc: Selects the legacy 48 Mbps rate.
+End Rem
+Const ESPNowRate48Mbps:Int = 7
+
+Rem
+bbdoc: Selects the legacy 24 Mbps rate.
+End Rem
+Const ESPNowRate24Mbps:Int = 8
+
+Rem
+bbdoc: Selects the legacy 12 Mbps rate.
+End Rem
+Const ESPNowRate12Mbps:Int = 9
+
+Rem
+bbdoc: Selects the legacy 6 Mbps rate.
+End Rem
+Const ESPNowRate6Mbps:Int = 10
+
+Rem
+bbdoc: Selects the legacy 54 Mbps rate.
+End Rem
+Const ESPNowRate54Mbps:Int = 11
+
+Rem
+bbdoc: Selects the legacy 36 Mbps rate.
+End Rem
+Const ESPNowRate36Mbps:Int = 12
+
+Rem
+bbdoc: Selects the legacy 18 Mbps rate.
+End Rem
+Const ESPNowRate18Mbps:Int = 13
+
+Rem
+bbdoc: Selects the legacy 9 Mbps rate.
+End Rem
+Const ESPNowRate9Mbps:Int = 14
+
+Rem
+bbdoc: Selects MCS0 with a long guard interval.
+End Rem
+Const ESPNowRateMCS0Long:Int = 15
+Rem
+bbdoc: Selects MCS1 with a long guard interval.
+End Rem
+Const ESPNowRateMCS1Long:Int = 16
+Rem
+bbdoc: Selects MCS2 with a long guard interval.
+End Rem
+Const ESPNowRateMCS2Long:Int = 17
+Rem
+bbdoc: Selects MCS3 with a long guard interval.
+End Rem
+Const ESPNowRateMCS3Long:Int = 18
+Rem
+bbdoc: Selects MCS4 with a long guard interval.
+End Rem
+Const ESPNowRateMCS4Long:Int = 19
+Rem
+bbdoc: Selects MCS5 with a long guard interval.
+End Rem
+Const ESPNowRateMCS5Long:Int = 20
+Rem
+bbdoc: Selects MCS6 with a long guard interval.
+End Rem
+Const ESPNowRateMCS6Long:Int = 21
+Rem
+bbdoc: Selects MCS7 with a long guard interval.
+End Rem
+Const ESPNowRateMCS7Long:Int = 22
+Rem
+bbdoc: Selects MCS8 with a long guard interval on HE-capable targets.
+End Rem
+Const ESPNowRateMCS8Long:Int = 23
+Rem
+bbdoc: Selects MCS9 with a long guard interval on HE-capable targets.
+End Rem
+Const ESPNowRateMCS9Long:Int = 24
+
+Rem
+bbdoc: Selects MCS0 with a short guard interval.
+End Rem
+Const ESPNowRateMCS0Short:Int = 25
+Rem
+bbdoc: Selects MCS1 with a short guard interval.
+End Rem
+Const ESPNowRateMCS1Short:Int = 26
+Rem
+bbdoc: Selects MCS2 with a short guard interval.
+End Rem
+Const ESPNowRateMCS2Short:Int = 27
+Rem
+bbdoc: Selects MCS3 with a short guard interval.
+End Rem
+Const ESPNowRateMCS3Short:Int = 28
+Rem
+bbdoc: Selects MCS4 with a short guard interval.
+End Rem
+Const ESPNowRateMCS4Short:Int = 29
+Rem
+bbdoc: Selects MCS5 with a short guard interval.
+End Rem
+Const ESPNowRateMCS5Short:Int = 30
+Rem
+bbdoc: Selects MCS6 with a short guard interval.
+End Rem
+Const ESPNowRateMCS6Short:Int = 31
+Rem
+bbdoc: Selects MCS7 with a short guard interval.
+End Rem
+Const ESPNowRateMCS7Short:Int = 32
+Rem
+bbdoc: Selects MCS8 with a short guard interval on HE-capable targets.
+End Rem
+Const ESPNowRateMCS8Short:Int = 33
+Rem
+bbdoc: Selects MCS9 with a short guard interval on HE-capable targets.
+End Rem
+Const ESPNowRateMCS9Short:Int = 34
+
+Rem
+bbdoc: Selects Espressif long-range mode at 250 Kbps.
+End Rem
+Const ESPNowRateLongRange250Kbps:Int = 35
+
+Rem
+bbdoc: Selects Espressif long-range mode at 500 Kbps.
+End Rem
+Const ESPNowRateLongRange500Kbps:Int = 36
+
+Rem
 bbdoc: One packet copied from the native ESP-NOW receive queue.
 about: Poll packets with ESPNowPollReceived. Every byte array belongs to the
 returned value and remains valid after the next poll.
@@ -92,6 +309,28 @@ Struct SESPNowReceivedPacket
 	Field channel:Int
 
 	Rem
+	bbdoc: Secondary Wi-Fi channel, using the ESP32.Network.WiFi second-channel constants.
+	End Rem
+	Field secondaryChannel:Int
+
+	Rem
+	bbdoc: Native PHY rate code reported by the radio for this received frame.
+	End Rem
+	Field rate:Int
+
+	Rem
+	bbdoc: Radio noise floor in dBm.
+	End Rem
+	Field noiseFloor:Int
+
+	Rem
+	bbdoc: Radio receive timestamp in microseconds, wrapping at the UInt range.
+	about: ESP-IDF notes that this timestamp is only precise while modem sleep and
+	light sleep are disabled.
+	End Rem
+	Field timestamp:UInt
+
+	Rem
 	bbdoc: Application payload bytes, without ESP-NOW framing.
 	End Rem
 	Field data:Byte[]
@@ -109,9 +348,81 @@ Struct SESPNowDeliveryReport
 	Field destinationAddress:Byte[]
 
 	Rem
+	bbdoc: Six-byte local source address used for the transmission.
+	End Rem
+	Field sourceAddress:Byte[]
+
+	Rem
+	bbdoc: Wi-Fi interface used for transmission.
+	End Rem
+	Field interfaceIndex:Int
+
+	Rem
+	bbdoc: Native PHY rate code used for transmission.
+	End Rem
+	Field rate:Int
+
+	Rem
 	bbdoc: True when the peer acknowledged the frame at the MAC layer.
 	End Rem
 	Field delivered:Int
+End Struct
+
+Rem
+bbdoc: Configuration retained for one unicast ESP-NOW peer.
+about: The local master key is sensitive configuration data. Avoid printing or
+persisting it unless the application has a deliberate security policy.
+End Rem
+Struct SESPNowPeerInfo
+	Rem
+	bbdoc: Six-byte station or SoftAP MAC address of the peer.
+	End Rem
+	Field address:Byte[]
+
+	Rem
+	bbdoc: Sixteen-byte local master key, zero-filled for an unencrypted peer.
+	End Rem
+	Field localMasterKey:Byte[]
+
+	Rem
+	bbdoc: Peer channel, or zero to follow the selected Wi-Fi interface.
+	End Rem
+	Field channel:Int
+
+	Rem
+	bbdoc: ESPNowInterfaceStation or ESPNowInterfaceAccessPoint.
+	End Rem
+	Field interfaceIndex:Int
+
+	Rem
+	bbdoc: True when peer traffic is protected with the local master key.
+	End Rem
+	Field encrypted:Int
+End Struct
+
+Rem
+bbdoc: Per-peer ESP-NOW PHY transmission configuration.
+End Rem
+Struct SESPNowRateConfig
+	Rem
+	bbdoc: One of the ESPNowPHYMode constants.
+	End Rem
+	Field phyMode:Int
+
+	Rem
+	bbdoc: One of the ESPNowRate constants compatible with phyMode.
+	End Rem
+	Field rate:Int
+
+	Rem
+	bbdoc: Enables ERSU extended-range transmission when supported by the target.
+	End Rem
+	Field extendedRange:Int
+
+	Rem
+	bbdoc: Enables dual-carrier modulation when supported by the selected PHY mode.
+	End Rem
+	Field dualCarrierModulation:Int
 End Struct
 
 Private
@@ -126,20 +437,47 @@ Extern "C"
 	Function _ESPNowSetChannel:Int(channel:Int) = "bmx_esp32_espnow_set_channel"
 	Function _ESPNowGetChannel:Int(channel:Int Var) = "bmx_esp32_espnow_get_channel"
 	Function _ESPNowSetPrimaryMasterKey:Int(key:Byte Ptr, length:Int) = "bmx_esp32_espnow_set_primary_master_key"
-	Function _ESPNowAddPeer:Int(address:Byte Ptr, channel:Int, key:Byte Ptr, keyLength:Int) = "bmx_esp32_espnow_add_peer"
+	Function _ESPNowAddPeer:Int(address:Byte Ptr, channel:Int, key:Byte Ptr, keyLength:Int, ..
+		interfaceIndex:Int) = "bmx_esp32_espnow_add_peer"
 	Function _ESPNowDeletePeer:Int(address:Byte Ptr) = "bmx_esp32_espnow_delete_peer"
 	Function _ESPNowPeerExists:Int(address:Byte Ptr) = "bmx_esp32_espnow_peer_exists"
 	Function _ESPNowPeerCounts:Int(total:Int Var, encrypted:Int Var) = "bmx_esp32_espnow_peer_counts"
+	Function _ESPNowGetPeer:Int(peerAddress:Byte Ptr, address:Byte Ptr, key:Byte Ptr, channel:Int Var, ..
+		interfaceIndex:Int Var, encrypted:Int Var) = "bmx_esp32_espnow_get_peer"
+	Function _ESPNowFetchPeer:Int(fromBeginning:Int, address:Byte Ptr, key:Byte Ptr, channel:Int Var, ..
+		interfaceIndex:Int Var, encrypted:Int Var) = "bmx_esp32_espnow_fetch_peer"
+	Function _ESPNowSetPeerRate:Int(address:Byte Ptr, phyMode:Int, rate:Int, extendedRange:Int, ..
+		dualCarrierModulation:Int) = "bmx_esp32_espnow_set_peer_rate"
+	Function _ESPNowSetWakeWindow:Int(windowMilliseconds:Int) = "bmx_esp32_espnow_set_wake_window"
 	Function _ESPNowSend:Int(address:Byte Ptr, data:Byte Ptr, length:Int) = "bmx_esp32_espnow_send"
 	Function _ESPNowTakeReceived:Int(sourceAddress:Byte Ptr, destinationAddress:Byte Ptr, ..
-		rssi:Int Var, channel:Int Var, data:Byte Ptr, capacity:Int, length:Int Var) = "bmx_esp32_espnow_take_received"
-	Function _ESPNowTakeDelivery:Int(destinationAddress:Byte Ptr, delivered:Int Var) = "bmx_esp32_espnow_take_delivery"
+		rssi:Int Var, channel:Int Var, secondaryChannel:Int Var, rate:Int Var, noiseFloor:Int Var, ..
+		timestamp:UInt Var, data:Byte Ptr, capacity:Int, length:Int Var) = "bmx_esp32_espnow_take_received"
+	Function _ESPNowTakeDelivery:Int(destinationAddress:Byte Ptr, sourceAddress:Byte Ptr, ..
+		interfaceIndex:Int Var, rate:Int Var, delivered:Int Var) = "bmx_esp32_espnow_take_delivery"
 	Function _ESPNowDroppedReceived:UInt() = "bmx_esp32_espnow_dropped_received"
 	Function _ESPNowDroppedDeliveries:UInt() = "bmx_esp32_espnow_dropped_deliveries"
 End Extern
 
 Function _ESPNowValidAddress:Int(address:Byte[])
 	Return address And address.length = ESPNowAddressLength
+End Function
+
+Function _ESPNowReadPeer:Int(peerAddress:Byte[], fromBeginning:Int, fetch:Int, info:SESPNowPeerInfo Var)
+	Local address:Byte[ESPNowAddressLength]
+	Local key:Byte[ESPNowKeyLength]
+	Local result:Int
+	If fetch Then
+		result = _ESPNowFetchPeer(fromBeginning, address, key, info.channel, info.interfaceIndex, info.encrypted)
+	Else
+		result = _ESPNowGetPeer(peerAddress, address, key, info.channel, info.interfaceIndex, info.encrypted)
+	End If
+	If result <> 0 Then Return result
+	info.address = New Byte[ESPNowAddressLength]
+	info.localMasterKey = New Byte[ESPNowKeyLength]
+	MemCopy(info.address, address, ESPNowAddressLength)
+	MemCopy(info.localMasterKey, key, ESPNowKeyLength)
+	Return result
 End Function
 
 Public
@@ -245,16 +583,19 @@ bbdoc: Adds or updates one unicast ESP-NOW peer.
 param: Six-byte station MAC address of the peer.
 param: Peer channel from 1 to 14, or zero to use the local current channel.
 param: Optional 16-byte LMK; Null registers an unencrypted peer.
+param: Wi-Fi interface used by the peer, normally ESPNowInterfaceStation.
 returns: ESP_OK on success or an ESP-IDF error code.
 about: If the address is already registered, its channel and encryption
 configuration are replaced. Both ends of an encrypted link must use the same
 PMK and the same per-peer LMK.
 End Rem
-Function ESPNowAddPeer:Int(address:Byte[], channel:Int = 0, localMasterKey:Byte[] = Null)
+Function ESPNowAddPeer:Int(address:Byte[], channel:Int = 0, localMasterKey:Byte[] = Null, ..
+		interfaceIndex:Int = ESPNowInterfaceStation)
 	If Not _ESPNowValidAddress(address) Then Return -5
 	If localMasterKey And localMasterKey.length <> ESPNowKeyLength Then Return -5
-	If localMasterKey Then Return _ESPNowAddPeer(address, channel, localMasterKey, localMasterKey.length)
-	Return _ESPNowAddPeer(address, channel, Null, 0)
+	If localMasterKey Then Return _ESPNowAddPeer(address, channel, localMasterKey, ..
+		localMasterKey.length, interfaceIndex)
+	Return _ESPNowAddPeer(address, channel, Null, 0, interfaceIndex)
 End Function
 
 Rem
@@ -300,6 +641,64 @@ Function ESPNowPeerCounts:Int(total:Int Var, encrypted:Int Var)
 End Function
 
 Rem
+bbdoc: Reads the retained configuration for a registered peer.
+param: Six-byte unicast or broadcast peer address.
+param: Receives the peer configuration.
+returns: ESP_OK on success or an ESP-IDF error code.
+End Rem
+Function ESPNowGetPeer:Int(address:Byte[], info:SESPNowPeerInfo Var)
+	If Not _ESPNowValidAddress(address) Then Return -5
+	Return _ESPNowReadPeer(address, False, False, info)
+End Function
+
+Rem
+bbdoc: Begins enumeration of registered unicast peers.
+param: Receives the first peer configuration.
+returns: ESP_OK on success or ESP_ERR_ESPNOW_NOT_FOUND when no unicast peer exists.
+about: ESP-IDF deliberately omits the broadcast peer from enumeration. Continue
+with ESPNowNextPeer until it returns a non-zero result.
+End Rem
+Function ESPNowFirstPeer:Int(info:SESPNowPeerInfo Var)
+	Return _ESPNowReadPeer(Null, True, True, info)
+End Function
+
+Rem
+bbdoc: Continues enumeration of registered unicast peers.
+param: Receives the next peer configuration.
+returns: ESP_OK on success or ESP_ERR_ESPNOW_NOT_FOUND after the final peer.
+about: Call ESPNowFirstPeer before starting a new enumeration pass.
+End Rem
+Function ESPNowNextPeer:Int(info:SESPNowPeerInfo Var)
+	Return _ESPNowReadPeer(Null, False, True, info)
+End Function
+
+Rem
+bbdoc: Selects the PHY transmission configuration for one registered peer.
+param: Six-byte address of an existing peer.
+param: PHY mode, rate and optional 802.11ax transmission features.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: Mode and rate support varies by ESP32 family. Configure the peer first;
+ESP-IDF rejects combinations not supported by the target radio.
+End Rem
+Function ESPNowSetPeerRate:Int(address:Byte[], config:SESPNowRateConfig Var)
+	If Not _ESPNowValidAddress(address) Then Return -5
+	Return _ESPNowSetPeerRate(address, config.phyMode, config.rate, config.extendedRange, ..
+		config.dualCarrierModulation)
+End Function
+
+Rem
+bbdoc: Sets how long the station radio remains awake for ESP-NOW reception.
+param: Receive window in milliseconds from zero through 65535.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: The default maximum window keeps reception continuously available. For
+periodic power saving, also set WiFiSetConnectionlessWakeInterval and enable an
+appropriate ESP32 Wi-Fi modem-sleep mode.
+End Rem
+Function ESPNowSetWakeWindow:Int(windowMilliseconds:Int)
+	Return _ESPNowSetWakeWindow(windowMilliseconds)
+End Function
+
+Rem
 bbdoc: Queues one payload for transmission to a registered peer.
 param: Six-byte unicast or broadcast destination address.
 param: Payload of at most ESPNowMaximumPayload bytes.
@@ -323,6 +722,20 @@ Function ESPNowBroadcast:Int(data:Byte[])
 End Function
 
 Rem
+bbdoc: Queues one payload for every registered peer.
+param: Payload of at most ESPNowMaximumPayload bytes.
+returns: ESP_OK when ESP-IDF accepts the requests, or an ESP-IDF error code.
+about: This uses ESP-IDF's null-destination operation and is distinct from a
+single broadcast frame. Poll one delivery report for each resulting unicast
+transmission. The registered broadcast peer, when present, may also receive a
+broadcast transmission as part of the operation.
+End Rem
+Function ESPNowSendToAll:Int(data:Byte[])
+	If Not data Or data.length > ESPNowMaximumPayload Then Return -5
+	Return _ESPNowSend(Null, data, data.length)
+End Function
+
+Rem
 bbdoc: Removes the oldest packet from the native receive queue.
 param: Receives the packet when one is available.
 returns: True when a packet was returned; False when the queue is empty.
@@ -336,6 +749,7 @@ Function ESPNowPollReceived:Int(packet:SESPNowReceivedPacket Var)
 	Local payload:Byte[ESPNowMaximumPayload]
 	Local length:Int
 	If Not _ESPNowTakeReceived(sourceAddress, destinationAddress, packet.rssi, packet.channel, ..
+			packet.secondaryChannel, packet.rate, packet.noiseFloor, packet.timestamp, ..
 			payload, payload.length, length) Then Return False
 	packet.sourceAddress = New Byte[ESPNowAddressLength]
 	packet.destinationAddress = New Byte[ESPNowAddressLength]
@@ -353,9 +767,13 @@ returns: True when a report was returned; False when the queue is empty.
 End Rem
 Function ESPNowPollDelivery:Int(report:SESPNowDeliveryReport Var)
 	Local destinationAddress:Byte[ESPNowAddressLength]
-	If Not _ESPNowTakeDelivery(destinationAddress, report.delivered) Then Return False
+	Local sourceAddress:Byte[ESPNowAddressLength]
+	If Not _ESPNowTakeDelivery(destinationAddress, sourceAddress, report.interfaceIndex, ..
+			report.rate, report.delivered) Then Return False
 	report.destinationAddress = New Byte[ESPNowAddressLength]
+	report.sourceAddress = New Byte[ESPNowAddressLength]
 	MemCopy(Varptr report.destinationAddress[0], Varptr destinationAddress[0], Size_T(destinationAddress.length))
+	MemCopy(Varptr report.sourceAddress[0], Varptr sourceAddress[0], Size_T(sourceAddress.length))
 	Return True
 End Function
 

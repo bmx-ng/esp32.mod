@@ -149,6 +149,19 @@ peer lifecycle and diagnostics.
 `examples/espnow_unicast.bmx` demonstrates a paced bidirectional link. Change
 `PeerAddressText` on each device to the station MAC of the other device.
 
+## Station and SoftAP peer interfaces
+
+Peers use the station interface by default. An application running a SoftAP can
+instead register a peer against its access-point interface:
+
+```blitzmax
+ESPNowAddPeer(peer, 1, Null, ESPNowInterfaceAccessPoint)
+```
+
+The selected interface must be active, and its channel must agree with the peer
+configuration. The station and SoftAP interfaces normally share one physical
+radio and therefore cannot remain on unrelated channels.
+
 ## Encrypted unicast
 
 ESP-NOW protects unicast peers with CCMP. Encryption uses two 16-byte values:
@@ -179,6 +192,100 @@ normally lower.
 traffic and reports the total and encrypted peer counts. Change its peer MAC on
 each device before running it.
 
+## Inspecting and enumerating peers
+
+Read one known peer into an `SESPNowPeerInfo` value:
+
+```blitzmax
+Local info:SESPNowPeerInfo
+Local result:Int = ESPNowGetPeer(peer, info)
+If result = 0 Then
+	Print ESPNowFormatAddress(info.address)
+	Print "Channel: " + info.channel
+	Print "Interface: " + info.interfaceIndex
+	Print "Encrypted: " + info.encrypted
+End If
+```
+
+The returned `localMasterKey` contains sensitive key material for an encrypted
+peer. Do not log it or save it in unsecured storage.
+
+Enumerate every unicast peer with a first/next loop:
+
+```blitzmax
+Local info:SESPNowPeerInfo
+Local result:Int = ESPNowFirstPeer(info)
+While result = 0
+	Print ESPNowFormatAddress(info.address)
+	result = ESPNowNextPeer(info)
+Wend
+```
+
+ESP-IDF excludes the broadcast entry from this enumeration. Query it directly
+with `ESPNowGetPeer(ESPNowParseAddress(ESPNowBroadcastAddress), info)` when
+needed.
+
+## Sending to all registered peers
+
+`ESPNowSendToAll` gives ESP-IDF's null-destination operation an explicit name:
+
+```blitzmax
+Local payload:Byte[] = [$42, $4d, $58]
+Local result:Int = ESPNowSendToAll(payload)
+```
+
+This is different from `ESPNowBroadcast`. Broadcast sends one unencrypted frame
+to the broadcast address. Send-to-all asks ESP-IDF to transmit to the registered
+peer set and can therefore produce multiple delivery reports. It is useful when
+the application already maintains a peer table and wants the same message sent
+using each peer's configuration.
+
+## Per-peer PHY rate
+
+The default automatic rate is appropriate for most applications. A developer
+can select a fixed rate when range, latency, airtime, or repeatable radio tests
+matter:
+
+```blitzmax
+Local rate:SESPNowRateConfig
+rate.phyMode = ESPNowPHYMode80211B
+rate.rate = ESPNowRate1MbpsLong
+
+Local result:Int = ESPNowSetPeerRate(peer, rate)
+```
+
+Register the peer first. The module uses stable named rate constants and maps
+them to each target's ESP-IDF values. Not every ESP32 family supports every
+combination. In particular, HE rates and the ERSU/DCM options require suitable
+Wi-Fi 6 hardware. ESP-IDF returns an error for an unsupported combination.
+
+The long-range constants use Espressif's proprietary PHY and require compatible
+radio configuration at both ends. They are not ordinary 802.11 data rates.
+
+## ESP-NOW power saving
+
+A station can periodically wake its radio for a limited ESP-NOW receive window.
+Three settings work together:
+
+```blitzmax
+Import ESP32.Network.WiFi
+
+WiFiSetPowerSave(WiFiPowerSaveMaximumModem)
+WiFiSetConnectionlessWakeInterval(1000)
+ESPNowSetWakeWindow(100)
+```
+
+This example requests a 100 ms receive window every 1,000 ms. The connectionless
+interval is shared by ESP-NOW and other connectionless Wi-Fi facilities;
+Espressif recommends interval values in multiples of 100 ms. A zero interval
+selects ESP-IDF's default coexistence mode. The wake window accepts zero through
+65,535 ms, with the default maximum keeping reception continuously available.
+
+Power saving trades responsiveness and receive reliability for energy use.
+Transmitters should align their retry strategy with the receiver's wake cycle.
+Measure the chosen settings on the actual board because radio, regulator, and
+peripheral consumption all contribute to total power.
+
 ## Receiving packets
 
 The ESP-IDF receive callback runs in a high-priority Wi-Fi task. It must not
@@ -199,6 +306,11 @@ Wend
 Each returned packet owns its source address, destination address, and payload
 arrays. Retaining one packet does not block the queue or make its arrays change
 on the next poll.
+
+Packets also report the secondary channel, native PHY rate code, radio noise
+floor, and the radio receive timestamp. These fields are intended for
+diagnostics and link-quality decisions; their exact rate encoding remains an
+ESP-IDF radio value rather than one of the portable configuration constants.
 
 ## Delivery reports and application reliability
 
@@ -226,6 +338,10 @@ fragmentation. A reliable application protocol should normally add:
 - an application acknowledgement for important commands;
 - a bounded timeout and retry policy; and
 - duplicate detection at the receiver.
+
+Delivery reports also include the local source address, Wi-Fi interface, and
+native transmitted PHY rate. `ESPNowSendToAll` may generate several reports,
+one for each transmission selected by ESP-IDF.
 
 For sustained or large transfers, wait for the previous delivery report before
 queuing the next frame. This reduces pressure on the Wi-Fi task and preserves a
@@ -325,6 +441,7 @@ to the current ESP-NOW session and must be configured again after restart.
 | `espnow_unicast.bmx` | Register and pace an unencrypted bidirectional peer. |
 | `espnow_encrypted_peer.bmx` | Configure PMK/LMK encryption and send maximum-size v2 packets. |
 | `espnow_low_memory_receiver.bmx` | Use small queues and the 250-byte v1 receive limit. |
+| `espnow_advanced_features.bmx` | Inspect/enumerate peers, select a PHY rate, configure optional power saving, and send to all peers. |
 | `espnow_lifecycle_test.bmx` | Verify ESP-NOW and Wi-Fi shutdown ordering. |
 | `espnow_peer_test.bmx` | Hardware regression between the validated WROOM-32D and XIAO C6. |
 

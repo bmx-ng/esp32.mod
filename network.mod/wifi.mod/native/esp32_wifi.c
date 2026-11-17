@@ -258,6 +258,12 @@ int32_t bmx_embedded_wifi_deinitialize(void) {
 
 int32_t bmx_embedded_wifi_initialized(void) { return bmx_wifi_initialized; }
 
+int32_t bmx_esp32_wifi_set_connectionless_wake_interval(int32_t interval) {
+    if (!bmx_wifi_initialized) return ESP_ERR_INVALID_STATE;
+    if (interval < 0 || interval > UINT16_MAX) return ESP_ERR_INVALID_ARG;
+    return esp_wifi_connectionless_module_set_wake_interval((uint16_t)interval);
+}
+
 int32_t bmx_embedded_wifi_start_scan(void) {
     if (!bmx_wifi_initialized) return ESP_ERR_INVALID_STATE;
     if (bmx_wifi_scan_active) return ESP_ERR_INVALID_STATE;

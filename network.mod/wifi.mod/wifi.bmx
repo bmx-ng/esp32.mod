@@ -56,6 +56,7 @@ Extern "C"
 	Function _ESP32WiFiResultName:String(result:Int) = "bmx_esp32_wifi_result_name"
 	Function _ESP32WiFiSetPowerSave:Int(mode:Int) = "bmx_esp32_wifi_set_power_save"
 	Function _ESP32WiFiGetPowerSave:Int(mode:Int Var) = "bmx_esp32_wifi_get_power_save"
+	Function _ESP32WiFiSetConnectionlessWakeInterval:Int(intervalMilliseconds:Int) = "bmx_esp32_wifi_set_connectionless_wake_interval"
 	Function _ESP32WiFiSetMaximumTransmitPower:Int(power:Int) = "bmx_esp32_wifi_set_maximum_transmit_power"
 	Function _ESP32WiFiGetMaximumTransmitPower:Int(power:Int Var) = "bmx_esp32_wifi_get_maximum_transmit_power"
 	Function _ESP32WiFiSetStationProtocols:Int(protocols:UInt) = "bmx_esp32_wifi_set_station_protocols"
@@ -94,6 +95,19 @@ End Function
 
 Function WiFiGetPowerSave:Int(mode:Int Var)
 	Return _ESP32WiFiGetPowerSave(mode)
+End Function
+
+Rem
+bbdoc: Sets the shared wake interval used by connectionless Wi-Fi modules.
+param: Interval in milliseconds from 1 through 65535, or zero for ESP-IDF's default coexistence mode.
+returns: ESP_OK on success or an ESP-IDF error code.
+about: The interval is shared by connectionless protocols such as ESP-NOW.
+Espressif recommends multiples of 100 milliseconds. Configure an ESP-NOW
+receive window separately with ESPNowSetWakeWindow. Power saving also requires
+an appropriate modem-sleep configuration.
+End Rem
+Function WiFiSetConnectionlessWakeInterval:Int(intervalMilliseconds:Int)
+	Return _ESP32WiFiSetConnectionlessWakeInterval(intervalMilliseconds)
 End Function
 
 Function WiFiSetMaximumTransmitPower:Int(powerQuarterDBm:Int)
