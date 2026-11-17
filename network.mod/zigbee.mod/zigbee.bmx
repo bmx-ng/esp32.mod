@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.2"
+ModuleInfo "Version: 0.3"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -150,6 +150,14 @@ Rem
 bbdoc: A native Zigbee operation failed; inspect status and signal.
 End Rem
 Const ZigbeeEventError:Int = 11
+Rem
+bbdoc: A matching On/Off server was found; shortAddress and endpoint identify it.
+End Rem
+Const ZigbeeEventOnOffMatch:Int = 12
+Rem
+bbdoc: A bind request completed; status zero means success.
+End Rem
+Const ZigbeeEventOnOffBound:Int = 13
 
 Rem
 bbdoc: One Zigbee event copied from a native bounded queue.
@@ -253,6 +261,10 @@ Extern "C"
 		cluster:Int Var, attribute:Int Var, value:Int Var, shortAddress:Int Var, ..
 		panId:Int Var, channel:Int Var, factoryNew:Int Var) = "bmx_esp32_zigbee_core_poll"
 	Function _ZigbeeCoreDropped:UInt() = "bmx_esp32_zigbee_core_dropped"
+	Function _ZigbeeCoreFindOnOff:Int() = "bmx_esp32_zigbee_core_find_onoff"
+	Function _ZigbeeCoreBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_bind_onoff"
+	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 End Extern
 Public
 
@@ -352,6 +364,33 @@ value only reports whether the request was accepted for transmission.
 End Rem
 Function ZigbeeReadOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
 	Return _ZigbeeCoreReadOnOff(sourceEndpoint, destinationAddress, destinationEndpoint)
+End Function
+
+Rem
+bbdoc: Searches the network for Home Automation On/Off server endpoints.
+about: Each result arrives as ZigbeeEventOnOffMatch with shortAddress and
+endpoint. This is an asynchronous broadcast request.
+End Rem
+Function ZigbeeFindOnOffLights:Int()
+	Return _ZigbeeCoreFindOnOff()
+End Function
+
+Rem
+bbdoc: Binds a local On/Off switch endpoint to a discovered light.
+about: The destination short address must resolve to an IEEE address in the
+stack's address table. Poll for ZigbeeEventOnOffBound to confirm the result.
+End Rem
+Function ZigbeeBindOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
+	Return _ZigbeeCoreBindOnOff(sourceEndpoint, destinationAddress, destinationEndpoint)
+End Function
+
+Rem
+bbdoc: Sends Off, On or Toggle through the switch endpoint's binding table.
+about: Command zero turns off, one turns on, and two toggles. Bind the switch
+first; a zero return only confirms submission to the SDK.
+End Rem
+Function ZigbeeSendBoundOnOff:Int(sourceEndpoint:Int, command:Int)
+	Return _ZigbeeCoreBoundOnOff(sourceEndpoint, command)
 End Function
 
 Rem

@@ -42,12 +42,15 @@ fast enough. `ZigbeeStop` requests an asynchronous shutdown; wait for
 `ZigbeeEventStopped` before restarting. `ZigbeeFactoryReset` clears saved
 Zigbee network state, while the SDK retains the outgoing frame counter.
 
-The On/Off switch template has a client cluster. `ZigbeeSendOnOff` sends Off,
-On, or Toggle to a 16-bit network address; `ZigbeeReadOnOff` requests the
-remote On/Off attribute. A successful return means the SDK accepted the
-request, and a later `ZigbeeEventRead` carries a read response. The light
-template has an On/Off server and reports changes as `ZigbeeEventAttribute`.
-The simple examples use address 0, the coordinator, and endpoint 10.
+The On/Off switch template has a client cluster. `ZigbeeFindOnOffLights`
+broadcasts a match descriptor request. Each `ZigbeeEventOnOffMatch` supplies a
+light's short address and endpoint. `ZigbeeBindOnOff` binds the switch to that
+light, and `ZigbeeEventOnOffBound` confirms the result. `ZigbeeSendBoundOnOff`
+uses that binding for Off, On, or Toggle. `ZigbeeSendOnOff` also permits direct
+sending to a 16-bit network address; `ZigbeeReadOnOff` requests the remote
+On/Off attribute. A successful return means the SDK accepted the request,
+and a later `ZigbeeEventRead` carries a read response. The light template has
+an On/Off server and reports changes as `ZigbeeEventAttribute`.
 
 ## Examples
 
@@ -64,7 +67,7 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API currently covers one standard On/Off endpoint. Generic endpoint
-and cluster registration, arbitrary attribute types, binding, reporting,
+and cluster registration, arbitrary attribute types, reporting,
 group commands, security configuration, OTA, and application-managed sleep
 are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
@@ -77,3 +80,5 @@ device with a longer keepalive; it does not enter low-power sleep itself.
 - Both reverse role builds succeeded: H2 with `zed`, C6 with `zczr`. After
   clearing only their Zigbee storage partitions, the C6 coordinator/light and
   H2 end-device/switch pair toggled both states and read back the attribute.
+- The H2 switch subsequently used match descriptor discovery and binding to
+  toggle the C6 light through the binding table, then read back its state.
