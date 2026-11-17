@@ -26,7 +26,10 @@ library.
 ## Application flow
 
 Call `ZigbeeStart(role, device, endpoint, primaryMask, secondaryMask,
-autoCommission)`. The default channel mask selects channel 15. Startup is
+autoCommission)`. Call `ZigbeeAddOnOffEndpoint` before starting to register up
+to eight more standard light or switch endpoints. The extra endpoint list is
+retained across stop/start cycles; `ZigbeeClearExtraEndpoints` clears it while
+stopped. The default channel mask selects channel 15. Startup is
 asynchronous; process `ZigbeePollEvent` from the application thread. With
 auto commissioning enabled and no saved Zigbee network, a coordinator forms a
 network, while a router or end device attempts to join one. A coordinator
@@ -100,8 +103,9 @@ network. The saved network belongs to the previous role and topology.
 
 ## Scope
 
-The public API currently covers one standard On/Off endpoint. Generic endpoint
-and cluster registration, nonscalar attribute types, broader group management,
+The public API covers multiple standard On/Off light or switch endpoints.
+Custom endpoint profiles and cluster registration, nonscalar attribute types,
+broader group management,
 security configuration, OTA, and application-managed
 sleep are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
@@ -129,3 +133,6 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   the changed value.
 - The same pair test passed after the switch moved to general reporting,
   discovery, and binding calls.
+- With the C6 light exposing endpoints 10 and 11, the H2 switch discovered
+  both. `tests/zigbee_core_pair.py --require-extra-endpoint` passed alongside
+  the reporting, group, scalar read, and write checks.

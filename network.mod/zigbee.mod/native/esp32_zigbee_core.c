@@ -12,6 +12,7 @@
 #include "blitzmax/embedded_system.h"
 
 #define ZB_QUEUE_CAPACITY 64u
+#define ZB_MAX_EXTRA_ENDPOINTS 8u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
 #define ZB_EVENT_STARTUP 2
@@ -43,12 +44,26 @@ typedef struct {
     uint32_t primary_mask, secondary_mask;
 } zb_config_t;
 
+typedef struct {
+    uint8_t device, endpoint;
+} zb_endpoint_config_t;
+
 static zb_event_t event_queue[ZB_QUEUE_CAPACITY];
 static uint32_t queue_write, queue_read, queue_dropped;
 static portMUX_TYPE queue_lock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE state_lock = portMUX_INITIALIZER_UNLOCKED;
 static int32_t state; /* 0 stopped, 1 starting, 2 running, 3 stopping */
 static zb_config_t requested;
+static zb_endpoint_config_t extra_endpoints[ZB_MAX_EXTRA_ENDPOINTS];
+static uint8_t extra_endpoint_count;
+
+static int endpoint_kind(int endpoint)
+{
+    if (endpoint == requested.endpoint) return requested.device;
+    for (unsigned i = 0; i < extra_endpoint_count; ++i)
+        if (endpoint == extra_endpoints[i].endpoint) return extra_endpoints[i].device;
+    return 0;
+}
 
 static void emit(zb_event_t event)
 {
@@ -280,42 +295,49 @@ static void bind_result(const ezb_zdp_bind_req_result_t *result, void *context)
     emit(event);
 }
 
-static esp_err_t register_device(const zb_config_t *options)
+static esp_err_t add_standard_endpoint(ezb_af_device_desc_t device, int kind, int id)
 {
-    ezb_af_device_desc_t device = ezb_af_create_device_desc();
     ezb_af_ep_desc_t endpoint;
-    if (options->device == 1) {
+    if (kind == 1) {
         ezb_zha_on_off_light_config_t light = EZB_ZHA_ON_OFF_LIGHT_CONFIG();
-        endpoint = ezb_zha_create_on_off_light(options->endpoint, &light);
+        endpoint = ezb_zha_create_on_off_light(id, &light);
     } else {
         ezb_zha_on_off_switch_config_t sw = EZB_ZHA_ON_OFF_SWITCH_CONFIG();
-        endpoint = ezb_zha_create_on_off_switch(options->endpoint, &sw);
+        endpoint = ezb_zha_create_on_off_switch(id, &sw);
     }
-    if (!device || !endpoint) {
-        if (endpoint) ezb_af_free_endpoint_desc(endpoint);
-        if (device) ezb_af_free_device_desc(device);
-        return ESP_ERR_NO_MEM;
-    }
-    if (options->device == 2 && !ezb_af_endpoint_get_cluster_desc(endpoint,
+    if (!endpoint) return ESP_ERR_NO_MEM;
+    if (kind == 2 && !ezb_af_endpoint_get_cluster_desc(endpoint,
             EZB_ZCL_CLUSTER_ID_GROUPS, EZB_ZCL_CLUSTER_CLIENT)) {
         ezb_zcl_cluster_desc_t groups = ezb_zcl_groups_create_cluster_desc(NULL,
                 EZB_ZCL_CLUSTER_CLIENT);
         if (!groups) {
             ezb_af_free_endpoint_desc(endpoint);
-            ezb_af_free_device_desc(device);
             return ESP_ERR_NO_MEM;
         }
         esp_err_t added = ezb_af_endpoint_add_cluster_desc(endpoint, groups);
         if (added != ESP_OK) {
             ezb_zcl_free_cluster_desc(groups);
             ezb_af_free_endpoint_desc(endpoint);
-            ezb_af_free_device_desc(device);
             return added;
         }
     }
     esp_err_t result = ezb_af_device_add_endpoint_desc(device, endpoint);
     if (result != ESP_OK) {
         ezb_af_free_endpoint_desc(endpoint);
+        return result;
+    }
+    return ESP_OK;
+}
+
+static esp_err_t register_device(const zb_config_t *options)
+{
+    ezb_af_device_desc_t device = ezb_af_create_device_desc();
+    if (!device) return ESP_ERR_NO_MEM;
+    esp_err_t result = add_standard_endpoint(device, options->device, options->endpoint);
+    for (unsigned i = 0; result == ESP_OK && i < extra_endpoint_count; ++i)
+        result = add_standard_endpoint(device, extra_endpoints[i].device,
+                extra_endpoints[i].endpoint);
+    if (result != ESP_OK) {
         ezb_af_free_device_desc(device);
         return result;
     }
@@ -373,6 +395,43 @@ failed:
     vTaskDelete(NULL);
 }
 
+int bmx_esp32_zigbee_core_add_endpoint(int device, int endpoint)
+{
+    if (device < 1 || device > 2 || endpoint < 1 || endpoint > 240)
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < extra_endpoint_count; ++i) {
+        if (extra_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (extra_endpoint_count == ZB_MAX_EXTRA_ENDPOINTS) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    extra_endpoints[extra_endpoint_count++] = (zb_endpoint_config_t){
+        .device = (uint8_t)device, .endpoint = (uint8_t)endpoint};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_clear_endpoints(void)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    extra_endpoint_count = 0;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
 int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t primary_mask,
         uint32_t secondary_mask, int auto_commission)
 {
@@ -388,6 +447,12 @@ int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t pri
     if (state != 0) {
         portEXIT_CRITICAL(&state_lock);
         return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < extra_endpoint_count; ++i) {
+        if (extra_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
     }
     state = 1;
     requested = (zb_config_t){.role = role, .device = device, .endpoint = endpoint,
@@ -497,7 +562,7 @@ int bmx_esp32_zigbee_core_network(int *joined, int *factory_new, int *pan_id,
 
 int bmx_esp32_zigbee_core_onoff(int source_ep, int destination_addr, int destination_ep, int command)
 {
-    if (source_ep < 1 || source_ep > 240 || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || command < 0 || command > 2)
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -515,7 +580,7 @@ int bmx_esp32_zigbee_core_onoff(int source_ep, int destination_addr, int destina
 
 int bmx_esp32_zigbee_core_read_onoff(int source_ep, int destination_addr, int destination_ep)
 {
-    if (source_ep < 1 || source_ep > 240 || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240) return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
     uint16_t attribute_id = EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID;
@@ -533,7 +598,7 @@ int bmx_esp32_zigbee_core_read_onoff(int source_ep, int destination_addr, int de
 int bmx_esp32_zigbee_core_read_attribute(int source_ep, int destination_addr, int destination_ep,
         int cluster_id, int attribute_id)
 {
-    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || cluster_id < 0 || cluster_id > 65535 ||
             attribute_id < 0 || attribute_id > 65535) return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -553,7 +618,7 @@ int bmx_esp32_zigbee_core_write_scalar(int source_ep, int destination_addr, int 
         int cluster_id, int attribute_id, int data_type, int32_t value)
 {
     int size = scalar_size(data_type);
-    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || cluster_id < 0 || cluster_id > 65535 ||
             attribute_id < 0 || attribute_id > 65535 || !size) return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -599,7 +664,7 @@ int bmx_esp32_zigbee_core_find_onoff(void)
 int bmx_esp32_zigbee_core_bind_cluster(int source_ep, int destination_addr,
         int destination_ep, int cluster_id)
 {
-    if (source_ep != requested.endpoint ||
+    if (!endpoint_kind(source_ep) ||
             destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 ||
             cluster_id < 0 || cluster_id > 65535) return ESP_ERR_INVALID_ARG;
@@ -628,7 +693,7 @@ int bmx_esp32_zigbee_core_bind_onoff(int source_ep, int destination_addr, int de
 
 int bmx_esp32_zigbee_core_bound_onoff(int source_ep, int command)
 {
-    if (source_ep != requested.endpoint || requested.device != 2 || command < 0 || command > 2)
+    if (endpoint_kind(source_ep) != 2 || command < 0 || command > 2)
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
     ezb_zcl_on_off_cmd_t request = {.cmd_ctrl = {
@@ -644,7 +709,7 @@ int bmx_esp32_zigbee_core_bound_onoff(int source_ep, int command)
 
 int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
 {
-    if (endpoint != requested.endpoint || requested.device != 1 || (on != 0 && on != 1))
+    if (endpoint_kind(endpoint) != 1 || (on != 0 && on != 1))
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
     uint8_t value = (uint8_t)on;
@@ -661,7 +726,7 @@ int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_add
         int min_interval, int max_interval, int32_t reportable_change)
 {
     int size = scalar_size(data_type);
-    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 ||
             cluster_id < 0 || cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
             !size || reportable_change < 0 || (size == 1 && reportable_change > 255) ||
@@ -694,7 +759,7 @@ int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_add
 int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destination_addr,
         int destination_ep, int min_interval, int max_interval)
 {
-    if (requested.device != 2) return ESP_ERR_INVALID_ARG;
+    if (endpoint_kind(source_ep) != 2) return ESP_ERR_INVALID_ARG;
     return bmx_esp32_zigbee_core_configure_reporting(source_ep, destination_addr, destination_ep,
             EZB_ZCL_CLUSTER_ID_ON_OFF, EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, EZB_ZCL_ATTR_TYPE_BOOL,
             min_interval, max_interval, 0);
@@ -703,7 +768,7 @@ int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destinati
 int bmx_esp32_zigbee_core_add_group(int source_ep, int destination_addr, int destination_ep,
         int group_id)
 {
-    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || group_id < 1 || group_id > 0xfff7)
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -722,7 +787,7 @@ int bmx_esp32_zigbee_core_add_group(int source_ep, int destination_addr, int des
 int bmx_esp32_zigbee_core_remove_group(int source_ep, int destination_addr, int destination_ep,
         int group_id)
 {
-    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || group_id < 1 || group_id > 0xfff7)
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
@@ -739,7 +804,7 @@ int bmx_esp32_zigbee_core_remove_group(int source_ep, int destination_addr, int 
 
 int bmx_esp32_zigbee_core_group_onoff(int source_ep, int group_id, int command)
 {
-    if (source_ep != requested.endpoint || requested.device != 2 ||
+    if (endpoint_kind(source_ep) != 2 ||
             group_id < 1 || group_id > 0xfff7 || command < 0 || command > 2)
         return ESP_ERR_INVALID_ARG;
     if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;

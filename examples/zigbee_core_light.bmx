@@ -3,6 +3,7 @@ SuperStrict
 Framework BRL.StandardIO
 Import ESP32.Network.Zigbee
 
+If ZigbeeAddOnOffEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Second light endpoint failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleCoordinator, ZigbeeDeviceOnOffLight, 10)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee coordinator/light starting"
@@ -11,14 +12,19 @@ Local event:SZigbeeEvent
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
-			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value
+			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value + ..
+			" endpoint=" + event.endpoint + " cluster=" + event.cluster + " attribute=" + event.attribute
 		If event.kind = ZigbeeEventStartup And event.status = 0 Then
 			result = ZigbeeSetLocalOnOff(10, 0)
 			Print "Initial light state result=" + result
+			result = ZigbeeSetLocalOnOff(11, 0)
+			Print "Second light state result=" + result
 		End If
 		If event.kind = ZigbeeEventDeviceAnnounced Then
-			result = ZigbeeBindOnOff(10, event.shortAddress, 1)
+			result = ZigbeeBindCluster(10, event.shortAddress, 1, 6)
 			Print "Light report binding result=" + result
+			result = ZigbeeBindCluster(11, event.shortAddress, 1, 6)
+			Print "Second report binding result=" + result
 		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then

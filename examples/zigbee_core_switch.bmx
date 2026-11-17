@@ -9,6 +9,7 @@ Print "Zigbee end-device/switch starting"
 
 Local joined:Int
 Local bound:Int
+Local bindPending:Int
 Local reportingConfigured:Int
 Local groupReady:Int
 Local lightAddress:Int
@@ -26,28 +27,32 @@ While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
 			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value + ..
-			" cluster=" + event.cluster + " attribute=" + event.attribute + " type=" + event.dataType + ..
+			" endpoint=" + event.endpoint + " cluster=" + event.cluster + " attribute=" + event.attribute + " type=" + event.dataType + ..
 			" size=" + event.valueSize
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
 		If event.kind = ZigbeeEventStartup And Not event.factoryNew Then joined = True
 		If event.kind = ZigbeeEventMatch And event.cluster = 6 Then
-			lightAddress = event.shortAddress
-			lightEndpoint = event.endpoint
-			result = ZigbeeBindCluster(1, lightAddress, lightEndpoint, 6)
-			Print "Bind submission=" + result
+			If Not bound And Not bindPending Then
+				lightAddress = event.shortAddress
+				lightEndpoint = event.endpoint
+				result = ZigbeeBindCluster(1, lightAddress, lightEndpoint, 6)
+				Print "Bind submission=" + result
+				If result = 0 Then bindPending = True
+			End If
 		End If
-		If event.kind = ZigbeeEventBound And event.status = 0 And event.cluster = 6 Then
-			bound = True
+		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
+			bindPending = False
+			If event.status = 0 Then bound = True
 		End If
 		If event.kind = ZigbeeEventReportingConfigured And event.status = 0 Then
 			reportingConfigured = True
 		End If
 		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
 	Wend
-	If joined And Not bound And MilliSecs() >= nextFind Then
+	If joined And MilliSecs() >= nextFind Then
 		result = ZigbeeFindServers(6)
 		Print "Find light submission=" + result
-		nextFind = MilliSecs() + 10000
+		nextFind = MilliSecs() + 15000
 	End If
 	If bound And Not reportingConfigured And MilliSecs() >= nextReporting Then
 		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)

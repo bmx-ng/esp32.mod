@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.9"
+ModuleInfo "Version: 1.0"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -308,6 +308,8 @@ End Struct
 
 Private
 Extern "C"
+	Function _ZigbeeCoreAddEndpoint:Int(device:Int, endpoint:Int) = "bmx_esp32_zigbee_core_add_endpoint"
+	Function _ZigbeeCoreClearEndpoints:Int() = "bmx_esp32_zigbee_core_clear_endpoints"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
 	Function _ZigbeeCoreState:Int() = "bmx_esp32_zigbee_core_state"
@@ -357,6 +359,23 @@ Extern "C"
 		"bmx_esp32_zigbee_core_write_scalar"
 End Extern
 Public
+
+Rem
+bbdoc: Adds another standard On/Off light or switch endpoint before ZigbeeStart.
+about: Call while the stack is stopped. Up to eight extra endpoints are kept
+across stop/start cycles until ZigbeeClearExtraEndpoints is called. Endpoint
+numbers must be distinct, including from the primary endpoint in ZigbeeStart.
+End Rem
+Function ZigbeeAddOnOffEndpoint:Int(device:Int, endpoint:Int)
+	Return _ZigbeeCoreAddEndpoint(device, endpoint)
+End Function
+
+Rem
+bbdoc: Removes all extra standard endpoints while the stack is stopped.
+End Rem
+Function ZigbeeClearExtraEndpoints:Int()
+	Return _ZigbeeCoreClearEndpoints()
+End Function
 
 Rem
 bbdoc: Starts the Zigbee stack with a standard light or switch endpoint.

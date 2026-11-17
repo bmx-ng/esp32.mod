@@ -34,6 +34,8 @@ def main():
                         help="also require a typed 16-bit cluster revision read")
     parser.add_argument("--require-write", action="store_true",
                         help="also require a successful scalar attribute write response")
+    parser.add_argument("--require-extra-endpoint", action="store_true",
+                        help="also require discovery of the second light endpoint")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -43,7 +45,7 @@ def main():
         thread.start()
     deadline = time.monotonic() + args.timeout
     states = set()
-    toggle = read = report = group = group_change = scalar = write = write_readback = False
+    toggle = read = report = group = group_change = scalar = write = write_readback = extra = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -54,7 +56,8 @@ def main():
             print(f"[{name}] {line}", flush=True)
             if "SERIAL ERROR:" in line:
                 return 2
-            if name == "light" and "Zigbee event 7 status=0" in line:
+            if (name == "light" and "Zigbee event 7 status=0" in line
+                    and "cluster=6 attribute=0" in line):
                 if "value=0" in line:
                     states.add(0)
                 if "value=1" in line:
@@ -65,6 +68,9 @@ def main():
                 toggle = True
             if name == "switch" and "Group toggle submission=0" in line:
                 group = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=11 cluster=6" in line):
+                extra = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -81,16 +87,18 @@ def main():
                     and (report or not args.require_report)
                     and (group_change or not args.require_group)
                     and (scalar or not args.require_scalar)
-                    and (write and write_readback or not args.require_write)):
+                    and (write and write_readback or not args.require_write)
+                    and (extra or not args.require_extra_endpoint)):
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
                       + (", and read a typed scalar" if args.require_scalar else "")
-                      + (", and wrote and read back a scalar" if args.require_write else ""), flush=True)
+                      + (", and wrote and read back a scalar" if args.require_write else "")
+                      + (", and found a second endpoint" if args.require_extra_endpoint else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
               f"report={report}, group={group}, group_change={group_change}, scalar={scalar}, "
-              f"write={write}, write_readback={write_readback}",
+              f"write={write}, write_readback={write_readback}, extra={extra}",
               flush=True)
         return 1
     finally:
