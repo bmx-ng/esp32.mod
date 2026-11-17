@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--timeout", type=int, default=70)
     parser.add_argument("--require-report", action="store_true",
                         help="also require an On/Off attribute report at the switch")
+    parser.add_argument("--require-group", action="store_true",
+                        help="also require a group-addressed toggle submission")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -37,7 +39,7 @@ def main():
         thread.start()
     deadline = time.monotonic() + args.timeout
     states = set()
-    toggle = read = report = False
+    toggle = read = report = group = group_change = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -53,17 +55,25 @@ def main():
                     states.add(0)
                 if "value=1" in line:
                     states.add(1)
+                if group:
+                    group_change = True
             if name == "switch" and "Toggle submission=0" in line:
                 toggle = True
+            if name == "switch" and "Group toggle submission=0" in line:
+                group = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
             if name == "switch" and "Zigbee event 15 status=0" in line:
                 report = True
-            if states == {0, 1} and toggle and read and (report or not args.require_report):
+            if (states == {0, 1} and (toggle or group) and read
+                    and (report or not args.require_report)
+                    and (group_change or not args.require_group)):
                 print("PASS: switch toggled both light states, read the attribute"
-                      + (", and received a report" if args.require_report else ""), flush=True)
+                      + (", and received a report" if args.require_report else "")
+                      + (", with a group toggle" if args.require_group else ""), flush=True)
                 return 0
-        print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, report={report}", flush=True)
+        print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
+              f"report={report}, group={group}, group_change={group_change}", flush=True)
         return 1
     finally:
         stop.set()

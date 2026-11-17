@@ -10,10 +10,12 @@ Print "Zigbee end-device/switch starting"
 Local joined:Int
 Local bound:Int
 Local reportingConfigured:Int
+Local groupReady:Int
 Local lightAddress:Int
 Local lightEndpoint:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextReporting:UInt = MilliSecs() + 1000
+Local nextGroup:UInt = MilliSecs() + 1000
 Local nextToggle:UInt = MilliSecs() + 10000
 Local nextRead:UInt
 Local event:SZigbeeEvent
@@ -35,6 +37,7 @@ While True
 		If event.kind = ZigbeeEventReportingConfigured And event.status = 0 Then
 			reportingConfigured = True
 		End If
+		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
 	Wend
 	If joined And Not bound And MilliSecs() >= nextFind Then
 		result = ZigbeeFindOnOffLights()
@@ -46,9 +49,19 @@ While True
 		Print "Reporting submission=" + result
 		nextReporting = MilliSecs() + 10000
 	End If
+	If bound And Not groupReady And MilliSecs() >= nextGroup Then
+		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)
+		Print "Add group submission=" + result
+		nextGroup = MilliSecs() + 10000
+	End If
 	If joined And bound And MilliSecs() >= nextToggle Then
-		result = ZigbeeSendBoundOnOff(1, 2)
-		Print "Toggle submission=" + result
+		If groupReady Then
+			result = ZigbeeSendGroupOnOff(1, 4660, 2)
+			Print "Group toggle submission=" + result
+		Else
+			result = ZigbeeSendBoundOnOff(1, 2)
+			Print "Toggle submission=" + result
+		End If
 		nextToggle = MilliSecs() + 10000
 		nextRead = MilliSecs() + 500
 	End If

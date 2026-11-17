@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 0.5"
+ModuleInfo "Version: 0.6"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -166,6 +166,14 @@ Rem
 bbdoc: A remote attribute report arrived; On/Off reports carry value zero or one.
 End Rem
 Const ZigbeeEventReport:Int = 15
+Rem
+bbdoc: A remote endpoint replied to Add Group; value is the group identifier.
+End Rem
+Const ZigbeeEventGroupAdded:Int = 16
+Rem
+bbdoc: A remote endpoint replied to Remove Group; value is the group identifier.
+End Rem
+Const ZigbeeEventGroupRemoved:Int = 17
 
 Rem
 bbdoc: One Zigbee event copied from a native bounded queue.
@@ -277,6 +285,12 @@ Extern "C"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
+	Function _ZigbeeCoreAddGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_add_group"
+	Function _ZigbeeCoreRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_remove_group"
+	Function _ZigbeeCoreGroupOnOff:Int(sourceEndpoint:Int, groupId:Int, command:Int) = ..
+		"bmx_esp32_zigbee_core_group_onoff"
 End Extern
 Public
 
@@ -425,6 +439,33 @@ Function ZigbeeConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddres
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int)
 	Return _ZigbeeCoreConfigureOnOffReporting(sourceEndpoint, destinationAddress, ..
 		destinationEndpoint, minInterval, maxInterval)
+End Function
+
+Rem
+bbdoc: Adds a remote Groups server endpoint to a group.
+about: Group identifiers from 1 to 65527 are accepted. Poll for
+ZigbeeEventGroupAdded to check the remote response.
+End Rem
+Function ZigbeeAddGroup:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int, groupId:Int)
+	Return _ZigbeeCoreAddGroup(sourceEndpoint, destinationAddress, destinationEndpoint, groupId)
+End Function
+
+Rem
+bbdoc: Removes a remote Groups server endpoint from a group.
+about: Poll for ZigbeeEventGroupRemoved to check the remote response.
+End Rem
+Function ZigbeeRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int, groupId:Int)
+	Return _ZigbeeCoreRemoveGroup(sourceEndpoint, destinationAddress, destinationEndpoint, groupId)
+End Function
+
+Rem
+bbdoc: Sends an On/Off command to all endpoints in a Zigbee group.
+about: Command zero turns off, one turns on, and two toggles. The source must
+be a local On/Off switch endpoint. No per-device response is expected from a
+group-addressed command.
+End Rem
+Function ZigbeeSendGroupOnOff:Int(sourceEndpoint:Int, groupId:Int, command:Int)
+	Return _ZigbeeCoreGroupOnOff(sourceEndpoint, groupId, command)
 End Function
 
 Rem

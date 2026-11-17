@@ -28,6 +28,8 @@
 #define ZB_EVENT_BOUND 13
 #define ZB_EVENT_REPORT_CONFIGURED 14
 #define ZB_EVENT_REPORT 15
+#define ZB_EVENT_GROUP_ADDED 16
+#define ZB_EVENT_GROUP_REMOVED 17
 
 typedef struct {
     int32_t kind, status, signal, endpoint, cluster, attribute, value;
@@ -166,6 +168,22 @@ static void action_handler(ezb_zcl_core_action_callback_id_t action, void *messa
                 event.short_addr = report->in.header->src_addr.u.short_addr;
             emit(event);
         }
+    } else if (action == EZB_ZCL_CORE_GROUPS_ADD_GROUP_RSP_CB_ID && message) {
+        const ezb_zcl_groups_add_group_rsp_message_t *response = message;
+        zb_event_t event = {.kind = ZB_EVENT_GROUP_ADDED,
+                            .status = response->in.status,
+                            .endpoint = response->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_GROUPS,
+                            .value = response->in.group_id};
+        emit(event);
+    } else if (action == EZB_ZCL_CORE_GROUPS_REMOVE_GROUP_RSP_CB_ID && message) {
+        const ezb_zcl_groups_remove_group_rsp_message_t *response = message;
+        zb_event_t event = {.kind = ZB_EVENT_GROUP_REMOVED,
+                            .status = response->in.status,
+                            .endpoint = response->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_GROUPS,
+                            .value = response->in.group_id};
+        emit(event);
     }
 }
 
@@ -210,6 +228,23 @@ static esp_err_t register_device(const zb_config_t *options)
         if (endpoint) ezb_af_free_endpoint_desc(endpoint);
         if (device) ezb_af_free_device_desc(device);
         return ESP_ERR_NO_MEM;
+    }
+    if (options->device == 2 && !ezb_af_endpoint_get_cluster_desc(endpoint,
+            EZB_ZCL_CLUSTER_ID_GROUPS, EZB_ZCL_CLUSTER_CLIENT)) {
+        ezb_zcl_cluster_desc_t groups = ezb_zcl_groups_create_cluster_desc(NULL,
+                EZB_ZCL_CLUSTER_CLIENT);
+        if (!groups) {
+            ezb_af_free_endpoint_desc(endpoint);
+            ezb_af_free_device_desc(device);
+            return ESP_ERR_NO_MEM;
+        }
+        esp_err_t added = ezb_af_endpoint_add_cluster_desc(endpoint, groups);
+        if (added != ESP_OK) {
+            ezb_zcl_free_cluster_desc(groups);
+            ezb_af_free_endpoint_desc(endpoint);
+            ezb_af_free_device_desc(device);
+            return added;
+        }
     }
     esp_err_t result = ezb_af_device_add_endpoint_desc(device, endpoint);
     if (result != ESP_OK) {
@@ -522,6 +557,61 @@ int bmx_esp32_zigbee_core_configure_onoff_reporting(int source_ep, int destinati
     };
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
     ezb_err_t result = ezb_zcl_config_report_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_add_group(int source_ep, int destination_addr, int destination_ep,
+        int group_id)
+{
+    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 || group_id < 1 || group_id > 0xfff7)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    static char empty_name[] = "";
+    ezb_zcl_groups_add_group_cmd_t request = {
+        .cmd_ctrl = {.dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+                     .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.group_id = (uint16_t)group_id, .group_name = empty_name},
+    };
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_groups_add_group_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_remove_group(int source_ep, int destination_addr, int destination_ep,
+        int group_id)
+{
+    if (source_ep != requested.endpoint || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 || group_id < 1 || group_id > 0xfff7)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_groups_remove_group_cmd_t request = {
+        .cmd_ctrl = {.dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+                     .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.group_id = (uint16_t)group_id},
+    };
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_groups_remove_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_group_onoff(int source_ep, int group_id, int command)
+{
+    if (source_ep != requested.endpoint || requested.device != 2 ||
+            group_id < 1 || group_id > 0xfff7 || command < 0 || command > 2)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_on_off_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_GROUP((uint16_t)group_id, 0xfffd),
+        .src_ep = (uint8_t)source_ep,
+    }};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = command == 0 ? ezb_zcl_on_off_off_cmd_req(&request) :
+            command == 1 ? ezb_zcl_on_off_on_cmd_req(&request) :
+            ezb_zcl_on_off_toggle_cmd_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }

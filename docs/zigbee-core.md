@@ -62,6 +62,12 @@ server endpoint back to the switch's client endpoint so reports have a
 destination. The light example creates this binding when it sees the switch
 announce itself.
 
+The light template includes a Groups server. The switch template adds a Groups
+client alongside its On/Off client. `ZigbeeAddGroup` and `ZigbeeRemoveGroup`
+manage a remote light's membership, with response events for the outcome.
+`ZigbeeSendGroupOnOff` sends an On/Off command to every endpoint in the group.
+The switch example uses group 4660 after the Add Group response succeeds.
+
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator/light on H2.
@@ -78,7 +84,7 @@ network. The saved network belongs to the previous role and topology.
 
 The public API currently covers one standard On/Off endpoint. Generic endpoint
 and cluster registration, arbitrary attribute types, generic reporting,
-group commands, security configuration, OTA, and application-managed sleep
+broader group management, security configuration, OTA, and application-managed sleep
 are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
 
@@ -97,3 +103,5 @@ device with a longer keepalive; it does not enter low-power sleep itself.
 - After the C6 light bound its server endpoint back to the H2 switch,
   `tests/zigbee_core_pair.py --require-report` passed with a received On/Off
   report as well as toggles and a read response.
+- `tests/zigbee_core_pair.py --require-report --require-group` passed after the
+  H2 switch added the C6 light to a group and sent a group-addressed toggle.
