@@ -3,6 +3,9 @@
 
 SuperStrict
 
+' Destructive regression test: this deliberately reboots once, then erases its
+' bmx_nvs_test namespace after verifying that every value persisted correctly.
+
 Import BRL.StandardIO
 Import ESP32.Runtime
 Import ESP32.Storage.NVS

@@ -461,7 +461,7 @@ power, Wi-Fi, wired Ethernet, and BLE support.
 | Watchdog and identity | `Embedded.Hardware.Watchdog`, `Embedded.System.Device`, ESP32 facades | [`watchdog_device.bmx`](examples/watchdog_device.bmx) |
 | PSRAM | `ESP32.Hardware.PSRAM` | [`psram_info.bmx`](examples/psram_info.bmx) |
 | Filesystems | `ESP32.Storage.LittleFS`, `ESP32.Storage.SDCard` | [`storage_smoke.bmx`](examples/storage_smoke.bmx) |
-| NVS and partitions | `ESP32.Storage.NVS`, `ESP32.System.Partition` | [`nvs_storage.bmx`](examples/nvs_storage.bmx), [`partition_info.bmx`](examples/partition_info.bmx) |
+| NVS and partitions | `ESP32.Storage.NVS`, `ESP32.System.Partition` | [`nvs_settings.bmx`](examples/nvs_settings.bmx), [`nvs_boot_counter.bmx`](examples/nvs_boot_counter.bmx), [`nvs_storage.bmx`](examples/nvs_storage.bmx), [`partition_info.bmx`](examples/partition_info.bmx) |
 | OTA | `ESP32.System.OTA` | [`ota_from_storage.bmx`](examples/ota_from_storage.bmx) |
 | Wi-Fi and sockets | `Embedded.Network.WiFi`, `ESP32.Network.WiFi`, `BRL.Socket` | [`wifi_scan.bmx`](examples/wifi_scan.bmx), [`socket_loopback.bmx`](examples/socket_loopback.bmx) |
 | Wired Ethernet | `Embedded.Network.Ethernet`, `ESP32.Network.Ethernet`, `BRL.Socket` | [`ethernet_live.bmx`](examples/ethernet_live.bmx) |
@@ -570,7 +570,9 @@ the SD formatting option are explicit destructive operations.
 
 `ESP32.Storage.NVS` provides wear-levelled namespaced key/value storage for
 integers, floating-point values, strings, managed byte arrays, and caller-owned
-raw memory. Changes are persisted by an explicit commit.
+raw memory. Changes are persisted by an explicit commit. See the
+[`ESP32.Storage.NVS` guide](storage.mod/nvs.mod/README.md) for naming rules,
+typed reads, defaults, error handling, capacity, wear, and security guidance.
 
 ## Wi-Fi and sockets
 
