@@ -50,6 +50,16 @@ border router is needed for off-mesh IPv6 access. The dataset includes the
 network key, so enter it only in local test firmware. Other ESP32 targets are
 rejected at configure time until a supported radio profile is verified.
 
+ESP-NOW peer-to-peer networking is available through
+`ESP32.Network.ESPNow` on targets with an ESP32 Wi-Fi radio. It communicates
+directly between devices without an access point, supports broadcast and
+encrypted unicast peers, and accepts both the 250-byte ESP-NOW v1 payload and
+the 1,470-byte ESP-NOW v2 payload. Queue capacity and maximum received payload
+are configurable so applications can trade buffering for RAM. See the
+[ESP-NOW module guide](network.mod/espnow.mod/README.md) and the
+[identity example](examples/espnow_identity.bmx). Bidirectional encrypted v2
+traffic has been validated between the ESP32-WROOM-32D and XIAO ESP32-C6.
+
 ## Requirements
 
 - A BlitzMax NG installation containing the ESP32-enabled `bmk` and compiler.
