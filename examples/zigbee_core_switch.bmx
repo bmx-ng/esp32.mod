@@ -42,6 +42,8 @@ Local nextHumidityFind:UInt = MilliSecs() + 2750
 Local nextHumidityRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
+Local nextStringWrite:UInt = MilliSecs() + 9000
+Local nextStringRead:UInt
 Local nextReporting:UInt = MilliSecs() + 1000
 Local nextTemperatureReporting:UInt = MilliSecs() + 1000
 Local nextHumidityReporting:UInt = MilliSecs() + 1000
@@ -59,7 +61,7 @@ While True
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
 			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value + ..
 			" endpoint=" + event.endpoint + " cluster=" + event.cluster + " attribute=" + event.attribute + " type=" + event.dataType + ..
-			" size=" + event.valueSize
+			" size=" + event.valueSize + " text=" + event.text
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
 		If event.kind = ZigbeeEventStartup And Not event.factoryNew Then joined = True
 		If event.kind = ZigbeeEventMatch And event.cluster = 6 Then
@@ -74,7 +76,10 @@ While True
 		If event.kind = ZigbeeEventMatch And event.cluster = $fc00 Then
 			customAddress = event.shortAddress
 			customEndpoint = event.endpoint
-			If Not customFound Then nextCustomRead = MilliSecs() + 100
+			If Not customFound Then
+				nextCustomRead = MilliSecs() + 100
+				nextStringRead = MilliSecs() + 200
+			End If
 			customFound = True
 		End If
 		If event.kind = ZigbeeEventMatch And event.cluster = $fc01 Then
@@ -162,6 +167,17 @@ While True
 		result = ZigbeeReadAttribute(1, customAddress, customEndpoint, $fc00, 1)
 		Print "Custom read submission=" + result
 		nextCustomRead = MilliSecs() + 5000
+	End If
+	If customFound And nextStringWrite And MilliSecs() >= nextStringWrite Then
+		result = ZigbeeWriteString(1, customAddress, customEndpoint, $fc00, 2, "Zigbee "+Chr($e9))
+		Print "String write submission=" + result
+		If result = 0 Then nextStringRead = MilliSecs() + 300
+		nextStringWrite = MilliSecs() + 25000
+	End If
+	If nextStringRead And MilliSecs() >= nextStringRead Then
+		result = ZigbeeReadAttribute(1, customAddress, customEndpoint, $fc00, 2)
+		Print "String read submission=" + result
+		nextStringRead = MilliSecs() + 3000
 	End If
 	If bound And Not reportingConfigured And MilliSecs() >= nextReporting Then
 		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)

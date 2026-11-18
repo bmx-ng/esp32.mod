@@ -42,6 +42,8 @@ def main():
                         help="also require discovery, write, and readback of a custom cluster")
     parser.add_argument("--require-custom-profile", action="store_true",
                         help="also require discovery and readback across custom-profile endpoints")
+    parser.add_argument("--require-string", action="store_true",
+                        help="also require UTF-8 string write and readback")
     parser.add_argument("--require-local-update", action="store_true",
                         help="also require a remote read of a local custom attribute update")
     parser.add_argument("--require-temperature", action="store_true",
@@ -62,6 +64,7 @@ def main():
     toggle = read = report = group = group_change = scalar = write = write_readback = extra = False
     custom_match = custom_write = custom_read = custom_local = False
     custom_profile_match = custom_profile_read = False
+    string_restored = string_submission = string_write = string_read = False
     temperature_match = temperature_read = False
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
@@ -86,6 +89,8 @@ def main():
                     group_change = True
             if name == "switch" and "Toggle submission=0" in line:
                 toggle = True
+            if name == "switch" and "String write submission=0" in line:
+                string_submission = True
             if name == "switch" and "Group toggle submission=0" in line:
                 group = True
             if (name == "switch" and "Zigbee event 19 status=0" in line
@@ -128,6 +133,12 @@ def main():
                 if ("endpoint=2 cluster=64513 attribute=1" in line and "type=33" in line
                         and "size=2" in line and "value=77 " in line):
                     custom_profile_read = True
+                if ("cluster=64512 attribute=2" in line and "type=66" in line
+                        and "size=9 text=Zigbee é" in line and string_write):
+                    string_read = True
+                if ("cluster=64512 attribute=2" in line and "type=66" in line
+                        and "size=5 text=ready" in line and string_read):
+                    string_restored = True
                 if ("cluster=1026 attribute=0" in line and "type=41" in line
                         and "size=2" in line and "value=2345 " in line):
                     temperature_read = True
@@ -151,6 +162,8 @@ def main():
             if (name == "switch" and "Zigbee event 18 status=0" in line
                     and "cluster=64512" in line):
                 custom_write = True
+                if string_submission:
+                    string_write = True
             if (states == {0, 1} and (toggle or group) and read
                     and (report or not args.require_report)
                     and (group_change or not args.require_group)
@@ -163,6 +176,8 @@ def main():
                          or not args.require_custom_cluster)
                     and (custom_profile_match and custom_profile_read
                          or not args.require_custom_profile)
+                    and (string_restored and string_submission and string_write and string_read
+                         or not args.require_string)
                     and (custom_local or not args.require_local_update)
                     and (temperature_match and temperature_read or not args.require_temperature)
                     and (temperature_report or not args.require_temperature_report)
@@ -177,6 +192,7 @@ def main():
                       + (", and found a second endpoint" if args.require_extra_endpoint else "")
                       + (", and checked a custom cluster" if args.require_custom_cluster else "")
                       + (", and read a custom-profile endpoint" if args.require_custom_profile else "")
+                      + (", and wrote and read back a UTF-8 string" if args.require_string else "")
                       + (", and read a local update" if args.require_local_update else "")
                       + (", and read temperature" if args.require_temperature else "")
                       + (", and received a changed temperature report"
@@ -190,6 +206,9 @@ def main():
               f"write={write}, write_readback={write_readback}, extra={extra}, "
               f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}, "
               f"custom_profile_match={custom_profile_match}, custom_profile_read={custom_profile_read}, "
+              f"string_restored={string_restored}, string_submission={string_submission}, "
+              f"string_write={string_write}, "
+              f"string_read={string_read}, "
               f"custom_local={custom_local}, temperature_match={temperature_match}, "
               f"temperature_read={temperature_read}, temperature_report={temperature_report}, "
               f"humidity_match={humidity_match}, humidity_read={humidity_read}, "

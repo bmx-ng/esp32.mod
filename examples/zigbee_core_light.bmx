@@ -16,6 +16,10 @@ If ZigbeeAddCustomScalar(11, $fc00, 1, ZigbeeTypeUInt16, ..
 		ZigbeeAttributeRead | ZigbeeAttributeWrite | ZigbeeAttributeReport, 42) Then
 	RuntimeError "Custom attribute failed"
 End If
+If ZigbeeAddCustomString(11, $fc00, 2, ..
+		ZigbeeAttributeRead | ZigbeeAttributeWrite, "hello") Then
+	RuntimeError "Custom string attribute failed"
+End If
 Local result:Int = ZigbeeStart(ZigbeeRoleCoordinator, ZigbeeDeviceOnOffLight, 10)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee coordinator/light starting"
@@ -29,7 +33,8 @@ While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
 			" pan=" + event.panId + " channel=" + event.channel + " value=" + event.value + ..
-			" endpoint=" + event.endpoint + " cluster=" + event.cluster + " attribute=" + event.attribute
+			" endpoint=" + event.endpoint + " cluster=" + event.cluster + " attribute=" + event.attribute + ..
+			" text=" + event.text
 		If event.kind = ZigbeeEventStartup And event.status = 0 Then
 			result = ZigbeeSetLocalOnOff(10, 0)
 			Print "Initial light state result=" + result
@@ -37,6 +42,8 @@ While True
 			Print "Second light state result=" + result
 			result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
 			Print "Custom local state result=" + result
+			result = ZigbeeSetCustomString(11, $fc00, 2, "ready")
+			Print "Custom local string result=" + result
 			result = ZigbeeSetLocalTemperature(12, 2345) ' Simulated 23.45 C reading.
 			Print "Temperature update result=" + result
 			result = ZigbeeSetLocalHumidity(12, 4550) ' Simulated 45.50% reading.
@@ -61,6 +68,8 @@ While True
 	If MilliSecs() >= nextCustomUpdate Then
 		result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
 		Print "Custom local update result=" + result
+		result = ZigbeeSetCustomString(11, $fc00, 2, "ready")
+		Print "Custom local string update result=" + result
 		nextCustomUpdate = MilliSecs() + 20000
 	End If
 	If MilliSecs() >= nextTemperatureUpdate Then

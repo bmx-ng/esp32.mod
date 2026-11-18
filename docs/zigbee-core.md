@@ -98,12 +98,18 @@ Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
 Boolean or 8/16/32-bit scalar attribute to a custom server cluster. Up to
-eight custom clusters and 32 custom scalar attributes may be configured;
+eight custom clusters and 32 custom attributes may be configured;
 `ZigbeeClearCustomClusters` clears them while stopped. The C6 light example
 adds cluster 0xFC00 on endpoint 11, with a writable 16-bit attribute. The H2
 switch discovers the cluster, writes the attribute, and reads it back.
 `ZigbeeSetCustomScalar` updates a local custom server attribute from the
 application, so a remote client can read its new value.
+`ZigbeeAddCustomString` registers a ZCL character string attribute with up to
+64 UTF-8 bytes. `ZigbeeSetCustomString` updates it locally, and
+`ZigbeeWriteString` writes a remote string attribute. The switch example writes
+`Zigbee é` and reads it back; the light then restores `ready` locally, which
+the switch reads again. `ZigbeeConfigureReporting` currently handles scalar
+types only.
 
 `ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
 ID, device ID, and four-bit version. It includes a Basic server; add other
@@ -148,7 +154,9 @@ toggles.
 `ZigbeeEventRead` provides its ZCL `dataType`, `valueSize`, and `value` for
 Boolean, 8-bit, 16-bit, and 32-bit integer, bitmap, enum, and raw data types.
 Signed values are sign-extended in `value`; for a 32-bit unsigned value, use
-its raw bit pattern. An unsupported type has `valueSize` zero. The same scalar
+its raw bit pattern. For `ZigbeeTypeString`, `text` holds the decoded UTF-8
+value and `valueSize` counts its bytes. A string longer than 64 bytes has
+`valueSize` -1 and no `text`; an unsupported type has `valueSize` zero. The same
 fields are available on incoming attribute reports. `ZigbeeWriteScalar`
 writes one of those scalar types, with a `ZigbeeEventWrite` response carrying
 the remote status. The switch example reads the light's cluster revision and
@@ -175,8 +183,8 @@ network. The saved network belongs to the previous role and topology.
 
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity Measurement clusters, custom
-endpoint profiles, and custom scalar clusters. Other standard cluster
-templates, nonscalar attribute types, additional group commands, security
+endpoint profiles, and custom scalar and short string attributes. Other
+standard cluster templates, additional nonscalar attribute types, additional group commands, security
 configuration, OTA, and application-managed sleep are further work.
 `ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
 keepalive; it does not enter low-power sleep itself.
@@ -238,3 +246,7 @@ keepalive; it does not enter low-power sleep itself.
   endpoint under the same profile, discovered the server, and read back 77.
   `tests/zigbee_core_pair.py --require-custom-profile` passed alongside all
   earlier pair checks.
+- The C6 custom cluster exposed a short string attribute. The H2 wrote
+  `Zigbee é`, read back its nine UTF-8 bytes, then read `ready` after the C6
+  changed the attribute locally. The full pair check passed with
+  `--require-string` alongside all earlier checks.

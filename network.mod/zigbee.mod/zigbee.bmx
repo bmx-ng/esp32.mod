@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.2"
+ModuleInfo "Version: 1.3"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -196,7 +196,7 @@ bbdoc: A remote endpoint replied to Remove Group; value is the group identifier.
 End Rem
 Const ZigbeeEventGroupRemoved:Int = 17
 Rem
-bbdoc: A remote scalar Write Attribute request completed.
+bbdoc: A remote Write Attribute request completed.
 End Rem
 Const ZigbeeEventWrite:Int = 18
 Rem
@@ -240,6 +240,16 @@ Rem
 bbdoc: ZCL signed 32-bit scalar data type.
 End Rem
 Const ZigbeeTypeInt32:Int = $2b
+
+Rem
+bbdoc: ZCL length-prefixed UTF-8 character string data type.
+End Rem
+Const ZigbeeTypeString:Int = $42
+
+Rem
+bbdoc: Maximum UTF-8 byte length handled by Zigbee string attributes.
+End Rem
+Const ZigbeeStringMaxBytes:Int = 64
 
 Rem
 bbdoc: Server role for a custom cluster.
@@ -317,9 +327,13 @@ Struct SZigbeeEvent
 	End Rem
 	Field dataType:Int
 	Rem
-	bbdoc: Number of scalar value bytes copied, or zero for unsupported types.
+	bbdoc: Number of value bytes copied; negative means the string exceeded 64 bytes.
 	End Rem
 	Field valueSize:Int
+	Rem
+	bbdoc: Text for a ZigbeeTypeString attribute event.
+	End Rem
+	Field text:String
 End Struct
 
 Rem
@@ -368,6 +382,8 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_custom_cluster"
 	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		dataType:Int, access:Int, value:Int) = "bmx_esp32_zigbee_core_add_custom_scalar"
+	Function _ZigbeeCoreAddCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_string"
 	Function _ZigbeeCoreClearCustomClusters:Int() = "bmx_esp32_zigbee_core_clear_custom_clusters"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
@@ -386,7 +402,7 @@ Extern "C"
 	Function _ZigbeeCorePoll:Int(kind:Int Var, status:Int Var, signal:Int Var, endpoint:Int Var, ..
 		cluster:Int Var, attribute:Int Var, value:Int Var, shortAddress:Int Var, ..
 		panId:Int Var, channel:Int Var, factoryNew:Int Var, dataType:Int Var, ..
-		valueSize:Int Var) = "bmx_esp32_zigbee_core_poll"
+		valueSize:Int Var, text:Byte Ptr, textCapacity:Int) = "bmx_esp32_zigbee_core_poll"
 	Function _ZigbeeCoreDropped:UInt() = "bmx_esp32_zigbee_core_dropped"
 	Function _ZigbeeCoreFindOnOff:Int() = "bmx_esp32_zigbee_core_find_onoff"
 	Function _ZigbeeCoreFindServers:Int(profileId:Int, clusterId:Int) = ..
@@ -403,6 +419,11 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_humidity"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
+	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_string"
+	Function _ZigbeeCoreWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, text:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_string"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
@@ -511,6 +532,26 @@ Function ZigbeeAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 		dataType:Int, access:Int, value:Int)
 	Return _ZigbeeCoreAddCustomScalar(endpoint, clusterId, attributeId, dataType, ..
 		access, value)
+End Function
+
+Rem
+bbdoc: Adds a UTF-8 string attribute to a custom server cluster before ZigbeeStart.
+about: At most 64 UTF-8 bytes are accepted. Combine ZigbeeAttributeRead and
+ZigbeeAttributeWrite for access. String report configuration is not yet supported.
+End Rem
+Function ZigbeeAddCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreAddCustomString(endpoint, clusterId, attributeId, ..
+		access, bytes, Int(length))
+	MemFree(bytes)
+	Return result
 End Function
 
 Rem
@@ -711,6 +752,25 @@ Function ZigbeeSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 End Function
 
 Rem
+bbdoc: Updates a local custom UTF-8 string attribute.
+about: The string attribute must be registered before ZigbeeStart and be at most
+64 UTF-8 bytes long.
+End Rem
+Function ZigbeeSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreSetCustomString(endpoint, clusterId, attributeId, ..
+		bytes, Int(length))
+	MemFree(bytes)
+	Return result
+End Function
+
+Rem
 bbdoc: Requests periodic and change-based On/Off reports from a remote light.
 about: Call on a switch endpoint after discovering a light. Intervals are in
 seconds; minimum may be zero, and maximum may be 65535 to disable periodic
@@ -810,15 +870,44 @@ Function ZigbeeWriteScalar:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 End Function
 
 Rem
+bbdoc: Writes one remote UTF-8 string attribute.
+about: At most 64 UTF-8 bytes are accepted. Poll for ZigbeeEventWrite to
+inspect the remote status.
+End Rem
+Function ZigbeeWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreWriteString(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, bytes, Int(length))
+	MemFree(bytes)
+	Return result
+End Function
+
+Rem
 bbdoc: Removes the oldest event from the native Zigbee queue.
 returns: True if an event was returned; False if the queue is empty.
-about: Native callbacks copy primitive values into a bounded queue. The
+about: Native callbacks copy bounded values into a queue. The
 application thread is the only place this function creates a BlitzMax value.
 End Rem
 Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
-	Return _ZigbeeCorePoll(event.kind, event.status, event.signal, event.endpoint, ..
+	Local bytes:Byte[ZigbeeStringMaxBytes]
+	Local found:Int = _ZigbeeCorePoll(event.kind, event.status, event.signal, event.endpoint, ..
 		event.cluster, event.attribute, event.value, event.shortAddress, event.panId, ..
-		event.channel, event.factoryNew, event.dataType, event.valueSize)
+		event.channel, event.factoryNew, event.dataType, event.valueSize, bytes, ..
+		ZigbeeStringMaxBytes)
+	If found Then
+		event.text = ""
+		If event.dataType = ZigbeeTypeString And event.valueSize > 0 Then
+			event.text = String.FromUTF8Bytes(bytes, event.valueSize)
+		End If
+	End If
+	Return found
 End Function
 
 Rem
