@@ -277,10 +277,24 @@ attributes, and read/report events use `text` or `bytes` with the corresponding
 `ZigbeeTypeLongString` or `ZigbeeTypeLongOctets`. Values are bounded to 256
 bytes in this module; a remote value beyond that limit produces a negative
 `valueSize`. The Zigbee transport or peer may impose a smaller practical
-message limit. Array and structure values remain unsupported: SDK 2.1.0
-returns the invalid size `0xffff` for both and rejects their custom attribute
-registration on a C6. A working public API needs an SDK fix or a separate ZCL
-attribute implementation.
+message limit.
+
+`ZigbeeAddCustomArray` and `ZigbeeAddCustomStructure` register ZCL array and
+structure values on a custom server cluster. Pass complete ZCL value bytes:
+an array begins with its element type and a little-endian 16-bit element count;
+a structure begins with a little-endian 16-bit element count and then a type
+and value for each element. `ZigbeeSetCustomArray` and
+`ZigbeeSetCustomStructure` replace local values, and `ZigbeeWriteArray` and
+`ZigbeeWriteStructure` write one remote attribute. Reads and incoming writes
+arrive in `SZigbeeEvent.bytes` with `ZigbeeTypeArray` or
+`ZigbeeTypeStructure`; `valueSize` is the full encoded length. The module
+validates element lengths and nesting up to four levels, with a 256-byte
+encoded limit. Read and Write access are supported; ZCL does not allow
+reporting arrays or structures. SDK 2.1.0 rejects these types during normal
+attribute registration, so the module serves their read, write, and standard
+attribute-discovery frames through the documented raw ZCL and APS interfaces.
+Composite writes use one attribute per command. Structured element access and
+the separate ZCL set and bag types are outside this API.
 
 `ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
 ID, device ID, and four-bit version. It includes a Basic server; add other
@@ -457,11 +471,10 @@ sensor, Door Lock, Door Lock Controller, Window Covering, and Window Covering
 Controller endpoints; optional Relative Humidity, Illuminance, Pressure
 Measurement, Occupancy Sensing, Power Configuration, Electrical Measurement,
 Level Control, Color Control, Thermostat, and IAS Zone clusters; custom
-endpoint profiles; and custom scalar, short string, long string, and octet
-attributes. Actuator command handling is implemented and C6 loopback tested.
-IAS Zone enrollment and status notifications are verified between C6 and H2.
-Array and structure attributes remain blocked by the
-ESP Zigbee SDK 2.1.0 registration behavior described above.
+endpoint profiles; and custom scalar, short string, long string, octet, array,
+and structure attributes. Actuator command handling is implemented and
+C6 loopback tested. IAS Zone enrollment and status notifications, plus array
+and structure attribute exchange, are verified between C6 and H2.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
@@ -479,12 +492,19 @@ local state attributes, and read back the lock state (2), covering lift (42%),
 and IAS Zone status (1). It registered a 72-byte long string, read back its
 78-byte local update, and read back an 80-byte long octet value through the
 Zigbee event path. The same firmware wrote a 79-byte string and 80-byte
-octets through Zigbee and read both back with successful responses. These
+octets through Zigbee and read both back with successful responses.
+
 IAS Zone was also exercised across both physical boards: the H2 joined the C6,
 sent an enrollment request, accepted zone ID 3, and updated its status to
 Alarm1 plus Tamper. The C6 read the H2's enrolled state (1) and zone ID (3),
 and received a status notification with bitmap 5 and zone ID 3. Door Lock,
-Window Covering, and long custom values remain C6 loopback checks.
+Window Covering, and long custom values remain C6 loopback checks. A C6
+custom cluster served array and structure values to the H2. The H2 wrote both
+types and read their changed values back. A 153-byte encoded array also made
+the round trip, exercising Zigbee fragmentation in both directions.
+
+After the tests, the C6 light and H2 switch images were restored. The pair
+regression passed with typed scalar, custom cluster, and binary octet checks.
 
 - The H2 deep-sleep sensor joined the C6 network, stopped Zigbee cleanly,
   woke on its ten-second timer, and restored the saved network on consecutive

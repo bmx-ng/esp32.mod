@@ -373,6 +373,14 @@ Rem
 bbdoc: ZCL long UTF-8 string data type with a 16-bit byte count.
 End Rem
 Const ZigbeeTypeLongString:Int = $44
+Rem
+bbdoc: ZCL array value, encoded as element type, 16-bit count, then elements.
+End Rem
+Const ZigbeeTypeArray:Int = $48
+Rem
+bbdoc: ZCL structure value, encoded as 16-bit count, then typed elements.
+End Rem
+Const ZigbeeTypeStructure:Int = $4c
 
 Rem
 bbdoc: Maximum UTF-8 byte length handled by Zigbee string attributes.
@@ -382,6 +390,10 @@ Rem
 bbdoc: Maximum binary byte length handled by Zigbee octet-string attributes.
 End Rem
 Const ZigbeeOctetsMaxBytes:Int = 64
+Rem
+bbdoc: Maximum encoded byte length for array and structure attribute values.
+End Rem
+Const ZigbeeCompositeMaxBytes:Int = 256
 Rem
 bbdoc: Maximum byte length handled by long string and long octet attributes.
 End Rem
@@ -463,7 +475,7 @@ Struct SZigbeeEvent
 	End Rem
 	Field dataType:Int
 	Rem
-	bbdoc: Number of value bytes copied; negative means a string exceeded 256 bytes.
+	bbdoc: Number of value bytes copied; negative means a variable value was invalid or too large.
 	End Rem
 	Field valueSize:Int
 	Rem
@@ -471,7 +483,7 @@ bbdoc: Text for a ZigbeeTypeString or ZigbeeTypeLongString attribute event.
 	End Rem
 	Field text:String
 	Rem
-bbdoc: Binary data for an octet or long octet attribute event; Null for other types.
+	bbdoc: Encoded binary data for octet, array, or structure attribute events.
 	End Rem
 	Field bytes:Byte[]
 End Struct
@@ -579,6 +591,10 @@ Extern "C"
 		access:Int, text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_long_string"
 	Function _ZigbeeCoreAddCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_long_octets"
+	Function _ZigbeeCoreAddCustomArray:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_array"
+	Function _ZigbeeCoreAddCustomStructure:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_structure"
 	Function _ZigbeeCoreClearCustomClusters:Int() = "bmx_esp32_zigbee_core_clear_custom_clusters"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
@@ -692,6 +708,10 @@ Extern "C"
 		text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_long_string"
 	Function _ZigbeeCoreSetCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_long_octets"
+	Function _ZigbeeCoreSetCustomArray:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_array"
+	Function _ZigbeeCoreSetCustomStructure:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_structure"
 	Function _ZigbeeCoreWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int, text:Byte Ptr, ..
 		length:Int) = "bmx_esp32_zigbee_core_write_string"
@@ -704,6 +724,12 @@ Extern "C"
 	Function _ZigbeeCoreWriteLongOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
 		length:Int) = "bmx_esp32_zigbee_core_write_long_octets"
+	Function _ZigbeeCoreWriteArray:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_array"
+	Function _ZigbeeCoreWriteStructure:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_structure"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
@@ -1086,6 +1112,32 @@ Function ZigbeeAddCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:
 	If value.length > ZigbeeLongStringMaxBytes Then Return -5
 	Return _ZigbeeCoreAddCustomLongOctets(endpoint, clusterId, attributeId, ..
 		access, value, value.length)
+End Function
+
+Rem
+bbdoc: Adds a ZCL array attribute to a custom server cluster before ZigbeeStart.
+about: Pass the complete ZCL array encoding: element type, little-endian element
+count, and encoded elements. Up to 256 bytes. Read and Write access are
+supported; ZCL does not permit reporting array attributes.
+End Rem
+Function ZigbeeAddCustomArray:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreAddCustomArray(endpoint, clusterId, attributeId, ..
+		access, encoded, encoded.length)
+End Function
+
+Rem
+bbdoc: Adds a ZCL structure attribute to a custom server cluster before ZigbeeStart.
+about: Pass the complete ZCL structure encoding: little-endian element count,
+then a type and encoded value for each element. Up to 256 bytes. Read and
+Write access are supported; ZCL does not permit reporting structures.
+End Rem
+Function ZigbeeAddCustomStructure:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreAddCustomStructure(endpoint, clusterId, attributeId, ..
+		access, encoded, encoded.length)
 End Function
 
 Rem
@@ -1669,6 +1721,22 @@ Function ZigbeeSetCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:
 End Function
 
 Rem
+bbdoc: Updates a local ZCL array attribute with a complete encoded array value.
+End Rem
+Function ZigbeeSetCustomArray:Int(endpoint:Int, clusterId:Int, attributeId:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreSetCustomArray(endpoint, clusterId, attributeId, encoded, encoded.length)
+End Function
+
+Rem
+bbdoc: Updates a local ZCL structure attribute with a complete encoded structure value.
+End Rem
+Function ZigbeeSetCustomStructure:Int(endpoint:Int, clusterId:Int, attributeId:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreSetCustomStructure(endpoint, clusterId, attributeId, encoded, encoded.length)
+End Function
+
+Rem
 bbdoc: Requests periodic and change-based On/Off reports from a remote light.
 about: Call on a switch endpoint after discovering a light. Intervals are in
 seconds; minimum may be zero, and maximum may be 65535 to disable periodic
@@ -1843,6 +1911,28 @@ Function ZigbeeWriteLongOctets:Int(sourceEndpoint:Int, destinationAddress:Int, .
 End Function
 
 Rem
+bbdoc: Writes one remote ZCL array attribute using complete encoded array bytes.
+about: Poll for ZigbeeEventWrite. Values are limited to 256 encoded bytes.
+End Rem
+Function ZigbeeWriteArray:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreWriteArray(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, encoded, encoded.length)
+End Function
+
+Rem
+bbdoc: Writes one remote ZCL structure attribute using complete encoded structure bytes.
+about: Poll for ZigbeeEventWrite. Values are limited to 256 encoded bytes.
+End Rem
+Function ZigbeeWriteStructure:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, encoded:Byte[])
+	If Not encoded Or encoded.length > ZigbeeCompositeMaxBytes Then Return -5
+	Return _ZigbeeCoreWriteStructure(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, encoded, encoded.length)
+End Function
+
+Rem
 bbdoc: Removes the oldest event from the native Zigbee queue.
 returns: True if an event was returned; False if the queue is empty.
 about: Native callbacks copy bounded values into a queue. The
@@ -1861,7 +1951,9 @@ Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
 				event.valueSize > 0 Then
 			event.text = String.FromUTF8Bytes(bytes, event.valueSize)
 		Else If (event.dataType = ZigbeeTypeOctets Or ..
-				event.dataType = ZigbeeTypeLongOctets) And event.valueSize >= 0 And ..
+				event.dataType = ZigbeeTypeLongOctets Or ..
+				event.dataType = ZigbeeTypeArray Or ..
+				event.dataType = ZigbeeTypeStructure) And event.valueSize >= 0 And ..
 				event.valueSize <= ZigbeeLongStringMaxBytes Then
 			event.bytes = New Byte[event.valueSize]
 			If event.valueSize > 0 Then MemCopy(Varptr event.bytes[0], Varptr bytes[0], ..

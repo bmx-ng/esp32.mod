@@ -12,6 +12,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "esp_zigbee.h"
+#include "ezbee/aps.h"
 #include "ezbee/zha.h"
 #include "ezbee/zcl/cluster/custom.h"
 #include "blitzmax/embedded_system.h"
@@ -23,6 +24,7 @@
 #define ZB_MAX_CUSTOM_ATTRIBUTES 32u
 #define ZB_MAX_STRING_BYTES 64u
 #define ZB_MAX_LONG_STRING_BYTES 256u
+#define ZB_MAX_COMPOSITE_BYTES 256u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
 #define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
 #define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 32u
@@ -118,6 +120,7 @@ typedef struct {
 typedef struct {
     uint8_t endpoint, type, access;
     uint16_t cluster, attribute;
+    uint16_t encoded_size;
     int32_t value;
     uint8_t text[ZB_MAX_LONG_STRING_BYTES + 2u];
 } zb_custom_attribute_t;
@@ -154,6 +157,7 @@ static portMUX_TYPE command_lock = portMUX_INITIALIZER_UNLOCKED;
 static StaticSemaphore_t command_semaphore_storage;
 static SemaphoreHandle_t command_semaphore;
 static uint32_t command_sequence;
+static uint8_t composite_sequence;
 static uint32_t command_pending;
 static int command_result;
 static bool command_completed;
@@ -537,8 +541,269 @@ static zb_measurement_cluster_t *ias_server(int endpoint)
     return NULL;
 }
 
+static bool composite_type(uint8_t type)
+{
+    return type == EZB_ZCL_ATTR_TYPE_ARRAY || type == EZB_ZCL_ATTR_TYPE_STRUCT;
+}
+
+static zb_custom_attribute_t *custom_attribute(int endpoint, int cluster, int attribute)
+{
+    for (unsigned i = 0; i < custom_attribute_count; ++i)
+        if (custom_attributes[i].endpoint == endpoint &&
+                custom_attributes[i].cluster == cluster &&
+                custom_attributes[i].attribute == attribute)
+            return &custom_attributes[i];
+    return NULL;
+}
+
+static bool zcl_value_length(uint8_t type, const uint8_t *data, unsigned available,
+        unsigned depth, unsigned *used)
+{
+    if (depth > 4) return false;
+    unsigned width = 0;
+    if ((type >= EZB_ZCL_ATTR_TYPE_DATA8 && type <= EZB_ZCL_ATTR_TYPE_DATA64) ||
+            (type >= EZB_ZCL_ATTR_TYPE_MAP8 && type <= EZB_ZCL_ATTR_TYPE_MAP64) ||
+            (type >= EZB_ZCL_ATTR_TYPE_UINT8 && type <= EZB_ZCL_ATTR_TYPE_UINT64) ||
+            (type >= EZB_ZCL_ATTR_TYPE_INT8 && type <= EZB_ZCL_ATTR_TYPE_INT64))
+        width = 1u + (type & 7u);
+    else if (type == EZB_ZCL_ATTR_TYPE_BOOL || type == EZB_ZCL_ATTR_TYPE_ENUM8)
+        width = 1;
+    else if (type == EZB_ZCL_ATTR_TYPE_ENUM16 || type == EZB_ZCL_ATTR_TYPE_SEMI ||
+            type == EZB_ZCL_ATTR_TYPE_CLUSTER_ID || type == EZB_ZCL_ATTR_TYPE_ATTRIBUTE_ID)
+        width = 2;
+    else if (type == EZB_ZCL_ATTR_TYPE_SINGLE || type == EZB_ZCL_ATTR_TYPE_TOD ||
+            type == EZB_ZCL_ATTR_TYPE_DATE || type == EZB_ZCL_ATTR_TYPE_UTC ||
+            type == EZB_ZCL_ATTR_TYPE_BAC_OID)
+        width = 4;
+    else if (type == EZB_ZCL_ATTR_TYPE_DOUBLE || type == EZB_ZCL_ATTR_TYPE_EUI64)
+        width = 8;
+    else if (type == EZB_ZCL_ATTR_TYPE_KEY128)
+        width = 16;
+    else if (type == EZB_ZCL_ATTR_TYPE_NO_DATA) {
+        *used = 0;
+        return true;
+    } else if (type == EZB_ZCL_ATTR_TYPE_OCTSTR || type == EZB_ZCL_ATTR_TYPE_STRING) {
+        if (available < 1) return false;
+        width = data[0] == 0xff ? 1u : (unsigned)data[0] + 1u;
+    } else if (type == EZB_ZCL_ATTR_TYPE_OCTSTR16 || type == EZB_ZCL_ATTR_TYPE_STRING16) {
+        if (available < 2) return false;
+        unsigned length = (unsigned)data[0] | ((unsigned)data[1] << 8);
+        width = length == 0xffff ? 2u : length + 2u;
+    } else if (composite_type(type)) {
+        unsigned offset = type == EZB_ZCL_ATTR_TYPE_ARRAY ? 3u : 2u;
+        if (available < offset) return false;
+        unsigned count = (unsigned)data[offset - 2] | ((unsigned)data[offset - 1] << 8);
+        if (count == 0xffff || count > available) return false;
+        for (unsigned i = 0; i < count; ++i) {
+            uint8_t item_type = type == EZB_ZCL_ATTR_TYPE_ARRAY ? data[0] :
+                    offset < available ? data[offset++] : EZB_ZCL_ATTR_TYPE_UNK;
+            unsigned item_size;
+            if (offset > available || !zcl_value_length(item_type, data + offset,
+                    available - offset, depth + 1, &item_size)) return false;
+            offset += item_size;
+        }
+        *used = offset;
+        return true;
+    } else return false;
+    if (width > available) return false;
+    *used = width;
+    return true;
+}
+
+static ezb_err_t send_zcl_aps(ezb_address_t destination, uint8_t source_endpoint,
+        uint8_t destination_endpoint, uint16_t profile, uint16_t cluster,
+        uint8_t *frame, uint16_t length)
+{
+    ezb_apsde_data_req_t request = {
+        .dst_address = destination, .src_endpoint = source_endpoint,
+        .dst_endpoint = destination_endpoint, .profile_id = profile,
+        .cluster_id = cluster, .radius = 10,
+        .tx_options = EZB_APSDE_TX_OPT_ACK_TX | EZB_APSDE_TX_OPT_FRAG_PERMITTED,
+        .asdu_length = length, .asdu = frame};
+    return ezb_apsde_data_request(&request);
+}
+
+static bool composite_cluster(int endpoint, int cluster)
+{
+    for (unsigned i = 0; i < custom_attribute_count; ++i)
+        if (custom_attributes[i].endpoint == endpoint &&
+                custom_attributes[i].cluster == cluster &&
+                composite_type(custom_attributes[i].type)) return true;
+    return false;
+}
+
+static bool composite_read_request(const ezb_zcl_raw_frame_t *request)
+{
+    const ezb_zcl_cmd_hdr_t *header = request->header;
+    if (request->payload_length < 2 || (request->payload_length & 1) ||
+            !composite_cluster(header->dst_ep, header->cluster_id)) return false;
+    bool contains_composite = false;
+    for (unsigned i = 0; i < request->payload_length; i += 2) {
+        int id = request->payload[i] | (request->payload[i + 1] << 8);
+        zb_custom_attribute_t *attribute = custom_attribute(header->dst_ep, header->cluster_id, id);
+        if (attribute && composite_type(attribute->type)) contains_composite = true;
+    }
+    if (!contains_composite) return false;
+    uint8_t response[1024] = {0x08, header->tsn, EZB_ZCL_CMD_READ_ATTRIBUTES_RESPONSE};
+    unsigned length = 3;
+    for (unsigned i = 0; i < request->payload_length; i += 2) {
+        uint16_t id = (uint16_t)request->payload[i] | ((uint16_t)request->payload[i + 1] << 8);
+        zb_custom_attribute_t *attribute = custom_attribute(header->dst_ep, header->cluster_id, id);
+        uint8_t type = 0;
+        uint8_t value[ZB_MAX_COMPOSITE_BYTES + 2u];
+        unsigned value_size = 0;
+        uint8_t status = EZB_ZCL_STATUS_SUCCESS;
+        if (attribute && composite_type(attribute->type)) {
+            type = attribute->type;
+            value_size = attribute->encoded_size;
+            memcpy(value, attribute->text, value_size);
+        } else {
+            ezb_zcl_attr_desc_t descriptor = ezb_zcl_get_attr_desc(header->dst_ep,
+                    header->cluster_id, EZB_ZCL_CLUSTER_SERVER, id, EZB_ZCL_STD_MANUF_CODE);
+            if (descriptor == EZB_INVALID_ZCL_ATTR_DESC ||
+                    !(ezb_zcl_attr_desc_get_access(descriptor) & EZB_ZCL_ATTR_ACCESS_READ))
+                status = EZB_ZCL_STATUS_UNSUP_ATTRIB;
+            else {
+                type = ezb_zcl_attr_desc_get_type(descriptor);
+                value_size = ezb_zcl_attr_desc_get_value_size(descriptor);
+                if (value_size > sizeof(value)) status = EZB_ZCL_STATUS_INSUFFICIENT_SPACE;
+                else if (ezb_zcl_attr_desc_get_value(descriptor, value) != EZB_ERR_NONE)
+                    status = EZB_ZCL_STATUS_FAIL;
+            }
+        }
+        if (status == EZB_ZCL_STATUS_SUCCESS && length + 4u + value_size > sizeof(response))
+            status = EZB_ZCL_STATUS_INSUFFICIENT_SPACE;
+        if (length + 3u > sizeof(response)) break;
+        response[length++] = (uint8_t)id;
+        response[length++] = (uint8_t)(id >> 8);
+        response[length++] = status;
+        if (status == EZB_ZCL_STATUS_SUCCESS) {
+            response[length++] = type;
+            memcpy(response + length, value, value_size);
+            length += value_size;
+        }
+    }
+    ezb_err_t result = send_zcl_aps(header->src_addr, header->dst_ep, header->src_ep,
+            header->profile_id, header->cluster_id, response, (uint16_t)length);
+    if (result != EZB_ERR_NONE) emit_status(ZB_EVENT_ERROR, result, EZB_ZCL_CMD_READ_ATTRIBUTES_RESPONSE);
+    return true;
+}
+
+static bool composite_write_request(const ezb_zcl_raw_frame_t *request)
+{
+    const ezb_zcl_cmd_hdr_t *header = request->header;
+    if (request->payload_length < 3 || !composite_cluster(header->dst_ep, header->cluster_id))
+        return false;
+    uint16_t id = (uint16_t)request->payload[0] | ((uint16_t)request->payload[1] << 8);
+    zb_custom_attribute_t *attribute = custom_attribute(header->dst_ep, header->cluster_id, id);
+    if (!attribute || !composite_type(attribute->type)) return false;
+    uint8_t status = EZB_ZCL_STATUS_SUCCESS;
+    unsigned value_size = 0;
+    if (!(attribute->access & EZB_ZCL_ATTR_ACCESS_WRITE))
+        status = EZB_ZCL_STATUS_READ_ONLY;
+    else if (request->payload[2] != attribute->type)
+        status = EZB_ZCL_STATUS_INVALID_TYPE;
+    else if (!zcl_value_length(attribute->type, request->payload + 3,
+            request->payload_length - 3, 0, &value_size) ||
+            value_size != request->payload_length - 3 || value_size > ZB_MAX_COMPOSITE_BYTES)
+        status = EZB_ZCL_STATUS_INVALID_VALUE;
+    if (status == EZB_ZCL_STATUS_SUCCESS) {
+        memcpy(attribute->text, request->payload + 3, value_size);
+        attribute->encoded_size = (uint16_t)value_size;
+        zb_event_t event = {.kind = ZB_EVENT_ATTRIBUTE, .endpoint = header->dst_ep,
+                            .cluster = header->cluster_id, .attribute = id,
+                            .data_type = attribute->type, .value_size = (int32_t)value_size,
+                            .short_addr = header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1};
+        memcpy(event.text, attribute->text, value_size);
+        emit(event);
+    }
+    if (header->cmd_id != EZB_ZCL_CMD_WRITE_ATTRIBUTES_NO_RESPONSE) {
+        uint8_t response[6] = {0x08, header->tsn, EZB_ZCL_CMD_WRITE_ATTRIBUTES_RESPONSE,
+                               status, (uint8_t)id, (uint8_t)(id >> 8)};
+        unsigned response_size = status == EZB_ZCL_STATUS_SUCCESS ? 4u : 6u;
+        ezb_err_t result = send_zcl_aps(header->src_addr, header->dst_ep,
+                header->src_ep, header->profile_id, header->cluster_id,
+                response, (uint16_t)response_size);
+        if (result != EZB_ERR_NONE) emit_status(ZB_EVENT_ERROR, result, EZB_ZCL_CMD_WRITE_ATTRIBUTES_RESPONSE);
+    }
+    return true;
+}
+
+static bool composite_discover_request(const ezb_zcl_raw_frame_t *request)
+{
+    const ezb_zcl_cmd_hdr_t *header = request->header;
+    if (request->payload_length != 3 || !composite_cluster(header->dst_ep, header->cluster_id))
+        return false;
+    uint16_t start = (uint16_t)request->payload[0] | ((uint16_t)request->payload[1] << 8);
+    unsigned maximum = request->payload[2];
+    uint8_t response[260] = {0x08, header->tsn, EZB_ZCL_CMD_DISCOVER_ATTRIBUTES_RESPONSE, 1};
+    unsigned length = 4, count = 0;
+    uint32_t next = start;
+    while (next <= UINT16_MAX && count < maximum && length + 3u <= sizeof(response)) {
+        zb_custom_attribute_t *candidate = NULL;
+        for (unsigned i = 0; i < custom_attribute_count; ++i) {
+            zb_custom_attribute_t *attribute = &custom_attributes[i];
+            if (attribute->endpoint == header->dst_ep &&
+                    attribute->cluster == header->cluster_id && attribute->attribute >= next &&
+                    (!candidate || attribute->attribute < candidate->attribute))
+                candidate = attribute;
+        }
+        if (!candidate) break;
+        response[length++] = (uint8_t)candidate->attribute;
+        response[length++] = (uint8_t)(candidate->attribute >> 8);
+        response[length++] = candidate->type;
+        next = (uint32_t)candidate->attribute + 1u;
+        ++count;
+    }
+    for (unsigned i = 0; i < custom_attribute_count; ++i)
+        if (custom_attributes[i].endpoint == header->dst_ep &&
+                custom_attributes[i].cluster == header->cluster_id &&
+                custom_attributes[i].attribute >= next) response[3] = 0;
+    ezb_err_t result = send_zcl_aps(header->src_addr, header->dst_ep, header->src_ep,
+            header->profile_id, header->cluster_id, response, (uint16_t)length);
+    if (result != EZB_ERR_NONE) emit_status(ZB_EVENT_ERROR, result, EZB_ZCL_CMD_DISCOVER_ATTRIBUTES_RESPONSE);
+    return true;
+}
+
+static bool composite_read_response(const ezb_zcl_raw_frame_t *response)
+{
+    const ezb_zcl_cmd_hdr_t *header = response->header;
+    if (response->payload_length < 4) return false;
+    uint16_t id = (uint16_t)response->payload[0] | ((uint16_t)response->payload[1] << 8);
+    if (response->payload[2] != EZB_ZCL_STATUS_SUCCESS ||
+            !composite_type(response->payload[3])) return false;
+    unsigned value_size;
+    bool valid = zcl_value_length(response->payload[3], response->payload + 4,
+            response->payload_length - 4, 0, &value_size) &&
+            value_size == response->payload_length - 4 && value_size <= ZB_MAX_COMPOSITE_BYTES;
+    zb_event_t event = {.kind = ZB_EVENT_READ,
+                        .status = valid ? EZB_ZCL_STATUS_SUCCESS : EZB_ZCL_STATUS_INVALID_VALUE,
+                        .endpoint = header->dst_ep, .cluster = header->cluster_id,
+                        .attribute = id, .data_type = response->payload[3],
+                        .value_size = valid ? (int32_t)value_size : -1};
+    if (valid) memcpy(event.text, response->payload + 4, value_size);
+    emit(event);
+    return true;
+}
+
 static bool raw_handler(const ezb_zcl_raw_frame_t *frame)
 {
+    if (frame && frame->header && frame->payload) {
+        uint8_t frame_control = frame->header->fc & 0x0f;
+        if (frame_control == 0) {
+            if (frame->header->cmd_id == EZB_ZCL_CMD_READ_ATTRIBUTES &&
+                    composite_read_request(frame)) return true;
+            if ((frame->header->cmd_id == EZB_ZCL_CMD_WRITE_ATTRIBUTES ||
+                    frame->header->cmd_id == EZB_ZCL_CMD_WRITE_ATTRIBUTES_UNDIVIDED ||
+                    frame->header->cmd_id == EZB_ZCL_CMD_WRITE_ATTRIBUTES_NO_RESPONSE) &&
+                    composite_write_request(frame)) return true;
+            if (frame->header->cmd_id == EZB_ZCL_CMD_DISCOVER_ATTRIBUTES &&
+                    composite_discover_request(frame)) return true;
+        } else if (frame_control == 0x08 &&
+                frame->header->cmd_id == EZB_ZCL_CMD_READ_ATTRIBUTES_RESPONSE &&
+                composite_read_response(frame)) return true;
+    }
     if (!frame || !frame->header ||
             frame->header->cluster_id != EZB_ZCL_CLUSTER_ID_IAS_ZONE ||
             (frame->header->fc & 0x0f) != EZB_ZCL_FRAME_TYPE_CLUSTER_SPECIFIC ||
@@ -939,7 +1204,8 @@ static esp_err_t add_custom_clusters(ezb_af_device_desc_t device)
             zb_custom_attribute_t *attribute = &custom_attributes[j];
             if (entry->role == EZB_ZCL_CLUSTER_SERVER &&
                     attribute->endpoint == entry->endpoint &&
-                    attribute->cluster == entry->cluster) {
+                    attribute->cluster == entry->cluster &&
+                    !composite_type(attribute->type)) {
                 result = ezb_zcl_custom_cluster_desc_add_attr(cluster, attribute->attribute,
                         attribute->type, attribute->access,
                         (attribute->type == EZB_ZCL_ATTR_TYPE_STRING ||
@@ -1889,6 +2155,62 @@ int bmx_esp32_zigbee_core_add_custom_long_octets(int endpoint, int cluster_id,
             EZB_ZCL_ATTR_TYPE_OCTSTR16);
 }
 
+static int add_custom_composite(int endpoint, int cluster_id, int attribute_id,
+        int access, const uint8_t *encoded, int length, uint8_t type)
+{
+    unsigned used;
+    if (endpoint < 1 || endpoint > 240 || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
+            cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
+            (access != EZB_ZCL_ATTR_ACCESS_READ &&
+             access != (EZB_ZCL_ATTR_ACCESS_READ | EZB_ZCL_ATTR_ACCESS_WRITE)) ||
+            !encoded || length < 0 || length > ZB_MAX_COMPOSITE_BYTES ||
+            !zcl_value_length(type, encoded, (unsigned)length, 0, &used) || used != (unsigned)length)
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    bool found = false;
+    for (unsigned i = 0; i < custom_cluster_count; ++i)
+        if (custom_clusters[i].endpoint == endpoint &&
+                custom_clusters[i].cluster == cluster_id &&
+                custom_clusters[i].role == EZB_ZCL_CLUSTER_SERVER) found = true;
+    if (!found || custom_attribute(endpoint, cluster_id, attribute_id)) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (custom_attribute_count == ZB_MAX_CUSTOM_ATTRIBUTES) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    zb_custom_attribute_t *attribute = &custom_attributes[custom_attribute_count++];
+    memset(attribute, 0, sizeof(*attribute));
+    attribute->endpoint = (uint8_t)endpoint;
+    attribute->cluster = (uint16_t)cluster_id;
+    attribute->attribute = (uint16_t)attribute_id;
+    attribute->type = type;
+    attribute->access = (uint8_t)access;
+    attribute->encoded_size = (uint16_t)length;
+    memcpy(attribute->text, encoded, (size_t)length);
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_custom_array(int endpoint, int cluster_id,
+        int attribute_id, int access, const uint8_t *encoded, int length)
+{
+    return add_custom_composite(endpoint, cluster_id, attribute_id, access,
+            encoded, length, EZB_ZCL_ATTR_TYPE_ARRAY);
+}
+
+int bmx_esp32_zigbee_core_add_custom_structure(int endpoint, int cluster_id,
+        int attribute_id, int access, const uint8_t *encoded, int length)
+{
+    return add_custom_composite(endpoint, cluster_id, attribute_id, access,
+            encoded, length, EZB_ZCL_ATTR_TYPE_STRUCT);
+}
+
 int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t primary_mask,
         uint32_t secondary_mask, int auto_commission)
 {
@@ -2367,6 +2689,48 @@ int bmx_esp32_zigbee_core_write_long_octets(int source_ep, int destination_addr,
 {
     return write_bytes(source_ep, destination_addr, destination_ep, cluster_id, attribute_id,
             bytes, length, EZB_ZCL_ATTR_TYPE_OCTSTR16);
+}
+
+static int write_composite(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id, const uint8_t *encoded, int length, uint8_t type)
+{
+    unsigned used;
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 ||
+            cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM || cluster_id > 65535 ||
+            attribute_id < 0 || attribute_id > 65535 || !encoded ||
+            length < 0 || length > ZB_MAX_COMPOSITE_BYTES ||
+            !zcl_value_length(type, encoded, (unsigned)length, 0, &used) ||
+            used != (unsigned)length) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t profile = EZB_AF_HA_PROFILE_ID;
+    for (unsigned i = 0; i < custom_endpoint_count; ++i)
+        if (custom_endpoints[i].endpoint == source_ep) profile = custom_endpoints[i].profile;
+    uint8_t frame[6 + ZB_MAX_COMPOSITE_BYTES] = {
+        0x00, 0, EZB_ZCL_CMD_WRITE_ATTRIBUTES,
+        (uint8_t)attribute_id, (uint8_t)(attribute_id >> 8), type};
+    memcpy(frame + 6, encoded, (size_t)length);
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    frame[1] = ++composite_sequence;
+    ezb_err_t result = send_zcl_aps(EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+            (uint8_t)source_ep, (uint8_t)destination_ep, profile,
+            (uint16_t)cluster_id, frame, (uint16_t)(length + 6));
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_write_array(int source_ep, int destination_addr,
+        int destination_ep, int cluster_id, int attribute_id, const uint8_t *encoded, int length)
+{
+    return write_composite(source_ep, destination_addr, destination_ep,
+            cluster_id, attribute_id, encoded, length, EZB_ZCL_ATTR_TYPE_ARRAY);
+}
+
+int bmx_esp32_zigbee_core_write_structure(int source_ep, int destination_addr,
+        int destination_ep, int cluster_id, int attribute_id, const uint8_t *encoded, int length)
+{
+    return write_composite(source_ep, destination_addr, destination_ep,
+            cluster_id, attribute_id, encoded, length, EZB_ZCL_ATTR_TYPE_STRUCT);
 }
 
 int bmx_esp32_zigbee_core_find_servers(int profile_id, int cluster_id)
@@ -2938,6 +3302,39 @@ int bmx_esp32_zigbee_core_set_custom_long_octets(int endpoint, int cluster_id,
             EZB_ZCL_ATTR_TYPE_OCTSTR16);
 }
 
+static int set_custom_composite(int endpoint, int cluster_id, int attribute_id,
+        const uint8_t *encoded, int length, uint8_t type)
+{
+    unsigned used;
+    if (!endpoint_kind(endpoint) || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
+            cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
+            !encoded || length < 0 || length > ZB_MAX_COMPOSITE_BYTES ||
+            !zcl_value_length(type, encoded, (unsigned)length, 0, &used) ||
+            used != (unsigned)length) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    zb_custom_attribute_t *attribute = custom_attribute(endpoint, cluster_id, attribute_id);
+    if (!attribute || attribute->type != type) return ESP_ERR_INVALID_ARG;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    memcpy(attribute->text, encoded, (size_t)length);
+    attribute->encoded_size = (uint16_t)length;
+    esp_zigbee_lock_release();
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_set_custom_array(int endpoint, int cluster_id,
+        int attribute_id, const uint8_t *encoded, int length)
+{
+    return set_custom_composite(endpoint, cluster_id, attribute_id,
+            encoded, length, EZB_ZCL_ATTR_TYPE_ARRAY);
+}
+
+int bmx_esp32_zigbee_core_set_custom_structure(int endpoint, int cluster_id,
+        int attribute_id, const uint8_t *encoded, int length)
+{
+    return set_custom_composite(endpoint, cluster_id, attribute_id,
+            encoded, length, EZB_ZCL_ATTR_TYPE_STRUCT);
+}
+
 int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_addr,
         int destination_ep, int cluster_id, int attribute_id, int data_type,
         int min_interval, int max_interval, int32_t reportable_change)
@@ -3114,7 +3511,8 @@ int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoin
     if ((event.data_type == EZB_ZCL_ATTR_TYPE_STRING ||
             event.data_type == EZB_ZCL_ATTR_TYPE_OCTSTR ||
             event.data_type == EZB_ZCL_ATTR_TYPE_STRING16 ||
-            event.data_type == EZB_ZCL_ATTR_TYPE_OCTSTR16) && event.value_size > 0)
+            event.data_type == EZB_ZCL_ATTR_TYPE_OCTSTR16 ||
+            composite_type((uint8_t)event.data_type)) && event.value_size > 0)
         memcpy(text, event.text, (size_t)event.value_size);
     return 1;
 }
