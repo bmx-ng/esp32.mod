@@ -166,6 +166,14 @@ current divisor is 1000; the other multipliers and divisors are one. Use
 the cluster, read attributes 0x0505, 0x0508, and 0x050B, and configure reports
 for active power. The light example simulates 230 V, 250 mA, and 58 to 60 W.
 
+`ZigbeeAddLevelControlCluster(endpoint, role)` adds a Level Control server or
+client. A server exposes CurrentLevel (attribute zero); `ZigbeeSetLocalLevel`
+sets it from 0 to 254. A client can discover the cluster and use
+`ZigbeeMoveToLevel` to request a level and transition time, optionally with the
+On/Off variant. The light example starts at level 30 and the switch requests
+level 180, then reads CurrentLevel back. Applications must apply the reported
+level to their physical output.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -333,7 +341,8 @@ network. The saved network belongs to the previous role and topology.
 
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
-Occupancy Sensing, Power Configuration, and Electrical Measurement clusters,
+Occupancy Sensing, Power Configuration, Electrical Measurement, and Level
+Control clusters,
 custom endpoint profiles, and
 custom scalar, short string, and octet-string attributes. Other standard
 cluster templates, additional nonscalar attribute types, further
@@ -348,6 +357,9 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The C6 exposed Level Control on its light endpoint. The H2 discovered the
+  cluster, sent Move To Level With On/Off, and read back CurrentLevel 180.
+  The full pair regression passed with `--require-level` and all earlier checks.
 - The C6 exposed Electrical Measurement with 230 V, 250 mA (current divisor
   1000), and 58 to 60 W. The H2 discovered the cluster, read all three values
   and the divisor, and received a changed active-power report. The full pair

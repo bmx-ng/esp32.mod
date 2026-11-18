@@ -10,6 +10,7 @@ If ZigbeeAddPressureCluster(1, ZigbeeClusterClient) Then RuntimeError "Pressure 
 If ZigbeeAddOccupancyCluster(1, ZigbeeClusterClient) Then RuntimeError "Occupancy client cluster failed"
 If ZigbeeAddPowerConfigurationCluster(1, ZigbeeClusterClient) Then RuntimeError "Power client cluster failed"
 If ZigbeeAddElectricalMeasurementCluster(1, ZigbeeClusterClient) Then RuntimeError "Electrical client cluster failed"
+If ZigbeeAddLevelControlCluster(1, ZigbeeClusterClient) Then RuntimeError "Level client cluster failed"
 If ZigbeeAddCustomEndpoint(2, $c0de, $1235, 1) Then RuntimeError "Custom client endpoint failed"
 If ZigbeeAddCustomCluster(2, $fc01, ZigbeeClusterClient) Then RuntimeError "Custom profile client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
@@ -57,6 +58,9 @@ Local batteryFound:Int
 Local electricalAddress:Int
 Local electricalEndpoint:Int
 Local electricalFound:Int
+Local levelAddress:Int
+Local levelEndpoint:Int
+Local levelFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
 Local nextCustomProfileFind:UInt = MilliSecs() + 2250
@@ -75,6 +79,9 @@ Local nextBatteryFind:UInt = MilliSecs() + 3750
 Local nextBatteryRead:UInt
 Local nextElectricalFind:UInt = MilliSecs() + 4000
 Local nextElectricalRead:UInt
+Local nextLevelFind:UInt = MilliSecs() + 4250
+Local nextLevelMove:UInt
+Local nextLevelRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextStringWrite:UInt = MilliSecs() + 9000
@@ -192,6 +199,12 @@ While True
 			electricalFound = True
 			nextElectricalRead = MilliSecs() + 200
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterLevelControl Then
+			levelAddress = event.shortAddress
+			levelEndpoint = event.endpoint
+			If Not levelFound Then nextLevelMove = MilliSecs() + 1000
+			levelFound = True
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -270,6 +283,23 @@ While True
 		result = ZigbeeFindServers(ZigbeeClusterElectricalMeasurement)
 		Print "Find electrical submission=" + result
 		nextElectricalFind = MilliSecs() + 15000
+	End If
+	If joined And MilliSecs() >= nextLevelFind Then
+		result = ZigbeeFindServers(ZigbeeClusterLevelControl)
+		Print "Find level submission=" + result
+		nextLevelFind = MilliSecs() + 15000
+	End If
+	If levelFound And nextLevelMove And MilliSecs() >= nextLevelMove Then
+		result = ZigbeeMoveToLevel(1, levelAddress, levelEndpoint, 180, 0, True)
+		Print "Move to level submission=" + result
+		If result = 0 Then nextLevelRead = MilliSecs() + 1500
+		nextLevelMove = MilliSecs() + 30000
+	End If
+	If levelFound And nextLevelRead And MilliSecs() >= nextLevelRead Then
+		result = ZigbeeReadAttribute(1, levelAddress, levelEndpoint, ..
+			ZigbeeClusterLevelControl, ZigbeeCurrentLevelAttribute)
+		Print "Level read submission=" + result
+		nextLevelRead = MilliSecs() + 5000
 	End If
 	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
 		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..

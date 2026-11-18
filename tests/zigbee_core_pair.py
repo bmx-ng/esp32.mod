@@ -64,6 +64,8 @@ def main():
                         help="also require battery voltage, percentage and a changed percentage report")
     parser.add_argument("--require-electrical", action="store_true",
                         help="also require RMS voltage, current, active power and a changed power report")
+    parser.add_argument("--require-level", action="store_true",
+                        help="also require Level Control discovery, Move To Level and readback")
     parser.add_argument("--require-octets", action="store_true",
                         help="also require binary octet-string write, readback and local restoration")
     args = parser.parse_args()
@@ -88,6 +90,7 @@ def main():
     battery_match = battery_voltage_read = battery_percentage_read = battery_report = False
     electrical_match = rms_voltage_read = rms_current_read = active_power_read = False
     current_divisor_read = active_power_report = False
+    level_match = level_move = level_read = False
     octets_write = octets_read = octets_restored = False
     group_viewed = group_member = group_membership_complete = False
     group_clear_submission = group_empty = False
@@ -164,6 +167,11 @@ def main():
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=12 cluster=2820" in line):
                 electrical_match = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=10 cluster=8" in line):
+                level_match = True
+            if name == "switch" and "Move to level submission=0" in line:
+                level_move = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -219,6 +227,9 @@ def main():
                 if ("cluster=2820 attribute=1539" in line and "type=33" in line
                         and "size=2" in line and "value=1000 " in line):
                     current_divisor_read = True
+                if ("cluster=8 attribute=0" in line and "type=32" in line
+                        and "size=1" in line and "value=180 " in line):
+                    level_read = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=1026 attribute=0" in line and "type=41 size=2" in line
                     and "value=2355 " in line):
@@ -290,6 +301,7 @@ def main():
                     and (electrical_match and rms_voltage_read and rms_current_read
                          and active_power_read and current_divisor_read and active_power_report
                          or not args.require_electrical)
+                    and (level_match and level_move and level_read or not args.require_level)
                     and (octets_write and octets_read and octets_restored
                          or not args.require_octets)):
                 print("PASS: switch toggled both light states, read the attribute"
@@ -313,6 +325,7 @@ def main():
                       + (", and read and received occupancy" if args.require_occupancy else "")
                       + (", and read and received battery status" if args.require_battery else "")
                       + (", and read and received electrical measurements" if args.require_electrical else "")
+                      + (", and moved the light level" if args.require_level else "")
                       + (", and wrote and read back binary octets" if args.require_octets else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
@@ -339,6 +352,7 @@ def main():
               f"electrical_match={electrical_match}, rms_voltage_read={rms_voltage_read}, "
               f"rms_current_read={rms_current_read}, active_power_read={active_power_read}, "
               f"current_divisor_read={current_divisor_read}, active_power_report={active_power_report}, "
+              f"level_match={level_match}, level_move={level_move}, level_read={level_read}, "
               f"octets_write={octets_write}, octets_read={octets_read}, "
               f"octets_restored={octets_restored}",
               flush=True)

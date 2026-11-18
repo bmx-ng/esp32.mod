@@ -804,6 +804,10 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
                     return result;
                 }
             }
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_LEVEL) {
+            ezb_zcl_level_cluster_server_config_t server = {.current_level = 0};
+            cluster = ezb_zcl_level_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
         }
         if (!cluster) return ESP_ERR_NO_MEM;
         esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -1151,7 +1155,8 @@ static int add_measurement_cluster(int endpoint, int role, int cluster, int sens
             (cluster != EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT &&
              cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG &&
-             cluster != EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT) ||
+             cluster != EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT &&
+             cluster != EZB_ZCL_CLUSTER_ID_LEVEL) ||
             (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
@@ -1233,6 +1238,16 @@ int bmx_esp32_zigbee_core_add_electrical_measurement_cluster(int endpoint, int r
 int bmx_esp32_zigbee_core_clear_electrical_measurement_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT);
+}
+
+int bmx_esp32_zigbee_core_add_level_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_LEVEL, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_level_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_LEVEL);
 }
 
 int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
@@ -2101,6 +2116,49 @@ int bmx_esp32_zigbee_core_set_local_active_power(int endpoint, int watts)
     if (watts < INT16_MIN || watts > INT16_MAX) return ESP_ERR_INVALID_ARG;
     return set_local_electrical_attribute(endpoint,
             EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_ACTIVE_POWER_ID, watts);
+}
+
+int bmx_esp32_zigbee_core_set_local_level(int endpoint, int level)
+{
+    if (endpoint < 1 || endpoint > 240 || level < 0 || level > 254 ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_LEVEL))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint8_t encoded = (uint8_t)level;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_LEVEL, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_LEVEL_CURRENT_LEVEL_ID, EZB_ZCL_STD_MANUF_CODE, &encoded, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_move_to_level(int source_ep, int destination_addr,
+        int destination_ep, int level, int transition_tenths, int with_onoff)
+{
+    if (source_ep < 1 || source_ep > 240 || destination_addr < 0 ||
+            destination_addr > 65535 || destination_ep < 1 || destination_ep > 240 ||
+            level < 0 || level > 254 || transition_tenths < 0 ||
+            transition_tenths > 65535 || (with_onoff != 0 && with_onoff != 1))
+        return ESP_ERR_INVALID_ARG;
+    bool client = false;
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].endpoint == source_ep &&
+                measurement_clusters[i].cluster == EZB_ZCL_CLUSTER_ID_LEVEL &&
+                measurement_clusters[i].role == EZB_ZCL_CLUSTER_CLIENT) client = true;
+    if (!client) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_level_move_to_level_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.level = (uint8_t)level,
+                    .transition_time = (uint16_t)transition_tenths}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = with_onoff ?
+            ezb_zcl_level_move_to_level_with_on_off_cmd_req(&request) :
+            ezb_zcl_level_move_to_level_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
 int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,

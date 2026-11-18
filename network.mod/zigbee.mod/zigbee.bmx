@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.7"
+ModuleInfo "Version: 1.8"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -84,6 +84,11 @@ Const ZigbeeRmsVoltageAttribute:Int = $0505
 Const ZigbeeRmsCurrentAttribute:Int = $0508
 Const ZigbeeActivePowerAttribute:Int = $050b
 Const ZigbeeAcCurrentDivisorAttribute:Int = $0603
+Rem
+bbdoc: Level Control cluster identifier.
+End Rem
+Const ZigbeeClusterLevelControl:Int = $0008
+Const ZigbeeCurrentLevelAttribute:Int = $0000
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -444,6 +449,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_electrical_measurement_cluster"
 	Function _ZigbeeCoreClearElectricalMeasurementClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_electrical_measurement_clusters"
+	Function _ZigbeeCoreAddLevelCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_level_cluster"
+	Function _ZigbeeCoreClearLevelClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_level_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -526,6 +535,11 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_rms_current"
 	Function _ZigbeeCoreSetLocalActivePower:Int(endpoint:Int, watts:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_active_power"
+	Function _ZigbeeCoreSetLocalLevel:Int(endpoint:Int, level:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_level"
+	Function _ZigbeeCoreMoveToLevel:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, level:Int, transitionTenths:Int, withOnOff:Int) = ..
+		"bmx_esp32_zigbee_core_move_to_level"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -708,6 +722,21 @@ bbdoc: Removes Electrical Measurement clusters while the stack is stopped.
 End Rem
 Function ZigbeeClearElectricalMeasurementClusters:Int()
 	Return _ZigbeeCoreClearElectricalMeasurementClusters()
+End Function
+
+Rem
+bbdoc: Adds a Level Control server or client cluster to a configured endpoint.
+about: Register before ZigbeeStart. A server exposes CurrentLevel (0x0000).
+End Rem
+Function ZigbeeAddLevelControlCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddLevelCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes Level Control clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearLevelControlClusters:Int()
+	Return _ZigbeeCoreClearLevelClusters()
 End Function
 
 Rem
@@ -1148,6 +1177,26 @@ about: Range -32767 to 32767; -32768 means unavailable.
 End Rem
 Function ZigbeeSetLocalActivePower:Int(endpoint:Int, watts:Int)
 	Return _ZigbeeCoreSetLocalActivePower(endpoint, watts)
+End Function
+
+Rem
+bbdoc: Sets a local Level Control server's CurrentLevel attribute.
+about: Level is 0 to 254. Update the physical output in the application.
+End Rem
+Function ZigbeeSetLocalLevel:Int(endpoint:Int, level:Int)
+	Return _ZigbeeCoreSetLocalLevel(endpoint, level)
+End Function
+
+Rem
+bbdoc: Sends Move To Level to a remote Level Control server.
+about: Level is 0 to 254, transitionTenths is in tenths of a second, and
+withOnOff selects the variant that also controls the On/Off cluster. A zero
+result means the request was accepted for transmission.
+End Rem
+Function ZigbeeMoveToLevel:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, level:Int, transitionTenths:Int = 0, withOnOff:Int = False)
+	Return _ZigbeeCoreMoveToLevel(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, level, transitionTenths, withOnOff)
 End Function
 
 Rem
