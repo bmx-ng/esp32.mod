@@ -30,6 +30,8 @@ def main():
                         help="also require an On/Off attribute report at the switch")
     parser.add_argument("--require-group", action="store_true",
                         help="also require a group-addressed toggle submission")
+    parser.add_argument("--require-group-query", action="store_true",
+                        help="also require View Group and Get Group Membership readback")
     parser.add_argument("--require-scalar", action="store_true",
                         help="also require a typed 16-bit cluster revision read")
     parser.add_argument("--require-write", action="store_true",
@@ -60,6 +62,7 @@ def main():
     temperature_match = temperature_read = False
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
+    group_viewed = group_member = group_membership_complete = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -82,6 +85,15 @@ def main():
                 toggle = True
             if name == "switch" and "Group toggle submission=0" in line:
                 group = True
+            if (name == "switch" and "Zigbee event 19 status=0" in line
+                    and "value=4660 " in line and "cluster=4" in line):
+                group_viewed = True
+            if (name == "switch" and "Zigbee event 20 status=0" in line
+                    and "value=4660 " in line and "cluster=4" in line):
+                group_member = True
+            if (name == "switch" and "Zigbee event 21 status=0" in line
+                    and "cluster=4" in line):
+                group_membership_complete = True
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=11 cluster=6" in line):
                 extra = True
@@ -133,6 +145,8 @@ def main():
             if (states == {0, 1} and (toggle or group) and read
                     and (report or not args.require_report)
                     and (group_change or not args.require_group)
+                    and (group_viewed and group_member and group_membership_complete
+                         or not args.require_group_query)
                     and (scalar or not args.require_scalar)
                     and (write and write_readback or not args.require_write)
                     and (extra or not args.require_extra_endpoint)
@@ -146,6 +160,7 @@ def main():
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
+                      + (", and confirmed group membership" if args.require_group_query else "")
                       + (", and read a typed scalar" if args.require_scalar else "")
                       + (", and wrote and read back a scalar" if args.require_write else "")
                       + (", and found a second endpoint" if args.require_extra_endpoint else "")
@@ -157,7 +172,9 @@ def main():
                       + (", and read and received humidity" if args.require_humidity else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
-              f"report={report}, group={group}, group_change={group_change}, scalar={scalar}, "
+              f"report={report}, group={group}, group_change={group_change}, "
+              f"group_viewed={group_viewed}, group_member={group_member}, "
+              f"group_membership_complete={group_membership_complete}, scalar={scalar}, "
               f"write={write}, write_readback={write_readback}, extra={extra}, "
               f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}, "
               f"custom_local={custom_local}, temperature_match={temperature_match}, "

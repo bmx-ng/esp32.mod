@@ -123,8 +123,16 @@ switch example uses that general form for the On/Off attribute.
 The light template includes a Groups server. The switch template adds a Groups
 client alongside its On/Off client. `ZigbeeAddGroup` and `ZigbeeRemoveGroup`
 manage a remote light's membership, with response events for the outcome.
+`ZigbeeViewGroup` checks one group and returns `ZigbeeEventGroupViewed` with its
+ID and status. `ZigbeeGetGroupMembership` lists all groups on one remote
+endpoint: zero or more `ZigbeeEventGroupMember` records are followed by
+`ZigbeeEventGroupMembershipComplete`, whose value is the number of groups and
+whose attribute field is the remaining group table capacity. The group query
+events identify the remote device with `shortAddress` and the local client
+endpoint with `endpoint`.
 `ZigbeeSendGroupOnOff` sends an On/Off command to every endpoint in the group.
-The switch example uses group 4660 after the Add Group response succeeds.
+The switch example adds group 4660, queries its membership, and sends group
+toggles.
 
 `ZigbeeReadAttribute` reads one attribute from any remote cluster. A
 `ZigbeeEventRead` provides its ZCL `dataType`, `valueSize`, and `value` for
@@ -157,7 +165,7 @@ network. The saved network belongs to the previous role and topology.
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity Measurement clusters, and custom
 scalar clusters on those endpoints. Custom endpoint profiles, other standard
-cluster templates, nonscalar attribute types, broader group management,
+cluster templates, nonscalar attribute types, additional group commands,
 security configuration, OTA, and application-managed sleep are further work.
 `ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
 keepalive; it does not enter low-power sleep itself.
@@ -210,3 +218,7 @@ keepalive; it does not enter low-power sleep itself.
   received a report when the C6 changed its simulated value to 45.60%.
   `tests/zigbee_core_pair.py --require-humidity` passed alongside all earlier
   pair checks.
+- The H2 queried group 4660 with View Group and requested the light endpoint's
+  full membership list. Both responses confirmed membership; the list response
+  reported one group and 15 remaining slots. The full pair check passed with
+  `--require-group-query` alongside the earlier checks.

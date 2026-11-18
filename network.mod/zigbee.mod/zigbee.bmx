@@ -199,6 +199,18 @@ Rem
 bbdoc: A remote scalar Write Attribute request completed.
 End Rem
 Const ZigbeeEventWrite:Int = 18
+Rem
+bbdoc: A remote Groups server replied to View Group; value is the group ID.
+End Rem
+Const ZigbeeEventGroupViewed:Int = 19
+Rem
+bbdoc: One group ID from a Get Group Membership response, in value.
+End Rem
+Const ZigbeeEventGroupMember:Int = 20
+Rem
+bbdoc: End of a Get Group Membership response; value is count and attribute is remaining capacity.
+End Rem
+Const ZigbeeEventGroupMembershipComplete:Int = 21
 
 Rem
 bbdoc: ZCL Boolean scalar data type.
@@ -277,7 +289,7 @@ Struct SZigbeeEvent
 	End Rem
 	Field cluster:Int
 	Rem
-	bbdoc: Attribute identifier for attribute events.
+	bbdoc: Attribute identifier, or remaining group capacity on ZigbeeEventGroupMembershipComplete.
 	End Rem
 	Field attribute:Int
 	Rem
@@ -398,6 +410,10 @@ Extern "C"
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_add_group"
 	Function _ZigbeeCoreRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_remove_group"
+	Function _ZigbeeCoreViewGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_view_group"
+	Function _ZigbeeCoreGetGroupMembership:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_get_group_membership"
 	Function _ZigbeeCoreGroupOnOff:Int(sourceEndpoint:Int, groupId:Int, command:Int) = ..
 		"bmx_esp32_zigbee_core_group_onoff"
 	Function _ZigbeeCoreReadAttribute:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -713,6 +729,27 @@ about: Poll for ZigbeeEventGroupRemoved to check the remote response.
 End Rem
 Function ZigbeeRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int, groupId:Int)
 	Return _ZigbeeCoreRemoveGroup(sourceEndpoint, destinationAddress, destinationEndpoint, groupId)
+End Function
+
+Rem
+bbdoc: Queries whether a remote Groups server belongs to one group.
+about: Poll for ZigbeeEventGroupViewed. Status zero means the group exists;
+value contains the requested group ID.
+End Rem
+Function ZigbeeViewGroup:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int, groupId:Int)
+	Return _ZigbeeCoreViewGroup(sourceEndpoint, destinationAddress, destinationEndpoint, groupId)
+End Function
+
+Rem
+bbdoc: Requests every group ID on a remote Groups server endpoint.
+about: Poll for zero or more ZigbeeEventGroupMember records, followed by
+ZigbeeEventGroupMembershipComplete. The complete event's value is the number
+of group IDs and its attribute field is remaining table capacity. All records
+carry the local endpoint and remote shortAddress. Check ZigbeeDroppedEvents
+if the application might not drain the bounded event queue quickly enough.
+End Rem
+Function ZigbeeGetGroupMembership:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
+	Return _ZigbeeCoreGetGroupMembership(sourceEndpoint, destinationAddress, destinationEndpoint)
 End Function
 
 Rem

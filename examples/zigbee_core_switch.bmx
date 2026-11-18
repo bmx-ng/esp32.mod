@@ -39,6 +39,8 @@ Local nextReporting:UInt = MilliSecs() + 1000
 Local nextTemperatureReporting:UInt = MilliSecs() + 1000
 Local nextHumidityReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
+Local nextGroupView:UInt
+Local nextGroupMembership:UInt
 Local nextRevision:UInt = MilliSecs() + 3000
 Local nextIdentifyWrite:UInt = MilliSecs() + 5000
 Local nextIdentifyRead:UInt
@@ -89,7 +91,11 @@ While True
 			If event.cluster = ZigbeeClusterTemperatureMeasurement Then temperatureReportingConfigured = True
 			If event.cluster = ZigbeeClusterRelativeHumidityMeasurement Then humidityReportingConfigured = True
 		End If
-		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
+		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then
+			groupReady = True
+			nextGroupView = MilliSecs() + 100
+			nextGroupMembership = MilliSecs() + 300
+		End If
 	Wend
 	If joined And MilliSecs() >= nextFind Then
 		result = ZigbeeFindServers(6)
@@ -155,6 +161,16 @@ While True
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)
 		Print "Add group submission=" + result
 		nextGroup = MilliSecs() + 10000
+	End If
+	If groupReady And nextGroupView And MilliSecs() >= nextGroupView Then
+		result = ZigbeeViewGroup(1, lightAddress, lightEndpoint, 4660)
+		Print "View group submission=" + result
+		nextGroupView = MilliSecs() + 15000
+	End If
+	If groupReady And nextGroupMembership And MilliSecs() >= nextGroupMembership Then
+		result = ZigbeeGetGroupMembership(1, lightAddress, lightEndpoint)
+		Print "Group membership submission=" + result
+		nextGroupMembership = MilliSecs() + 15000
 	End If
 	If bound And MilliSecs() >= nextRevision Then
 		result = ZigbeeReadAttribute(1, lightAddress, lightEndpoint, 6, $fffd)
