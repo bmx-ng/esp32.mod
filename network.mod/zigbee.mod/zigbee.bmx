@@ -97,6 +97,10 @@ Rem
 bbdoc: Temperature Measurement cluster identifier.
 End Rem
 Const ZigbeeClusterTemperatureMeasurement:Int = $0402
+Rem
+bbdoc: Relative Humidity Measurement cluster identifier.
+End Rem
+Const ZigbeeClusterRelativeHumidityMeasurement:Int = $0405
 
 Rem
 bbdoc: Zigbee stack is stopped.
@@ -340,6 +344,10 @@ Private
 Extern "C"
 	Function _ZigbeeCoreAddEndpoint:Int(device:Int, endpoint:Int) = "bmx_esp32_zigbee_core_add_endpoint"
 	Function _ZigbeeCoreClearEndpoints:Int() = "bmx_esp32_zigbee_core_clear_endpoints"
+	Function _ZigbeeCoreAddHumidityCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_humidity_cluster"
+	Function _ZigbeeCoreClearHumidityClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_humidity_clusters"
 	Function _ZigbeeCoreAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int) = ..
 		"bmx_esp32_zigbee_core_add_custom_cluster"
 	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -375,6 +383,8 @@ Extern "C"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
 	Function _ZigbeeCoreSetLocalTemperature:Int(endpoint:Int, centiCelsius:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_temperature"
+	Function _ZigbeeCoreSetLocalHumidity:Int(endpoint:Int, centiPercent:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_humidity"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -422,6 +432,23 @@ bbdoc: Removes all extra standard endpoints while the stack is stopped.
 End Rem
 Function ZigbeeClearExtraEndpoints:Int()
 	Return _ZigbeeCoreClearEndpoints()
+End Function
+
+Rem
+bbdoc: Adds a standard Relative Humidity Measurement server or client cluster.
+about: Call before ZigbeeStart for an endpoint supplied to ZigbeeStart or
+ZigbeeAddEndpoint. A server reports humidity in hundredths of a percent;
+a client can discover, read and receive reports from a remote server.
+End Rem
+Function ZigbeeAddHumidityCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddHumidityCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes configured Relative Humidity Measurement clusters while stopped.
+End Rem
+Function ZigbeeClearHumidityClusters:Int()
+	Return _ZigbeeCoreClearHumidityClusters()
 End Function
 
 Rem
@@ -620,6 +647,16 @@ attribute zero to read it from another device.
 End Rem
 Function ZigbeeSetLocalTemperature:Int(endpoint:Int, centiCelsius:Int)
 	Return _ZigbeeCoreSetLocalTemperature(endpoint, centiCelsius)
+End Function
+
+Rem
+bbdoc: Updates a local Relative Humidity Measurement server's measured value.
+about: Pass humidity in hundredths of a percent, from 0 to 10000. The endpoint
+must have a server cluster registered with ZigbeeAddHumidityCluster. Attribute
+zero can be read remotely and configured for reporting with ZigbeeTypeUInt16.
+End Rem
+Function ZigbeeSetLocalHumidity:Int(endpoint:Int, centiPercent:Int)
+	Return _ZigbeeCoreSetLocalHumidity(endpoint, centiPercent)
 End Function
 
 Rem

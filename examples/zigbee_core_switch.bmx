@@ -4,6 +4,7 @@ Framework BRL.StandardIO
 Import ESP32.Network.Zigbee
 
 If ZigbeeAddCustomCluster(1, $fc00, ZigbeeClusterClient) Then RuntimeError "Custom client cluster failed"
+If ZigbeeAddHumidityCluster(1, ZigbeeClusterClient) Then RuntimeError "Humidity client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee end-device/switch starting"
@@ -13,6 +14,7 @@ Local bound:Int
 Local bindPending:Int
 Local reportingConfigured:Int
 Local temperatureReportingConfigured:Int
+Local humidityReportingConfigured:Int
 Local groupReady:Int
 Local lightAddress:Int
 Local lightEndpoint:Int
@@ -22,14 +24,20 @@ Local customFound:Int
 Local temperatureAddress:Int
 Local temperatureEndpoint:Int
 Local temperatureFound:Int
+Local humidityAddress:Int
+Local humidityEndpoint:Int
+Local humidityFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
 Local nextTemperatureFind:UInt = MilliSecs() + 2500
 Local nextTemperatureRead:UInt
+Local nextHumidityFind:UInt = MilliSecs() + 2750
+Local nextHumidityRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextReporting:UInt = MilliSecs() + 1000
 Local nextTemperatureReporting:UInt = MilliSecs() + 1000
+Local nextHumidityReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
 Local nextRevision:UInt = MilliSecs() + 3000
 Local nextIdentifyWrite:UInt = MilliSecs() + 5000
@@ -66,6 +74,12 @@ While True
 			temperatureFound = True
 			nextTemperatureRead = MilliSecs() + 200
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterRelativeHumidityMeasurement Then
+			humidityAddress = event.shortAddress
+			humidityEndpoint = event.endpoint
+			humidityFound = True
+			nextHumidityRead = MilliSecs() + 200
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -73,6 +87,7 @@ While True
 		If event.kind = ZigbeeEventReportingConfigured And event.status = 0 Then
 			If event.cluster = 6 Then reportingConfigured = True
 			If event.cluster = ZigbeeClusterTemperatureMeasurement Then temperatureReportingConfigured = True
+			If event.cluster = ZigbeeClusterRelativeHumidityMeasurement Then humidityReportingConfigured = True
 		End If
 		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
 	Wend
@@ -91,11 +106,22 @@ While True
 		Print "Find temperature submission=" + result
 		nextTemperatureFind = MilliSecs() + 15000
 	End If
+	If joined And MilliSecs() >= nextHumidityFind Then
+		result = ZigbeeFindServers(ZigbeeClusterRelativeHumidityMeasurement)
+		Print "Find humidity submission=" + result
+		nextHumidityFind = MilliSecs() + 15000
+	End If
 	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
 		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..
 			ZigbeeClusterTemperatureMeasurement, 0)
 		Print "Temperature read submission=" + result
 		nextTemperatureRead = MilliSecs() + 15000
+	End If
+	If humidityFound And nextHumidityRead And MilliSecs() >= nextHumidityRead Then
+		result = ZigbeeReadAttribute(1, humidityAddress, humidityEndpoint, ..
+			ZigbeeClusterRelativeHumidityMeasurement, 0)
+		Print "Humidity read submission=" + result
+		nextHumidityRead = MilliSecs() + 15000
 	End If
 	If customFound And MilliSecs() >= nextCustomWrite Then
 		result = ZigbeeWriteScalar(1, customAddress, customEndpoint, $fc00, 1, ZigbeeTypeUInt16, 43)
@@ -118,6 +144,12 @@ While True
 			ZigbeeClusterTemperatureMeasurement, 0, ZigbeeTypeInt16, 0, 5, 5)
 		Print "Temperature reporting submission=" + result
 		nextTemperatureReporting = MilliSecs() + 10000
+	End If
+	If humidityFound And Not humidityReportingConfigured And MilliSecs() >= nextHumidityReporting Then
+		result = ZigbeeConfigureReporting(1, humidityAddress, humidityEndpoint, ..
+			ZigbeeClusterRelativeHumidityMeasurement, 0, ZigbeeTypeUInt16, 0, 5, 5)
+		Print "Humidity reporting submission=" + result
+		nextHumidityReporting = MilliSecs() + 10000
 	End If
 	If bound And Not groupReady And MilliSecs() >= nextGroup Then
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)

@@ -85,6 +85,15 @@ request reporting with `ZigbeeConfigureReporting` using `ZigbeeTypeInt16`.
 The examples use a simulated value that alternates between 23.45 °C and
 23.55 °C; the switch receives those changes as `ZigbeeEventReport`.
 
+Call `ZigbeeAddHumidityCluster(endpoint, ZigbeeClusterServer)` before starting
+to add a Relative Humidity Measurement server to an existing endpoint. Add the
+client role on a remote reader's endpoint. `ZigbeeSetLocalHumidity` accepts a
+measurement from 0 to 10000 in hundredths of a percent. A client discovers
+cluster 0x0405 with `ZigbeeFindServers`, reads attribute zero as `UInt16`, and
+can request reports with `ZigbeeConfigureReporting`. The examples attach the
+server to the temperature endpoint and alternate between 45.50% and 45.60%.
+`ZigbeeClearHumidityClusters` removes these additions while stopped.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured standard endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -130,8 +139,8 @@ writes then reads back its IdentifyTime attribute.
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
-  temperature sensor endpoint, and a custom scalar cluster; run with a `zczr`
-  build on H2 or C6.
+  temperature sensor endpoint with optional humidity measurement, and a custom
+  scalar cluster; run with a `zczr` build on H2 or C6.
 - `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
@@ -146,11 +155,12 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints and custom scalar clusters on those endpoints. Custom endpoint
-profiles, other standard cluster templates, nonscalar attribute types, broader
-group management, security configuration, OTA, and application-managed sleep
-are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
-device with a longer keepalive; it does not enter low-power sleep itself.
+sensor endpoints, optional Relative Humidity Measurement clusters, and custom
+scalar clusters on those endpoints. Custom endpoint profiles, other standard
+cluster templates, nonscalar attribute types, broader group management,
+security configuration, OTA, and application-managed sleep are further work.
+`ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
+keepalive; it does not enter low-power sleep itself.
 
 ## Hardware checks on 17 November 2026
 
@@ -195,3 +205,8 @@ device with a longer keepalive; it does not enter low-power sleep itself.
 - The C6 bound its temperature server to the H2 client, which configured
   reporting. The H2 received a signed 16-bit report after the simulated
   measurement changed to 23.55 °C.
+- With an optional Relative Humidity Measurement server on endpoint 12, the
+  H2 discovered cluster 0x0405, read 45.50% as an unsigned 16-bit value, and
+  received a report when the C6 changed its simulated value to 45.60%.
+  `tests/zigbee_core_pair.py --require-humidity` passed alongside all earlier
+  pair checks.
