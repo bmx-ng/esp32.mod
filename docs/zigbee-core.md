@@ -3,8 +3,9 @@
 `ESP32.Network.Zigbee` uses the pinned ESP Zigbee SDK 2.1.0 component with
 ESP-IDF 6.1. It currently provides a configurable stack lifecycle, network
 commissioning, a bounded event queue, and standard Home Automation On/Off
-light, switch, and temperature sensor endpoints. See `zigbee-bringup.md` for
-the earlier diagnostic probe and the optional component integration.
+light, switch, and temperature sensor endpoints. Importing the module adds
+the pinned Zigbee component only to applications that use it. The component
+manager downloads it on the first online build and caches it for later builds.
 
 ## Build configuration
 
