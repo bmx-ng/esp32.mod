@@ -12,6 +12,7 @@ Local joined:Int
 Local bound:Int
 Local bindPending:Int
 Local reportingConfigured:Int
+Local temperatureReportingConfigured:Int
 Local groupReady:Int
 Local lightAddress:Int
 Local lightEndpoint:Int
@@ -28,6 +29,7 @@ Local nextTemperatureRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextReporting:UInt = MilliSecs() + 1000
+Local nextTemperatureReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
 Local nextRevision:UInt = MilliSecs() + 3000
 Local nextIdentifyWrite:UInt = MilliSecs() + 5000
@@ -69,7 +71,8 @@ While True
 			If event.status = 0 Then bound = True
 		End If
 		If event.kind = ZigbeeEventReportingConfigured And event.status = 0 Then
-			reportingConfigured = True
+			If event.cluster = 6 Then reportingConfigured = True
+			If event.cluster = ZigbeeClusterTemperatureMeasurement Then temperatureReportingConfigured = True
 		End If
 		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then groupReady = True
 	Wend
@@ -109,6 +112,12 @@ While True
 		result = ZigbeeConfigureReporting(1, lightAddress, lightEndpoint, 6, 0, ZigbeeTypeBool, 0, 5)
 		Print "Reporting submission=" + result
 		nextReporting = MilliSecs() + 10000
+	End If
+	If temperatureFound And Not temperatureReportingConfigured And MilliSecs() >= nextTemperatureReporting Then
+		result = ZigbeeConfigureReporting(1, temperatureAddress, temperatureEndpoint, ..
+			ZigbeeClusterTemperatureMeasurement, 0, ZigbeeTypeInt16, 0, 5, 5)
+		Print "Temperature reporting submission=" + result
+		nextTemperatureReporting = MilliSecs() + 10000
 	End If
 	If bound And Not groupReady And MilliSecs() >= nextGroup Then
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)

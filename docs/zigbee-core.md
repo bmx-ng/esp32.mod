@@ -80,7 +80,10 @@ cluster (0x0402). Call `ZigbeeSetLocalTemperature` with a measurement in
 hundredths of a degree Celsius. Remote clients can discover it with
 `ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement)` and read attribute
 zero with `ZigbeeReadAttribute`; a successful read event has type `Int16`.
-The light example adds a sensor endpoint with a simulated 23.45 °C value.
+For reports, bind the sensor's server cluster to the client's endpoint and
+request reporting with `ZigbeeConfigureReporting` using `ZigbeeTypeInt16`.
+The examples use a simulated value that alternates between 23.45 °C and
+23.55 °C; the switch receives those changes as `ZigbeeEventReport`.
 
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured standard endpoint.
@@ -189,3 +192,6 @@ device with a longer keepalive; it does not enter low-power sleep itself.
   value of 2345. `tests/zigbee_core_pair.py --require-temperature` passed
   alongside the reporting, group, scalar, write, extra endpoint, custom
   cluster, and local update checks.
+- The C6 bound its temperature server to the H2 client, which configured
+  reporting. The H2 received a signed 16-bit report after the simulated
+  measurement changed to 23.55 °C.

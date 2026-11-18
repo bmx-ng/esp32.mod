@@ -16,6 +16,8 @@ Print "Zigbee coordinator/light starting"
 
 Local event:SZigbeeEvent
 Local nextCustomUpdate:UInt = MilliSecs() + 20000
+Local nextTemperatureUpdate:UInt = MilliSecs() + 10000
+Local temperature:Int = 2345
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
@@ -36,6 +38,8 @@ While True
 			Print "Light report binding result=" + result
 			result = ZigbeeBindCluster(11, event.shortAddress, 1, 6)
 			Print "Second report binding result=" + result
+			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterTemperatureMeasurement)
+			Print "Temperature report binding result=" + result
 		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
@@ -47,6 +51,12 @@ While True
 		result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
 		Print "Custom local update result=" + result
 		nextCustomUpdate = MilliSecs() + 20000
+	End If
+	If MilliSecs() >= nextTemperatureUpdate Then
+		If temperature = 2345 Then temperature = 2355 Else temperature = 2345
+		result = ZigbeeSetLocalTemperature(12, temperature)
+		Print "Temperature update result=" + result + " value=" + temperature
+		nextTemperatureUpdate = MilliSecs() + 10000
 	End If
 	Delay 20
 Wend
