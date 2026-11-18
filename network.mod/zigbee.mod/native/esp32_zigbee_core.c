@@ -23,7 +23,7 @@
 #define ZB_MAX_STRING_BYTES 64u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
 #define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
-#define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 24u
+#define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 32u
 #define ZB_OTA_PREFIX_BYTES 128u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
@@ -773,6 +773,37 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
                     return result;
                 }
             }
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT) {
+            ezb_zcl_electrical_measurement_cluster_server_config_t server = {
+                .measurement_type = EZB_ZCL_ELECTRICAL_MEASUREMENT_MEASUREMENT_TYPE_ACTIVE_MEASUREMENT_AC};
+            cluster = ezb_zcl_electrical_measurement_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+            if (cluster && entry->role == EZB_ZCL_CLUSTER_SERVER) {
+                uint16_t unknown = 0xffff, current_divisor = 1000, one = 1;
+                int16_t unknown_power = INT16_MIN;
+                const uint16_t scale_attributes[] = {
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_VOLTAGE_MULTIPLIER_ID,
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_VOLTAGE_DIVISOR_ID,
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_CURRENT_MULTIPLIER_ID,
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_CURRENT_DIVISOR_ID,
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_POWER_MULTIPLIER_ID,
+                    EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_AC_POWER_DIVISOR_ID};
+                esp_err_t result = ezb_zcl_electrical_measurement_cluster_desc_add_attr(
+                        cluster, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_VOLTAGE_ID, &unknown);
+                if (result == ESP_OK) result = ezb_zcl_electrical_measurement_cluster_desc_add_attr(
+                        cluster, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_CURRENT_ID, &unknown);
+                if (result == ESP_OK) result = ezb_zcl_electrical_measurement_cluster_desc_add_attr(
+                        cluster, EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_ACTIVE_POWER_ID, &unknown_power);
+                for (unsigned j = 0; result == ESP_OK && j < 6; ++j) {
+                    const uint16_t *value = j == 3 ? &current_divisor : &one;
+                    result = ezb_zcl_electrical_measurement_cluster_desc_add_attr(
+                            cluster, scale_attributes[j], value);
+                }
+                if (result != ESP_OK) {
+                    ezb_zcl_free_cluster_desc(cluster);
+                    return result;
+                }
+            }
         }
         if (!cluster) return ESP_ERR_NO_MEM;
         esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -1119,7 +1150,8 @@ static int add_measurement_cluster(int endpoint, int role, int cluster, int sens
             (role != EZB_ZCL_CLUSTER_SERVER && role != EZB_ZCL_CLUSTER_CLIENT) ||
             (cluster != EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT &&
              cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
-             cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG) ||
+             cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG &&
+             cluster != EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT) ||
             (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
@@ -1191,6 +1223,16 @@ int bmx_esp32_zigbee_core_add_power_config_cluster(int endpoint, int role)
 int bmx_esp32_zigbee_core_clear_power_config_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_POWER_CONFIG);
+}
+
+int bmx_esp32_zigbee_core_add_electrical_measurement_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_electrical_measurement_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT);
 }
 
 int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
@@ -2024,6 +2066,41 @@ int bmx_esp32_zigbee_core_set_local_battery_percentage(int endpoint, int half_pe
     if (half_percent > 200 && half_percent != 0xff) return ESP_ERR_INVALID_ARG;
     return set_local_battery_attribute(endpoint,
             EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, half_percent);
+}
+
+static int set_local_electrical_attribute(int endpoint, int attribute, int value)
+{
+    if (endpoint < 1 || endpoint > 240 || !has_measurement_server(endpoint,
+            EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT)) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t encoded = (uint16_t)value;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT, EZB_ZCL_CLUSTER_SERVER,
+            (uint16_t)attribute, EZB_ZCL_STD_MANUF_CODE, &encoded, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_rms_voltage(int endpoint, int volts)
+{
+    if (volts < 0 || volts > 0xffff) return ESP_ERR_INVALID_ARG;
+    return set_local_electrical_attribute(endpoint,
+            EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_VOLTAGE_ID, volts);
+}
+
+int bmx_esp32_zigbee_core_set_local_rms_current(int endpoint, int milliamps)
+{
+    if (milliamps < 0 || milliamps > 0xffff) return ESP_ERR_INVALID_ARG;
+    return set_local_electrical_attribute(endpoint,
+            EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_RMS_CURRENT_ID, milliamps);
+}
+
+int bmx_esp32_zigbee_core_set_local_active_power(int endpoint, int watts)
+{
+    if (watts < INT16_MIN || watts > INT16_MAX) return ESP_ERR_INVALID_ARG;
+    return set_local_electrical_attribute(endpoint,
+            EZB_ZCL_ATTR_ELECTRICAL_MEASUREMENT_ACTIVE_POWER_ID, watts);
 }
 
 int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,

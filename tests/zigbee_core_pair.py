@@ -62,6 +62,8 @@ def main():
                         help="also require occupancy discovery, readback and a changed report")
     parser.add_argument("--require-battery", action="store_true",
                         help="also require battery voltage, percentage and a changed percentage report")
+    parser.add_argument("--require-electrical", action="store_true",
+                        help="also require RMS voltage, current, active power and a changed power report")
     parser.add_argument("--require-octets", action="store_true",
                         help="also require binary octet-string write, readback and local restoration")
     args = parser.parse_args()
@@ -84,6 +86,8 @@ def main():
     pressure_match = pressure_read = pressure_report = False
     occupancy_match = occupancy_read = occupancy_report = False
     battery_match = battery_voltage_read = battery_percentage_read = battery_report = False
+    electrical_match = rms_voltage_read = rms_current_read = active_power_read = False
+    current_divisor_read = active_power_report = False
     octets_write = octets_read = octets_restored = False
     group_viewed = group_member = group_membership_complete = False
     group_clear_submission = group_empty = False
@@ -157,6 +161,9 @@ def main():
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=12 cluster=1" in line):
                 battery_match = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=12 cluster=2820" in line):
+                electrical_match = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -200,6 +207,18 @@ def main():
                 if ("cluster=1 attribute=33" in line and "type=32" in line
                         and "size=1" in line and ("value=150 " in line or "value=148 " in line)):
                     battery_percentage_read = True
+                if ("cluster=2820 attribute=1285" in line and "type=33" in line
+                        and "size=2" in line and "value=230 " in line):
+                    rms_voltage_read = True
+                if ("cluster=2820 attribute=1288" in line and "type=33" in line
+                        and "size=2" in line and "value=250 " in line):
+                    rms_current_read = True
+                if ("cluster=2820 attribute=1291" in line and "type=41" in line
+                        and "size=2" in line and ("value=58 " in line or "value=60 " in line)):
+                    active_power_read = True
+                if ("cluster=2820 attribute=1539" in line and "type=33" in line
+                        and "size=2" in line and "value=1000 " in line):
+                    current_divisor_read = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=1026 attribute=0" in line and "type=41 size=2" in line
                     and "value=2355 " in line):
@@ -224,6 +243,10 @@ def main():
                     and "cluster=1 attribute=33" in line and "type=32 size=1" in line
                     and "value=148 " in line):
                 battery_report = True
+            if (name == "switch" and "Zigbee event 15 status=0" in line
+                    and "cluster=2820 attribute=1291" in line and "type=41 size=2" in line
+                    and "value=60 " in line):
+                active_power_report = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=6 attribute=0" in line):
                 report = True
@@ -264,6 +287,9 @@ def main():
                          or not args.require_occupancy)
                     and (battery_match and battery_voltage_read and battery_percentage_read
                          and battery_report or not args.require_battery)
+                    and (electrical_match and rms_voltage_read and rms_current_read
+                         and active_power_read and current_divisor_read and active_power_report
+                         or not args.require_electrical)
                     and (octets_write and octets_read and octets_restored
                          or not args.require_octets)):
                 print("PASS: switch toggled both light states, read the attribute"
@@ -286,6 +312,7 @@ def main():
                       + (", and read and received pressure" if args.require_pressure else "")
                       + (", and read and received occupancy" if args.require_occupancy else "")
                       + (", and read and received battery status" if args.require_battery else "")
+                      + (", and read and received electrical measurements" if args.require_electrical else "")
                       + (", and wrote and read back binary octets" if args.require_octets else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
@@ -309,6 +336,9 @@ def main():
               f"occupancy_read={occupancy_read}, occupancy_report={occupancy_report}, "
               f"battery_match={battery_match}, battery_voltage_read={battery_voltage_read}, "
               f"battery_percentage_read={battery_percentage_read}, battery_report={battery_report}, "
+              f"electrical_match={electrical_match}, rms_voltage_read={rms_voltage_read}, "
+              f"rms_current_read={rms_current_read}, active_power_read={active_power_read}, "
+              f"current_divisor_read={current_divisor_read}, active_power_report={active_power_report}, "
               f"octets_write={octets_write}, octets_read={octets_read}, "
               f"octets_restored={octets_restored}",
               flush=True)

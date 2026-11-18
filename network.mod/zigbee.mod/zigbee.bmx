@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.6"
+ModuleInfo "Version: 1.7"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -76,6 +76,14 @@ End Rem
 Const ZigbeeClusterPowerConfiguration:Int = $0001
 Const ZigbeeBatteryVoltageAttribute:Int = $0020
 Const ZigbeeBatteryPercentageAttribute:Int = $0021
+Rem
+bbdoc: Electrical Measurement cluster identifier.
+End Rem
+Const ZigbeeClusterElectricalMeasurement:Int = $0b04
+Const ZigbeeRmsVoltageAttribute:Int = $0505
+Const ZigbeeRmsCurrentAttribute:Int = $0508
+Const ZigbeeActivePowerAttribute:Int = $050b
+Const ZigbeeAcCurrentDivisorAttribute:Int = $0603
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -432,6 +440,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_power_config_cluster"
 	Function _ZigbeeCoreClearPowerConfigClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_power_config_clusters"
+	Function _ZigbeeCoreAddElectricalMeasurementCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_electrical_measurement_cluster"
+	Function _ZigbeeCoreClearElectricalMeasurementClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_electrical_measurement_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -508,6 +520,12 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_battery_voltage"
 	Function _ZigbeeCoreSetLocalBatteryPercentage:Int(endpoint:Int, halfPercent:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_battery_percentage"
+	Function _ZigbeeCoreSetLocalRmsVoltage:Int(endpoint:Int, volts:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_rms_voltage"
+	Function _ZigbeeCoreSetLocalRmsCurrent:Int(endpoint:Int, milliamps:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_rms_current"
+	Function _ZigbeeCoreSetLocalActivePower:Int(endpoint:Int, watts:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_active_power"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -674,6 +692,22 @@ bbdoc: Removes Power Configuration clusters while the stack is stopped.
 End Rem
 Function ZigbeeClearPowerConfigurationClusters:Int()
 	Return _ZigbeeCoreClearPowerConfigClusters()
+End Function
+
+Rem
+bbdoc: Adds an AC Electrical Measurement server or client cluster to an endpoint.
+about: A server exposes RMS voltage, RMS current, and active power. Register
+before ZigbeeStart. The current divisor is 1000, so raw current is milliamps.
+End Rem
+Function ZigbeeAddElectricalMeasurementCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddElectricalMeasurementCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes Electrical Measurement clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearElectricalMeasurementClusters:Int()
+	Return _ZigbeeCoreClearElectricalMeasurementClusters()
 End Function
 
 Rem
@@ -1089,6 +1123,31 @@ about: Values 0 to 200 represent 0 to 100 percent; 255 means unknown.
 End Rem
 Function ZigbeeSetLocalBatteryPercentage:Int(endpoint:Int, halfPercent:Int)
 	Return _ZigbeeCoreSetLocalBatteryPercentage(endpoint, halfPercent)
+End Function
+
+Rem
+bbdoc: Updates a local Electrical Measurement server's RMS voltage in volts.
+about: Range 0 to 65534; 65535 means unavailable.
+End Rem
+Function ZigbeeSetLocalRmsVoltage:Int(endpoint:Int, volts:Int)
+	Return _ZigbeeCoreSetLocalRmsVoltage(endpoint, volts)
+End Function
+
+Rem
+bbdoc: Updates a local Electrical Measurement server's RMS current in milliamps.
+about: Range 0 to 65534; 65535 means unavailable. The server advertises a
+current divisor of 1000.
+End Rem
+Function ZigbeeSetLocalRmsCurrent:Int(endpoint:Int, milliamps:Int)
+	Return _ZigbeeCoreSetLocalRmsCurrent(endpoint, milliamps)
+End Function
+
+Rem
+bbdoc: Updates a local Electrical Measurement server's active power in watts.
+about: Range -32767 to 32767; -32768 means unavailable.
+End Rem
+Function ZigbeeSetLocalActivePower:Int(endpoint:Int, watts:Int)
+	Return _ZigbeeCoreSetLocalActivePower(endpoint, watts)
 End Function
 
 Rem

@@ -157,6 +157,15 @@ voltage (attribute 0x0020, tenths of a volt) and percentage remaining
 as `UInt8`, and configure percentage reporting. The light example uses
 simulated 3.0 V and 74 to 75 percent readings.
 
+`ZigbeeAddElectricalMeasurementCluster(endpoint, role)` adds the standard AC
+Electrical Measurement cluster. A server exposes RMS voltage in volts, RMS
+current in milliamps, and signed active power in watts. The advertised AC
+current divisor is 1000; the other multipliers and divisors are one. Use
+`ZigbeeSetLocalRmsVoltage`, `ZigbeeSetLocalRmsCurrent`, and
+`ZigbeeSetLocalActivePower` to update the three readings. A client can discover
+the cluster, read attributes 0x0505, 0x0508, and 0x050B, and configure reports
+for active power. The light example simulates 230 V, 250 mA, and 58 to 60 W.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -324,7 +333,8 @@ network. The saved network belongs to the previous role and topology.
 
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
-Occupancy Sensing, and Power Configuration clusters, custom endpoint profiles, and
+Occupancy Sensing, Power Configuration, and Electrical Measurement clusters,
+custom endpoint profiles, and
 custom scalar, short string, and octet-string attributes. Other standard
 cluster templates, additional nonscalar attribute types, further
 security controls, and application-managed deep sleep are further work.
@@ -338,6 +348,10 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The C6 exposed Electrical Measurement with 230 V, 250 mA (current divisor
+  1000), and 58 to 60 W. The H2 discovered the cluster, read all three values
+  and the divisor, and received a changed active-power report. The full pair
+  regression passed with `--require-electrical` alongside all earlier checks.
 - The C6 exposed Power Configuration battery voltage and percentage on its
   sensor endpoint. The H2 discovered the cluster, read 3.0 V and 74 to 75
   percent, and received a changed percentage report. The full pair regression
