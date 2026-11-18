@@ -814,6 +814,23 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
                 .color_capabilities = EZB_ZCL_COLOR_CONTROL_COLOR_CAPABILITIES_XY_SUPPORTED};
             cluster = ezb_zcl_color_control_create_cluster_desc(
                     entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_THERMOSTAT) {
+            ezb_zcl_thermostat_cluster_server_config_t server = {
+                .local_temperature = 2300,
+                .control_sequence_of_operation =
+                        EZB_ZCL_THERMOSTAT_CONTROL_SEQUENCE_OF_OPERATION_HEATING_ONLY,
+                .system_mode = EZB_ZCL_THERMOSTAT_SYSTEM_MODE_HEAT};
+            cluster = ezb_zcl_thermostat_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+            if (cluster && entry->role == EZB_ZCL_CLUSTER_SERVER) {
+                int16_t setpoint = 2100;
+                esp_err_t result = ezb_zcl_thermostat_cluster_desc_add_attr(cluster,
+                        EZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID, &setpoint);
+                if (result != ESP_OK) {
+                    ezb_zcl_free_cluster_desc(cluster);
+                    return result;
+                }
+            }
         }
         if (!cluster) return ESP_ERR_NO_MEM;
         esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -1163,7 +1180,8 @@ static int add_measurement_cluster(int endpoint, int role, int cluster, int sens
              cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG &&
              cluster != EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT &&
              cluster != EZB_ZCL_CLUSTER_ID_LEVEL &&
-             cluster != EZB_ZCL_CLUSTER_ID_COLOR_CONTROL) ||
+             cluster != EZB_ZCL_CLUSTER_ID_COLOR_CONTROL &&
+             cluster != EZB_ZCL_CLUSTER_ID_THERMOSTAT) ||
             (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
@@ -1265,6 +1283,16 @@ int bmx_esp32_zigbee_core_add_color_control_cluster(int endpoint, int role)
 int bmx_esp32_zigbee_core_clear_color_control_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_COLOR_CONTROL);
+}
+
+int bmx_esp32_zigbee_core_add_thermostat_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_THERMOSTAT, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_thermostat_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_THERMOSTAT);
 }
 
 int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
@@ -1682,6 +1710,42 @@ int bmx_esp32_zigbee_core_allow_well_known_key_rejoins(int allow)
     bool applied = ezb_secur_tcpol_get_allow_rejoins_with_well_known_key() == (allow != 0);
     esp_zigbee_lock_release();
     return applied ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_broadcast_network_key(const uint8_t *key,
+        int length, int sequence)
+{
+    if (!key || length != 16 || sequence < 0 || sequence > UINT8_MAX)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_broadcast_network_key(key, (uint8_t)sequence);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_broadcast_network_key_switch(int sequence)
+{
+    if (sequence < 0 || sequence > UINT8_MAX) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_broadcast_switch_network_key((uint8_t)sequence);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_switch_network_key(const uint8_t *key,
+        int length, int sequence)
+{
+    if (!key || length != 16 || sequence < 0 || sequence > UINT8_MAX)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_switch_network_key(key, (uint8_t)sequence);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
 }
 
 int bmx_esp32_zigbee_core_add_joiner_install_code(uint64_t address,
@@ -2244,6 +2308,34 @@ int bmx_esp32_zigbee_core_move_to_color(int source_ep, int destination_addr,
     ezb_err_t result = ezb_zcl_color_control_move_to_color_cmd_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+static int set_local_thermostat_value(int endpoint, int attribute, int centidegrees)
+{
+    if (endpoint < 1 || endpoint > 240 || centidegrees < -27315 ||
+            centidegrees > 32767 ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_THERMOSTAT))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    int16_t encoded = (int16_t)centidegrees;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_THERMOSTAT, EZB_ZCL_CLUSTER_SERVER,
+            (uint16_t)attribute, EZB_ZCL_STD_MANUF_CODE, &encoded, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_thermostat_temperature(int endpoint, int centidegrees)
+{
+    return set_local_thermostat_value(endpoint,
+            EZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_ID, centidegrees);
+}
+
+int bmx_esp32_zigbee_core_set_local_heating_setpoint(int endpoint, int centidegrees)
+{
+    return set_local_thermostat_value(endpoint,
+            EZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID, centidegrees);
 }
 
 int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,

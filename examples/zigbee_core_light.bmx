@@ -11,6 +11,7 @@ If ZigbeeAddPressureCluster(12, ZigbeeClusterServer) Then RuntimeError "Pressure
 If ZigbeeAddOccupancyCluster(12, ZigbeeClusterServer) Then RuntimeError "Occupancy cluster failed"
 If ZigbeeAddPowerConfigurationCluster(12, ZigbeeClusterServer) Then RuntimeError "Power cluster failed"
 If ZigbeeAddElectricalMeasurementCluster(12, ZigbeeClusterServer) Then RuntimeError "Electrical cluster failed"
+If ZigbeeAddThermostatCluster(12, ZigbeeClusterServer) Then RuntimeError "Thermostat cluster failed"
 If ZigbeeAddLevelControlCluster(10, ZigbeeClusterServer) Then RuntimeError "Level cluster failed"
 If ZigbeeAddColorControlCluster(10, ZigbeeClusterServer) Then RuntimeError "Color cluster failed"
 If ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1) Then RuntimeError "Custom endpoint failed"
@@ -67,6 +68,10 @@ While True
 			Print "Custom local string result=" + result
 			result = ZigbeeSetLocalTemperature(12, 2345) ' Simulated 23.45 C reading.
 			Print "Temperature update result=" + result
+			result = ZigbeeSetLocalThermostatTemperature(12, 2300)
+			Print "Thermostat temperature update result=" + result
+			result = ZigbeeSetLocalHeatingSetpoint(12, 2100)
+			Print "Heating setpoint update result=" + result
 			result = ZigbeeSetLocalHumidity(12, 4550) ' Simulated 45.50% reading.
 			Print "Humidity update result=" + result
 			result = ZigbeeSetLocalIlluminance(12, 20001) ' Simulated encoded illuminance.

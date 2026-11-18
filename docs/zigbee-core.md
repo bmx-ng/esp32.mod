@@ -86,6 +86,24 @@ zero; check each result before opening or attempting a join. A device already
 on a saved network may not recommission; clear its Zigbee network state when
 testing a new joining policy.
 
+`ZigbeeRequireLinkKeyExchange(True)` makes the trust center and joining device
+require a link-key exchange during new commissioning. Call it after
+`ZigbeeEventStarted` on both devices and before forming or joining a network.
+On a running coordinator, `ZigbeeAllowWellKnownKeyRejoins(False)` rejects
+rejoins that rely on the Zigbee well-known link key. Apply that policy before
+opening a rejoin window. These controls do not retroactively remove members;
+test a new policy with fresh Zigbee network state.
+
+A running coordinator can distribute a new 16-byte network key with
+`ZigbeeBroadcastNetworkKey(key, sequence)`. Use a new sequence number from 0
+to 255 and a freshly generated key. After allowing all devices, especially
+sleepy end devices, time to receive the update, call
+`ZigbeeBroadcastNetworkKeySwitch(sequence)` to request the switch, then
+`ZigbeeSwitchNetworkKey(key, sequence)` to switch the coordinator locally.
+The first two calls return the stack's submission status; they do not confirm
+every device has received the key. Key rotation has not yet been tested on the
+C6/H2 pair.
+
 The native Zigbee task copies event values into a fixed 64-record queue.
 `ZigbeePollEvent` transfers one record to a BlitzMax value on the application
 thread. Check `ZigbeeDroppedEvents` if the application might be unable to poll
@@ -181,6 +199,14 @@ transition command from a client. Coordinates use the Zigbee unsigned
 16-bit representation of CIE 1931 x/y. The light example starts at
 (16384, 16384); the switch requests (20000, 30000) and reads both attributes
 back. Applications must translate the color state to their physical output.
+
+`ZigbeeAddThermostatCluster` adds a heating-only Thermostat server or a client.
+The server exposes LocalTemperature and OccupiedHeatingSetpoint, both in
+hundredths of a degree Celsius. `ZigbeeSetLocalThermostatTemperature` and
+`ZigbeeSetLocalHeatingSetpoint` update those values locally. A client may
+discover and read them, and write the occupied heating setpoint with
+`ZigbeeWriteScalar` and `ZigbeeTypeInt16`. The light example simulates a
+23.00 °C room and a 21.00 °C setpoint; the switch requests 21.50 °C.
 
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
@@ -345,16 +371,29 @@ flashing. If changing a board between coordinator and end-device roles, clear
 its saved Zigbee network state before attempting to form or join a new
 network. The saved network belongs to the previous role and topology.
 
+## End-device deep sleep
+
+`examples/zigbee_deep_sleep_sensor.bmx` is an experimental timer-driven end
+device example. It
+starts on the `zed` stack, restores or joins a network, updates a temperature
+attribute, requests `ZigbeeStop`, waits for `ZigbeeEventStopped`, and calls
+`ESP32.System.Power.DeepSleepForMilliseconds`. Deep sleep restarts the entire
+application. On wake, `ZigbeeStart` loads the saved Zigbee network state and
+the application must recreate its endpoints and attribute values. The example
+is intended to repeat this cycle every ten seconds of sleep. On the tested
+Waveshare H2, the USB serial monitor did not receive any boot or wake messages
+after flashing, so restoration across sleep remains unverified. A coordinator
+or router should remain awake to serve other devices in the mesh.
+
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
-Occupancy Sensing, Power Configuration, Electrical Measurement, and Level
-Control and Color Control clusters,
-custom endpoint profiles, and
-custom scalar, short string, and octet-string attributes. Other standard
-cluster templates, additional nonscalar attribute types, further
-security controls, and application-managed deep sleep are further work.
+Occupancy Sensing, Power Configuration, Electrical Measurement, Level Control,
+Color Control, and Thermostat clusters, custom endpoint profiles, and custom
+scalar, short string, and octet-string attributes. Other standard
+cluster templates, additional nonscalar attribute types, verified network key
+rotation, and validated application-managed deep sleep are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.

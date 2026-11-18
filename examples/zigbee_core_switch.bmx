@@ -12,6 +12,7 @@ If ZigbeeAddPowerConfigurationCluster(1, ZigbeeClusterClient) Then RuntimeError 
 If ZigbeeAddElectricalMeasurementCluster(1, ZigbeeClusterClient) Then RuntimeError "Electrical client cluster failed"
 If ZigbeeAddLevelControlCluster(1, ZigbeeClusterClient) Then RuntimeError "Level client cluster failed"
 If ZigbeeAddColorControlCluster(1, ZigbeeClusterClient) Then RuntimeError "Color client cluster failed"
+If ZigbeeAddThermostatCluster(1, ZigbeeClusterClient) Then RuntimeError "Thermostat client cluster failed"
 If ZigbeeAddCustomEndpoint(2, $c0de, $1235, 1) Then RuntimeError "Custom client endpoint failed"
 If ZigbeeAddCustomCluster(2, $fc01, ZigbeeClusterClient) Then RuntimeError "Custom profile client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
@@ -65,6 +66,9 @@ Local levelFound:Int
 Local colorAddress:Int
 Local colorEndpoint:Int
 Local colorFound:Int
+Local thermostatAddress:Int
+Local thermostatEndpoint:Int
+Local thermostatFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
 Local nextCustomProfileFind:UInt = MilliSecs() + 2250
@@ -89,6 +93,9 @@ Local nextLevelRead:UInt
 Local nextColorFind:UInt = MilliSecs() + 4500
 Local nextColorMove:UInt
 Local nextColorRead:UInt
+Local nextThermostatFind:UInt = MilliSecs() + 4750
+Local nextThermostatWrite:UInt
+Local nextThermostatRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextStringWrite:UInt = MilliSecs() + 9000
@@ -218,6 +225,12 @@ While True
 			If Not colorFound Then nextColorMove = MilliSecs() + 1000
 			colorFound = True
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterThermostat Then
+			thermostatAddress = event.shortAddress
+			thermostatEndpoint = event.endpoint
+			If Not thermostatFound Then nextThermostatWrite = MilliSecs() + 1000
+			thermostatFound = True
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -333,6 +346,28 @@ While True
 			ZigbeeClusterColorControl, ZigbeeCurrentColorYAttribute)
 		Print "Color Y read submission=" + result
 		nextColorRead = MilliSecs() + 5000
+	End If
+	If joined And MilliSecs() >= nextThermostatFind Then
+		result = ZigbeeFindServers(ZigbeeClusterThermostat)
+		Print "Find thermostat submission=" + result
+		nextThermostatFind = MilliSecs() + 15000
+	End If
+	If thermostatFound And nextThermostatWrite And MilliSecs() >= nextThermostatWrite Then
+		result = ZigbeeWriteScalar(1, thermostatAddress, thermostatEndpoint, ..
+			ZigbeeClusterThermostat, ZigbeeThermostatHeatingSetpointAttribute, ..
+			ZigbeeTypeInt16, 2150)
+		Print "Thermostat setpoint write submission=" + result
+		If result = 0 Then nextThermostatRead = MilliSecs() + 500
+		nextThermostatWrite = MilliSecs() + 30000
+	End If
+	If thermostatFound And nextThermostatRead And MilliSecs() >= nextThermostatRead Then
+		result = ZigbeeReadAttribute(1, thermostatAddress, thermostatEndpoint, ..
+			ZigbeeClusterThermostat, ZigbeeThermostatLocalTemperatureAttribute)
+		Print "Thermostat temperature read submission=" + result
+		result = ZigbeeReadAttribute(1, thermostatAddress, thermostatEndpoint, ..
+			ZigbeeClusterThermostat, ZigbeeThermostatHeatingSetpointAttribute)
+		Print "Thermostat setpoint read submission=" + result
+		nextThermostatRead = MilliSecs() + 5000
 	End If
 	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
 		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..

@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.10"
+ModuleInfo "Version: 1.11"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -95,6 +95,12 @@ End Rem
 Const ZigbeeClusterColorControl:Int = $0300
 Const ZigbeeCurrentColorXAttribute:Int = $0003
 Const ZigbeeCurrentColorYAttribute:Int = $0004
+Rem
+bbdoc: Thermostat cluster and its temperature and occupied-heating-setpoint attributes.
+End Rem
+Const ZigbeeClusterThermostat:Int = $0201
+Const ZigbeeThermostatLocalTemperatureAttribute:Int = $0000
+Const ZigbeeThermostatHeatingSetpointAttribute:Int = $0012
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -463,6 +469,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_color_control_cluster"
 	Function _ZigbeeCoreClearColorControlClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_color_control_clusters"
+	Function _ZigbeeCoreAddThermostatCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_thermostat_cluster"
+	Function _ZigbeeCoreClearThermostatClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_thermostat_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -498,6 +508,12 @@ Extern "C"
 		"bmx_esp32_zigbee_core_require_link_key_exchange"
 	Function _ZigbeeCoreAllowWellKnownKeyRejoins:Int(allow:Int) = ..
 		"bmx_esp32_zigbee_core_allow_well_known_key_rejoins"
+	Function _ZigbeeCoreBroadcastNetworkKey:Int(key:Byte Ptr, length:Int, sequence:Int) = ..
+		"bmx_esp32_zigbee_core_broadcast_network_key"
+	Function _ZigbeeCoreBroadcastNetworkKeySwitch:Int(sequence:Int) = ..
+		"bmx_esp32_zigbee_core_broadcast_network_key_switch"
+	Function _ZigbeeCoreSwitchNetworkKey:Int(key:Byte Ptr, length:Int, sequence:Int) = ..
+		"bmx_esp32_zigbee_core_switch_network_key"
 	Function _ZigbeeCoreAddJoinerInstallCode:Int(address:Long, code:Byte Ptr, length:Int) = ..
 		"bmx_esp32_zigbee_core_add_joiner_install_code"
 	Function _ZigbeeCoreRemoveJoinerInstallCode:Int(address:Long) = ..
@@ -559,6 +575,10 @@ Extern "C"
 	Function _ZigbeeCoreMoveToColor:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, x:Int, y:Int, transitionTenths:Int) = ..
 		"bmx_esp32_zigbee_core_move_to_color"
+	Function _ZigbeeCoreSetLocalThermostatTemperature:Int(endpoint:Int, centidegrees:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_thermostat_temperature"
+	Function _ZigbeeCoreSetLocalHeatingSetpoint:Int(endpoint:Int, centidegrees:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_heating_setpoint"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -774,6 +794,22 @@ Function ZigbeeClearColorControlClusters:Int()
 End Function
 
 Rem
+bbdoc: Adds a Thermostat server or client cluster to a configured endpoint.
+about: Register before ZigbeeStart. The server exposes local temperature and
+occupied heating setpoint in hundredths of a degree Celsius.
+End Rem
+Function ZigbeeAddThermostatCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddThermostatCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes Thermostat clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearThermostatClusters:Int()
+	Return _ZigbeeCoreClearThermostatClusters()
+End Function
+
+Rem
 bbdoc: Adds one OTA Upgrade client on a configured endpoint before ZigbeeStart.
 about: manufacturer and imageType identify firmware for this device. version is
 the running image's monotonically increasing file version. The client accepts
@@ -973,6 +1009,40 @@ be changed while running; this function does not remove existing members.
 End Rem
 Function ZigbeeAllowWellKnownKeyRejoins:Int(allow:Int)
 	Return _ZigbeeCoreAllowWellKnownKeyRejoins(allow)
+End Function
+
+Rem
+bbdoc: Distributes a new 16-byte network key from the coordinator.
+about: Call on a running coordinator with a fresh 16-byte key and its new
+sequence number (0 to 255). This sends the update but does not switch keys.
+Allow time for every device, especially sleepy end devices, to receive it
+before calling ZigbeeBroadcastNetworkKeySwitch with the same sequence.
+End Rem
+Function ZigbeeBroadcastNetworkKey:Int(key:Byte[], sequence:Int)
+	If Not key Then Return -5
+	Return _ZigbeeCoreBroadcastNetworkKey(key, key.length, sequence)
+End Function
+
+Rem
+bbdoc: Tells the Zigbee network to switch to a previously distributed key.
+about: Call on a running coordinator after ZigbeeBroadcastNetworkKey has
+distributed the key with this sequence number and all devices have had time
+to receive it. Sequence must be 0 to 255.
+End Rem
+Function ZigbeeBroadcastNetworkKeySwitch:Int(sequence:Int)
+	Return _ZigbeeCoreBroadcastNetworkKeySwitch(sequence)
+End Function
+
+Rem
+bbdoc: Switches the local device to a previously distributed network key.
+about: Supply the same 16-byte key and sequence number used for the network
+update. A coordinator should first broadcast the key, wait for devices to
+receive it, and broadcast the switch command. This call changes only the
+local device; it does not notify other devices.
+End Rem
+Function ZigbeeSwitchNetworkKey:Int(key:Byte[], sequence:Int)
+	If Not key Then Return -5
+	Return _ZigbeeCoreSwitchNetworkKey(key, key.length, sequence)
 End Function
 
 Rem
@@ -1272,6 +1342,22 @@ Function ZigbeeMoveToColor:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, x:Int, y:Int, transitionTenths:Int = 0)
 	Return _ZigbeeCoreMoveToColor(sourceEndpoint, destinationAddress, ..
 		destinationEndpoint, x, y, transitionTenths)
+End Function
+
+Rem
+bbdoc: Updates the local Thermostat server's measured temperature.
+about: Value is in hundredths of a degree Celsius, from -27315 to 32767.
+End Rem
+Function ZigbeeSetLocalThermostatTemperature:Int(endpoint:Int, centidegrees:Int)
+	Return _ZigbeeCoreSetLocalThermostatTemperature(endpoint, centidegrees)
+End Function
+
+Rem
+bbdoc: Updates the local Thermostat server's occupied heating setpoint.
+about: Value is in hundredths of a degree Celsius, from -27315 to 32767.
+End Rem
+Function ZigbeeSetLocalHeatingSetpoint:Int(endpoint:Int, centidegrees:Int)
+	Return _ZigbeeCoreSetLocalHeatingSetpoint(endpoint, centidegrees)
 End Function
 
 Rem
