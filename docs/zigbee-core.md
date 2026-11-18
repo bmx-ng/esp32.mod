@@ -95,7 +95,7 @@ server to the temperature endpoint and alternate between 45.50% and 45.60%.
 `ZigbeeClearHumidityClusters` removes these additions while stopped.
 
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
-cluster (ID 0x8000 through 0xFFFF) to any configured standard endpoint.
+cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
 Boolean or 8/16/32-bit scalar attribute to a custom server cluster. Up to
 eight custom clusters and 32 custom scalar attributes may be configured;
@@ -104,6 +104,16 @@ adds cluster 0xFC00 on endpoint 11, with a writable 16-bit attribute. The H2
 switch discovers the cluster, writes the attribute, and reads it back.
 `ZigbeeSetCustomScalar` updates a local custom server attribute from the
 application, so a remote client can read its new value.
+
+`ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
+ID, device ID, and four-bit version. It includes a Basic server; add other
+clusters with `ZigbeeAddCustomCluster`. Up to eight custom endpoints can be
+registered before `ZigbeeStart`, alongside the eight extra standard endpoints.
+`ZigbeeClearCustomEndpoints` removes their identities while stopped; clear
+their custom clusters separately. To discover a non-HA endpoint, pass its
+profile ID as the second argument to `ZigbeeFindServers`. A source endpoint
+with the same profile and a matching client cluster can then read its remote
+attributes. The examples use profile `0xC0DE` on endpoints 13 and 2.
 
 `ZigbeeFindServers` broadcasts a match request for any server cluster and
 returns `ZigbeeEventMatch` records with address, endpoint, and cluster.
@@ -147,8 +157,9 @@ writes then reads back its IdentifyTime attribute.
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
-  temperature sensor endpoint with optional humidity measurement, and a custom
-  scalar cluster; run with a `zczr` build on H2 or C6.
+  temperature sensor endpoint with optional humidity measurement, a custom
+  scalar cluster, and a custom-profile endpoint; run with a `zczr` build on
+  H2 or C6.
 - `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
@@ -163,10 +174,10 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints, optional Relative Humidity Measurement clusters, and custom
-scalar clusters on those endpoints. Custom endpoint profiles, other standard
-cluster templates, nonscalar attribute types, additional group commands,
-security configuration, OTA, and application-managed sleep are further work.
+sensor endpoints, optional Relative Humidity Measurement clusters, custom
+endpoint profiles, and custom scalar clusters. Other standard cluster
+templates, nonscalar attribute types, additional group commands, security
+configuration, OTA, and application-managed sleep are further work.
 `ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
 keepalive; it does not enter low-power sleep itself.
 
@@ -222,3 +233,8 @@ keepalive; it does not enter low-power sleep itself.
   full membership list. Both responses confirmed membership; the list response
   reported one group and 15 remaining slots. The full pair check passed with
   `--require-group-query` alongside the earlier checks.
+- The C6 registered manufacturer profile `0xC0DE` on endpoint 13 with custom
+  cluster `0xFC01` and a 16-bit value of 77. The H2 registered a matching client
+  endpoint under the same profile, discovered the server, and read back 77.
+  `tests/zigbee_core_pair.py --require-custom-profile` passed alongside all
+  earlier pair checks.

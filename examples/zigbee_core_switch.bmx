@@ -5,6 +5,8 @@ Import ESP32.Network.Zigbee
 
 If ZigbeeAddCustomCluster(1, $fc00, ZigbeeClusterClient) Then RuntimeError "Custom client cluster failed"
 If ZigbeeAddHumidityCluster(1, ZigbeeClusterClient) Then RuntimeError "Humidity client cluster failed"
+If ZigbeeAddCustomEndpoint(2, $c0de, $1235, 1) Then RuntimeError "Custom client endpoint failed"
+If ZigbeeAddCustomCluster(2, $fc01, ZigbeeClusterClient) Then RuntimeError "Custom profile client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
 If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee end-device/switch starting"
@@ -21,6 +23,9 @@ Local lightEndpoint:Int
 Local customAddress:Int
 Local customEndpoint:Int
 Local customFound:Int
+Local customProfileAddress:Int
+Local customProfileEndpoint:Int
+Local customProfileFound:Int
 Local temperatureAddress:Int
 Local temperatureEndpoint:Int
 Local temperatureFound:Int
@@ -29,6 +34,8 @@ Local humidityEndpoint:Int
 Local humidityFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
+Local nextCustomProfileFind:UInt = MilliSecs() + 2250
+Local nextCustomProfileRead:UInt
 Local nextTemperatureFind:UInt = MilliSecs() + 2500
 Local nextTemperatureRead:UInt
 Local nextHumidityFind:UInt = MilliSecs() + 2750
@@ -70,6 +77,12 @@ While True
 			If Not customFound Then nextCustomRead = MilliSecs() + 100
 			customFound = True
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = $fc01 Then
+			customProfileAddress = event.shortAddress
+			customProfileEndpoint = event.endpoint
+			customProfileFound = True
+			nextCustomProfileRead = MilliSecs() + 100
+		End If
 		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterTemperatureMeasurement Then
 			temperatureAddress = event.shortAddress
 			temperatureEndpoint = event.endpoint
@@ -106,6 +119,16 @@ While True
 		result = ZigbeeFindServers($fc00)
 		Print "Find custom cluster submission=" + result
 		nextCustomFind = MilliSecs() + 15000
+	End If
+	If joined And MilliSecs() >= nextCustomProfileFind Then
+		result = ZigbeeFindServers($fc01, $c0de)
+		Print "Find custom profile submission=" + result
+		nextCustomProfileFind = MilliSecs() + 15000
+	End If
+	If customProfileFound And nextCustomProfileRead And MilliSecs() >= nextCustomProfileRead Then
+		result = ZigbeeReadAttribute(2, customProfileAddress, customProfileEndpoint, $fc01, 1)
+		Print "Custom profile read submission=" + result
+		nextCustomProfileRead = MilliSecs() + 15000
 	End If
 	If joined And MilliSecs() >= nextTemperatureFind Then
 		result = ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement)

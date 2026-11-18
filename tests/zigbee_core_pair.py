@@ -40,6 +40,8 @@ def main():
                         help="also require discovery of the second light endpoint")
     parser.add_argument("--require-custom-cluster", action="store_true",
                         help="also require discovery, write, and readback of a custom cluster")
+    parser.add_argument("--require-custom-profile", action="store_true",
+                        help="also require discovery and readback across custom-profile endpoints")
     parser.add_argument("--require-local-update", action="store_true",
                         help="also require a remote read of a local custom attribute update")
     parser.add_argument("--require-temperature", action="store_true",
@@ -59,6 +61,7 @@ def main():
     states = set()
     toggle = read = report = group = group_change = scalar = write = write_readback = extra = False
     custom_match = custom_write = custom_read = custom_local = False
+    custom_profile_match = custom_profile_read = False
     temperature_match = temperature_read = False
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
@@ -101,6 +104,9 @@ def main():
                     and "endpoint=11 cluster=64512" in line):
                 custom_match = True
             if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=13 cluster=64513" in line):
+                custom_profile_match = True
+            if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=12 cluster=1026" in line):
                 temperature_match = True
             if (name == "switch" and "Zigbee event 12" in line
@@ -119,6 +125,9 @@ def main():
                 if ("cluster=64512 attribute=1" in line and "type=33" in line
                         and "size=2" in line and "value=44 " in line):
                     custom_local = True
+                if ("endpoint=2 cluster=64513 attribute=1" in line and "type=33" in line
+                        and "size=2" in line and "value=77 " in line):
+                    custom_profile_read = True
                 if ("cluster=1026 attribute=0" in line and "type=41" in line
                         and "size=2" in line and "value=2345 " in line):
                     temperature_read = True
@@ -152,6 +161,8 @@ def main():
                     and (extra or not args.require_extra_endpoint)
                     and (custom_match and custom_write and custom_read
                          or not args.require_custom_cluster)
+                    and (custom_profile_match and custom_profile_read
+                         or not args.require_custom_profile)
                     and (custom_local or not args.require_local_update)
                     and (temperature_match and temperature_read or not args.require_temperature)
                     and (temperature_report or not args.require_temperature_report)
@@ -165,6 +176,7 @@ def main():
                       + (", and wrote and read back a scalar" if args.require_write else "")
                       + (", and found a second endpoint" if args.require_extra_endpoint else "")
                       + (", and checked a custom cluster" if args.require_custom_cluster else "")
+                      + (", and read a custom-profile endpoint" if args.require_custom_profile else "")
                       + (", and read a local update" if args.require_local_update else "")
                       + (", and read temperature" if args.require_temperature else "")
                       + (", and received a changed temperature report"
@@ -177,6 +189,7 @@ def main():
               f"group_membership_complete={group_membership_complete}, scalar={scalar}, "
               f"write={write}, write_readback={write_readback}, extra={extra}, "
               f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}, "
+              f"custom_profile_match={custom_profile_match}, custom_profile_read={custom_profile_read}, "
               f"custom_local={custom_local}, temperature_match={temperature_match}, "
               f"temperature_read={temperature_read}, temperature_report={temperature_report}, "
               f"humidity_match={humidity_match}, humidity_read={humidity_read}, "

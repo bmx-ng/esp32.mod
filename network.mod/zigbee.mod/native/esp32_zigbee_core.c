@@ -14,6 +14,7 @@
 
 #define ZB_QUEUE_CAPACITY 64u
 #define ZB_MAX_EXTRA_ENDPOINTS 8u
+#define ZB_MAX_CUSTOM_ENDPOINTS 8u
 #define ZB_MAX_CUSTOM_CLUSTERS 8u
 #define ZB_MAX_CUSTOM_ATTRIBUTES 32u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
@@ -56,6 +57,11 @@ typedef struct {
 } zb_endpoint_config_t;
 
 typedef struct {
+    uint8_t endpoint, version;
+    uint16_t profile, device;
+} zb_custom_endpoint_t;
+
+typedef struct {
     uint8_t endpoint, role;
     uint16_t cluster;
 } zb_custom_cluster_t;
@@ -78,6 +84,8 @@ static int32_t state; /* 0 stopped, 1 starting, 2 running, 3 stopping */
 static zb_config_t requested;
 static zb_endpoint_config_t extra_endpoints[ZB_MAX_EXTRA_ENDPOINTS];
 static uint8_t extra_endpoint_count;
+static zb_custom_endpoint_t custom_endpoints[ZB_MAX_CUSTOM_ENDPOINTS];
+static uint8_t custom_endpoint_count;
 static zb_custom_cluster_t custom_clusters[ZB_MAX_CUSTOM_CLUSTERS];
 static uint8_t custom_cluster_count;
 static zb_custom_attribute_t custom_attributes[ZB_MAX_CUSTOM_ATTRIBUTES];
@@ -90,6 +98,8 @@ static int endpoint_kind(int endpoint)
     if (endpoint == requested.endpoint) return requested.device;
     for (unsigned i = 0; i < extra_endpoint_count; ++i)
         if (endpoint == extra_endpoints[i].endpoint) return extra_endpoints[i].device;
+    for (unsigned i = 0; i < custom_endpoint_count; ++i)
+        if (endpoint == custom_endpoints[i].endpoint) return 4;
     return 0;
 }
 
@@ -460,6 +470,39 @@ static esp_err_t add_humidity_clusters(ezb_af_device_desc_t device)
     return ESP_OK;
 }
 
+static esp_err_t add_custom_endpoints(ezb_af_device_desc_t device)
+{
+    for (unsigned i = 0; i < custom_endpoint_count; ++i) {
+        const zb_custom_endpoint_t *entry = &custom_endpoints[i];
+        ezb_af_ep_config_t config = {
+            .ep_id = entry->endpoint, .app_profile_id = entry->profile,
+            .app_device_id = entry->device, .app_device_version = entry->version};
+        ezb_af_ep_desc_t endpoint = ezb_af_create_endpoint_desc(&config);
+        if (!endpoint) return ESP_ERR_NO_MEM;
+        ezb_zcl_basic_cluster_server_config_t basic = {
+            .zcl_version = EZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,
+            .power_source = EZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE};
+        ezb_zcl_cluster_desc_t cluster = ezb_zcl_basic_create_cluster_desc(&basic,
+                EZB_ZCL_CLUSTER_SERVER);
+        if (!cluster) {
+            ezb_af_free_endpoint_desc(endpoint);
+            return ESP_ERR_NO_MEM;
+        }
+        esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            ezb_af_free_endpoint_desc(endpoint);
+            return result;
+        }
+        result = ezb_af_device_add_endpoint_desc(device, endpoint);
+        if (result != ESP_OK) {
+            ezb_af_free_endpoint_desc(endpoint);
+            return result;
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t register_device(const zb_config_t *options)
 {
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
@@ -468,6 +511,7 @@ static esp_err_t register_device(const zb_config_t *options)
     for (unsigned i = 0; result == ESP_OK && i < extra_endpoint_count; ++i)
         result = add_standard_endpoint(device, extra_endpoints[i].device,
                 extra_endpoints[i].endpoint);
+    if (result == ESP_OK) result = add_custom_endpoints(device);
     if (result == ESP_OK) result = add_humidity_clusters(device);
     if (result == ESP_OK) result = add_custom_clusters(device);
     if (result != ESP_OK) {
@@ -543,6 +587,12 @@ int bmx_esp32_zigbee_core_add_endpoint(int device, int endpoint)
             return ESP_ERR_INVALID_ARG;
         }
     }
+    for (unsigned i = 0; i < custom_endpoint_count; ++i) {
+        if (custom_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
     if (extra_endpoint_count == ZB_MAX_EXTRA_ENDPOINTS) {
         portEXIT_CRITICAL(&state_lock);
         return ESP_ERR_NO_MEM;
@@ -561,6 +611,52 @@ int bmx_esp32_zigbee_core_clear_endpoints(void)
         return ESP_ERR_INVALID_STATE;
     }
     extra_endpoint_count = 0;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_custom_endpoint(int endpoint, int profile_id,
+        int device_id, int version)
+{
+    if (endpoint < 1 || endpoint > 240 || profile_id < 1 || profile_id > 65534 ||
+            device_id < 0 || device_id > 65535 || version < 0 || version > 15)
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < extra_endpoint_count; ++i) {
+        if (extra_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    for (unsigned i = 0; i < custom_endpoint_count; ++i) {
+        if (custom_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (custom_endpoint_count == ZB_MAX_CUSTOM_ENDPOINTS) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    custom_endpoints[custom_endpoint_count++] = (zb_custom_endpoint_t){
+        .endpoint = (uint8_t)endpoint, .profile = (uint16_t)profile_id,
+        .device = (uint16_t)device_id, .version = (uint8_t)version};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_clear_custom_endpoints(void)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    custom_endpoint_count = 0;
     portEXIT_CRITICAL(&state_lock);
     return ESP_OK;
 }
@@ -700,6 +796,12 @@ int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t pri
     }
     for (unsigned i = 0; i < extra_endpoint_count; ++i) {
         if (extra_endpoints[i].endpoint == endpoint) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    for (unsigned i = 0; i < custom_endpoint_count; ++i) {
+        if (custom_endpoints[i].endpoint == endpoint) {
             portEXIT_CRITICAL(&state_lock);
             return ESP_ERR_INVALID_ARG;
         }

@@ -6,6 +6,11 @@ Import ESP32.Network.Zigbee
 If ZigbeeAddOnOffEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Second light endpoint failed"
 If ZigbeeAddEndpoint(ZigbeeDeviceTemperatureSensor, 12) Then RuntimeError "Temperature endpoint failed"
 If ZigbeeAddHumidityCluster(12, ZigbeeClusterServer) Then RuntimeError "Humidity cluster failed"
+If ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1) Then RuntimeError "Custom endpoint failed"
+If ZigbeeAddCustomCluster(13, $fc01, ZigbeeClusterServer) Then RuntimeError "Custom profile cluster failed"
+If ZigbeeAddCustomScalar(13, $fc01, 1, ZigbeeTypeUInt16, ZigbeeAttributeRead, 77) Then
+	RuntimeError "Custom profile attribute failed"
+End If
 If ZigbeeAddCustomCluster(11, $fc00, ZigbeeClusterServer) Then RuntimeError "Custom cluster failed"
 If ZigbeeAddCustomScalar(11, $fc00, 1, ZigbeeTypeUInt16, ..
 		ZigbeeAttributeRead | ZigbeeAttributeWrite | ZigbeeAttributeReport, 42) Then

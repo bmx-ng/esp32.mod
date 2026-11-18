@@ -356,6 +356,10 @@ Private
 Extern "C"
 	Function _ZigbeeCoreAddEndpoint:Int(device:Int, endpoint:Int) = "bmx_esp32_zigbee_core_add_endpoint"
 	Function _ZigbeeCoreClearEndpoints:Int() = "bmx_esp32_zigbee_core_clear_endpoints"
+	Function _ZigbeeCoreAddCustomEndpoint:Int(endpoint:Int, profileId:Int, deviceId:Int, ..
+		version:Int) = "bmx_esp32_zigbee_core_add_custom_endpoint"
+	Function _ZigbeeCoreClearCustomEndpoints:Int() = ..
+		"bmx_esp32_zigbee_core_clear_custom_endpoints"
 	Function _ZigbeeCoreAddHumidityCluster:Int(endpoint:Int, role:Int) = ..
 		"bmx_esp32_zigbee_core_add_humidity_cluster"
 	Function _ZigbeeCoreClearHumidityClusters:Int() = ..
@@ -451,6 +455,26 @@ Function ZigbeeClearExtraEndpoints:Int()
 End Function
 
 Rem
+bbdoc: Adds an endpoint with an application-defined profile and device identity.
+about: Call while stopped, before ZigbeeStart. Up to eight custom endpoints
+may be added alongside the standard endpoints. The profile ID is 1 to 65534,
+device ID is 0 to 65535, and version is 0 to 15. The endpoint receives a Basic
+server cluster; add application clusters with ZigbeeAddCustomCluster. Endpoint
+numbers must be unique, including the primary ZigbeeStart endpoint.
+End Rem
+Function ZigbeeAddCustomEndpoint:Int(endpoint:Int, profileId:Int, deviceId:Int, version:Int = 0)
+	Return _ZigbeeCoreAddCustomEndpoint(endpoint, profileId, deviceId, version)
+End Function
+
+Rem
+bbdoc: Removes all custom endpoint identities while the stack is stopped.
+about: Custom clusters registered on those endpoints must be cleared separately.
+End Rem
+Function ZigbeeClearCustomEndpoints:Int()
+	Return _ZigbeeCoreClearCustomEndpoints()
+End Function
+
+Rem
 bbdoc: Adds a standard Relative Humidity Measurement server or client cluster.
 about: Call before ZigbeeStart for an endpoint supplied to ZigbeeStart or
 ZigbeeAddEndpoint. A server reports humidity in hundredths of a percent;
@@ -468,10 +492,10 @@ Function ZigbeeClearHumidityClusters:Int()
 End Function
 
 Rem
-bbdoc: Adds a custom server or client cluster to a standard endpoint before ZigbeeStart.
+bbdoc: Adds a custom server or client cluster to a configured endpoint before ZigbeeStart.
 about: Custom cluster identifiers are 0x8000 to 0xFFFF. The endpoint must be
 the primary endpoint passed to ZigbeeStart or one registered with
-ZigbeeAddEndpoint. Up to eight custom clusters are supported.
+ZigbeeAddEndpoint or ZigbeeAddCustomEndpoint. Up to eight custom clusters are supported.
 End Rem
 Function ZigbeeAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int)
 	Return _ZigbeeCoreAddCustomCluster(endpoint, clusterId, role)
