@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "esp_zigbee.h"
 #include "ezbee/zha.h"
@@ -49,6 +50,11 @@
 #define ZB_EVENT_GROUP_MEMBER 20
 #define ZB_EVENT_GROUP_MEMBERSHIP_COMPLETE 21
 #define ZB_EVENT_OTA 22
+#define ZB_EVENT_ACTUATOR_COMMAND 23
+#define ZB_EVENT_DOOR_LOCK_RESPONSE 24
+#define ZB_EVENT_IAS_ENROLL_REQUEST 25
+#define ZB_EVENT_IAS_ENROLL_RESPONSE 26
+#define ZB_EVENT_IAS_STATUS 27
 
 typedef struct {
     int32_t kind, status, signal, endpoint, cluster, attribute, value;
@@ -88,6 +94,9 @@ typedef struct {
     uint8_t endpoint, role;
     uint16_t sensor_type;
     uint16_t cluster;
+    uint16_t cie_short;
+    uint8_t cie_endpoint, zone_id;
+    bool enrolled;
 } zb_measurement_cluster_t;
 
 typedef struct {
@@ -141,6 +150,13 @@ static ezb_zcl_ota_file_handle_t ota_server_file;
 static uint16_t ota_served_manufacturer, ota_served_image_type;
 static uint32_t ota_served_version;
 static zb_ota_download_t ota_download;
+static portMUX_TYPE command_lock = portMUX_INITIALIZER_UNLOCKED;
+static StaticSemaphore_t command_semaphore_storage;
+static SemaphoreHandle_t command_semaphore;
+static uint32_t command_sequence;
+static uint32_t command_pending;
+static int command_result;
+static bool command_completed;
 
 int bmx_esp32_zigbee_core_state(void);
 
@@ -154,7 +170,7 @@ static int endpoint_kind(int endpoint)
     return 0;
 }
 
-static void emit(zb_event_t event)
+static bool emit(zb_event_t event)
 {
     bool queued = false;
     portENTER_CRITICAL(&queue_lock);
@@ -167,6 +183,63 @@ static void emit(zb_event_t event)
     }
     portEXIT_CRITICAL(&queue_lock);
     if (queued) bmx_embedded_system_wake();
+    return queued;
+}
+
+/* The application decides whether its actuator accepted a command. Keep the
+ * Zigbee callback on its native task and bound the wait if the app stalls. */
+static ezb_zcl_status_t await_actuator(zb_event_t event)
+{
+    if (!command_semaphore) return EZB_ZCL_STATUS_FAIL;
+    portENTER_CRITICAL(&command_lock);
+    if (command_pending) {
+        portEXIT_CRITICAL(&command_lock);
+        return EZB_ZCL_STATUS_FAIL;
+    }
+    uint32_t token = ++command_sequence;
+    if (!token) token = ++command_sequence;
+    command_pending = token;
+    command_result = EZB_ZCL_STATUS_FAIL;
+    command_completed = false;
+    portEXIT_CRITICAL(&command_lock);
+    (void)xSemaphoreTake(command_semaphore, 0);
+    event.signal = (int32_t)token;
+    if (emit(event)) {
+        TickType_t started = xTaskGetTickCount();
+        TickType_t timeout = pdMS_TO_TICKS(5000);
+        do {
+            TickType_t elapsed = xTaskGetTickCount() - started;
+            if (elapsed >= timeout ||
+                    xSemaphoreTake(command_semaphore, timeout - elapsed) != pdTRUE) break;
+            portENTER_CRITICAL(&command_lock);
+            bool done = command_completed;
+            portEXIT_CRITICAL(&command_lock);
+            if (done) break;
+        } while (true);
+    }
+    portENTER_CRITICAL(&command_lock);
+    int result = command_completed ? command_result : EZB_ZCL_STATUS_FAIL;
+    command_pending = 0;
+    portEXIT_CRITICAL(&command_lock);
+    return (ezb_zcl_status_t)result;
+}
+
+int bmx_esp32_zigbee_core_complete_actuator_command(int token, int status)
+{
+    if (status != EZB_ZCL_STATUS_SUCCESS && status != EZB_ZCL_STATUS_FAIL &&
+            status != EZB_ZCL_STATUS_UNSUP_CMD && status != EZB_ZCL_STATUS_INVALID_VALUE)
+        return ESP_ERR_INVALID_ARG;
+    bool completed = false;
+    portENTER_CRITICAL(&command_lock);
+    if (command_pending == (uint32_t)token && !command_completed) {
+        command_result = status;
+        command_completed = true;
+        completed = true;
+    }
+    portEXIT_CRITICAL(&command_lock);
+    if (!completed) return ESP_ERR_INVALID_STATE;
+    xSemaphoreGive(command_semaphore);
+    return ESP_OK;
 }
 
 static void emit_status(int kind, int status, int signal)
@@ -454,9 +527,169 @@ static bool signal_handler(const ezb_app_signal_t *signal)
     return true;
 }
 
+static zb_measurement_cluster_t *ias_server(int endpoint)
+{
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].endpoint == endpoint &&
+                measurement_clusters[i].role == EZB_ZCL_CLUSTER_SERVER &&
+                measurement_clusters[i].cluster == EZB_ZCL_CLUSTER_ID_IAS_ZONE)
+            return &measurement_clusters[i];
+    return NULL;
+}
+
+static bool raw_handler(const ezb_zcl_raw_frame_t *frame)
+{
+    if (!frame || !frame->header ||
+            frame->header->cluster_id != EZB_ZCL_CLUSTER_ID_IAS_ZONE ||
+            (frame->header->fc & 0x0f) != EZB_ZCL_FRAME_TYPE_CLUSTER_SPECIFIC ||
+            frame->header->cmd_id != EZB_ZCL_CMD_IAS_ZONE_ZONE_ENROLL_RESPONSE_ID ||
+            frame->payload_length != 2 || !frame->payload)
+        return false;
+    zb_measurement_cluster_t *zone = ias_server(frame->header->dst_ep);
+    if (!zone || frame->header->src_addr.addr_mode != EZB_ADDR_MODE_SHORT ||
+            frame->header->src_addr.u.short_addr != zone->cie_short ||
+            frame->header->src_ep != zone->cie_endpoint)
+        return false;
+    // SDK 2.1.0 exposes this frame here but does not invoke its IAS response callback.
+    zb_event_t event = {.kind = ZB_EVENT_IAS_ENROLL_RESPONSE,
+                        .endpoint = frame->header->dst_ep,
+                        .cluster = EZB_ZCL_CLUSTER_ID_IAS_ZONE,
+                        .status = frame->payload[0],
+                        .value = frame->payload[1],
+                        .short_addr = frame->header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                frame->header->src_addr.u.short_addr : -1,
+                        .data_type = frame->header->src_ep};
+    if (event.status == EZB_ZCL_IAS_ZONE_ENROLL_RESPONSE_CODE_SUCCESS) {
+        uint8_t zone_id = (uint8_t)event.value;
+        uint8_t enrolled = EZB_ZCL_IAS_ZONE_ZONE_STATE_ENROLLED;
+        ezb_zcl_status_t id_result = ezb_zcl_set_attr_value((uint8_t)event.endpoint,
+                EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
+                EZB_ZCL_ATTR_IAS_ZONE_ZONE_ID_ID, EZB_ZCL_STD_MANUF_CODE, &zone_id, false);
+        ezb_zcl_status_t state_result = ezb_zcl_set_attr_value((uint8_t)event.endpoint,
+                EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
+                EZB_ZCL_ATTR_IAS_ZONE_ZONE_STATE_ID, EZB_ZCL_STD_MANUF_CODE, &enrolled, false);
+        if (id_result != EZB_ZCL_STATUS_SUCCESS || state_result != EZB_ZCL_STATUS_SUCCESS)
+            event.status = EZB_ZCL_STATUS_FAIL;
+        else {
+            zone->zone_id = zone_id;
+            zone->enrolled = true;
+        }
+    }
+    emit(event);
+    return true;
+}
+
 static void action_handler(ezb_zcl_core_action_callback_id_t action, void *message)
 {
-    if (action == EZB_ZCL_CORE_OTA_UPGRADE_CLIENT_PROGRESS_CB_ID && message) {
+    if ((action == EZB_ZCL_CORE_DOOR_LOCK_LOCK_DOOR_CB_ID ||
+            action == EZB_ZCL_CORE_DOOR_LOCK_UNLOCK_DOOR_CB_ID) && message) {
+        ezb_zcl_door_lock_lock_door_message_t *command = message;
+        const ezb_zcl_cmd_hdr_t *header = command->in.header;
+        zb_event_t event = {.kind = ZB_EVENT_ACTUATOR_COMMAND,
+                            .endpoint = command->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_DOOR_LOCK,
+                            .value = action == EZB_ZCL_CORE_DOOR_LOCK_LOCK_DOOR_CB_ID ? 1 : 0,
+                            .short_addr = header && header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1,
+                            .data_type = header ? header->src_ep : 0};
+        command->out.result = await_actuator(event);
+    } else if (action == EZB_ZCL_CORE_WINDOW_COVERING_MOVEMENT_CB_ID && message) {
+        ezb_zcl_window_covering_movement_message_t *command = message;
+        const ezb_zcl_cmd_hdr_t *header = command->in.header;
+        int value = 0;
+        if (header) {
+            switch (header->cmd_id) {
+                case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_PERCENTAGE_ID:
+                    value = command->in.payload.lift_percentage; break;
+                case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_PERCENTAGE_ID:
+                    value = command->in.payload.tilt_percentage; break;
+                case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_LIFT_VALUE_ID:
+                    value = command->in.payload.lift_value; break;
+                case EZB_ZCL_CMD_WINDOW_COVERING_GO_TO_TILT_VALUE_ID:
+                    value = command->in.payload.tilt_value; break;
+                default: break;
+            }
+        }
+        zb_event_t event = {.kind = ZB_EVENT_ACTUATOR_COMMAND,
+                            .endpoint = command->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_WINDOW_COVERING,
+                            .attribute = value,
+                            .value = header ? header->cmd_id : -1,
+                            .short_addr = header && header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1,
+                            .data_type = header ? header->src_ep : 0};
+        command->out.result = await_actuator(event);
+    } else if ((action == EZB_ZCL_CORE_DOOR_LOCK_LOCK_DOOR_RSP_CB_ID ||
+            action == EZB_ZCL_CORE_DOOR_LOCK_UNLOCK_DOOR_RSP_CB_ID) && message) {
+        ezb_zcl_door_lock_lock_door_rsp_message_t *response = message;
+        zb_event_t event = {.kind = ZB_EVENT_DOOR_LOCK_RESPONSE,
+                            .status = response->in.req_status,
+                            .endpoint = response->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_DOOR_LOCK,
+                            .value = action == EZB_ZCL_CORE_DOOR_LOCK_LOCK_DOOR_RSP_CB_ID ? 1 : 0};
+        emit(event);
+        response->out.result = EZB_ZCL_STATUS_SUCCESS;
+    } else if (action == EZB_ZCL_CORE_IAS_ZONE_ENROLL_CB_ID && message) {
+        ezb_zcl_ias_zone_enroll_req_message_t *request = message;
+        const ezb_zcl_cmd_hdr_t *header = request->in.header;
+        zb_event_t event = {.kind = ZB_EVENT_IAS_ENROLL_REQUEST,
+                            .endpoint = request->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_IAS_ZONE,
+                            .value = request->in.payload.zone_type,
+                            .attribute = request->in.payload.manuf_code,
+                            .short_addr = header && header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1,
+                            .data_type = header ? header->src_ep : 0};
+        request->out.result = emit(event) ? EZB_ZCL_STATUS_SUCCESS : EZB_ZCL_STATUS_FAIL;
+    } else if (action == EZB_ZCL_CORE_IAS_ZONE_ENROLL_RSP_CB_ID && message) {
+        ezb_zcl_ias_zone_enroll_rsp_message_t *response = message;
+        const ezb_zcl_cmd_hdr_t *header = response->in.header;
+        zb_event_t event = {.kind = ZB_EVENT_IAS_ENROLL_RESPONSE,
+                            .endpoint = response->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_IAS_ZONE,
+                            .status = response->in.payload.enroll_rsp_code,
+                            .value = response->in.payload.zone_id,
+                            .short_addr = header && header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1,
+                            .data_type = header ? header->src_ep : 0};
+        if (event.status == EZB_ZCL_IAS_ZONE_ENROLL_RESPONSE_CODE_SUCCESS) {
+            uint8_t zone_id = (uint8_t)event.value;
+            uint8_t enrolled = EZB_ZCL_IAS_ZONE_ZONE_STATE_ENROLLED;
+            ezb_zcl_status_t id_result = ezb_zcl_set_attr_value((uint8_t)event.endpoint,
+                    EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
+                    EZB_ZCL_ATTR_IAS_ZONE_ZONE_ID_ID, EZB_ZCL_STD_MANUF_CODE, &zone_id, false);
+            ezb_zcl_status_t state_result = ezb_zcl_set_attr_value((uint8_t)event.endpoint,
+                    EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
+                    EZB_ZCL_ATTR_IAS_ZONE_ZONE_STATE_ID, EZB_ZCL_STD_MANUF_CODE, &enrolled, false);
+            if (id_result != EZB_ZCL_STATUS_SUCCESS || state_result != EZB_ZCL_STATUS_SUCCESS)
+                event.status = EZB_ZCL_STATUS_FAIL;
+            else {
+                zb_measurement_cluster_t *zone = ias_server(event.endpoint);
+                if (zone) {
+                    zone->zone_id = zone_id;
+                    zone->enrolled = true;
+                }
+            }
+        }
+        emit(event);
+        response->out.result = event.status == EZB_ZCL_STATUS_FAIL ?
+                EZB_ZCL_STATUS_FAIL : EZB_ZCL_STATUS_SUCCESS;
+    } else if (action == EZB_ZCL_CORE_IAS_ZONE_STATUS_CHANGE_NOTIF_CB_ID && message) {
+        ezb_zcl_ias_zone_status_change_notif_message_t *notification = message;
+        const ezb_zcl_cmd_hdr_t *header = notification->in.header;
+        zb_event_t event = {.kind = ZB_EVENT_IAS_STATUS,
+                            .endpoint = notification->info.dst_ep,
+                            .cluster = EZB_ZCL_CLUSTER_ID_IAS_ZONE,
+                            .value = notification->in.payload.zone_status,
+                            .attribute = notification->in.payload.zone_id,
+                            .status = notification->in.payload.extend_status,
+                            .signal = notification->in.payload.delay,
+                            .short_addr = header && header->src_addr.addr_mode == EZB_ADDR_MODE_SHORT ?
+                                    header->src_addr.u.short_addr : -1,
+                            .data_type = header ? header->src_ep : 0};
+        emit(event);
+        notification->out.result = EZB_ZCL_STATUS_SUCCESS;
+    } else if (action == EZB_ZCL_CORE_OTA_UPGRADE_CLIENT_PROGRESS_CB_ID && message) {
         ota_client_progress((ezb_zcl_ota_upgrade_client_progress_message_t *)message);
     } else if (action == EZB_ZCL_CORE_OTA_UPGRADE_QUERY_NEXT_IMAGE_RSP_CB_ID && message) {
         ezb_zcl_ota_upgrade_query_next_image_rsp_message_t *response = message;
@@ -714,7 +947,10 @@ static esp_err_t add_custom_clusters(ezb_af_device_desc_t device)
                          attribute->type == EZB_ZCL_ATTR_TYPE_STRING16 ||
                          attribute->type == EZB_ZCL_ATTR_TYPE_OCTSTR16) ?
                         (const void *)attribute->text : (const void *)&attribute->value);
-                if (result != ESP_OK) break;
+                if (result != ESP_OK) {
+                    emit_status(ZB_EVENT_ERROR, result, 0x10000 | attribute->attribute);
+                    break;
+                }
             }
         }
         if (result == ESP_OK) result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -962,6 +1198,13 @@ static esp_err_t add_custom_endpoints(ezb_af_device_desc_t device)
 
 static esp_err_t register_device(const zb_config_t *options)
 {
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].cluster == EZB_ZCL_CLUSTER_ID_IAS_ZONE) {
+            measurement_clusters[i].cie_short = 0;
+            measurement_clusters[i].cie_endpoint = 0;
+            measurement_clusters[i].zone_id = 0;
+            measurement_clusters[i].enrolled = false;
+        }
     ezb_af_device_desc_t device = ezb_af_create_device_desc();
     if (!device) return ESP_ERR_NO_MEM;
     esp_err_t result = add_standard_endpoint(device, options->device, options->endpoint);
@@ -1007,19 +1250,26 @@ static void stack_task(void *context)
         config.device_config.zed_config.keep_alive = requested.role == 4 ? 8000 : 4000;
     }
     bool initialized = false;
+    int stage = 1;
     esp_err_t result = esp_zigbee_init(&config);
     if (result != ESP_OK) goto failed;
     initialized = true;
+    stage = 2;
     result = ezb_bdb_set_primary_channel_set(requested.primary_mask);
     if (result != ESP_OK) goto failed;
+    stage = 3;
     result = ezb_bdb_set_secondary_channel_set(requested.secondary_mask);
     if (result != ESP_OK) goto failed;
     if (requested.role >= 3) ezb_nwk_set_rx_on_when_idle(requested.role != 4);
+    stage = 4;
     result = ezb_app_signal_add_handler(signal_handler);
     if (result != ESP_OK) goto failed;
+    stage = 5;
     result = register_device(&requested);
     if (result != ESP_OK) goto failed;
     ezb_zcl_core_action_handler_register(action_handler);
+    ezb_zcl_raw_command_handler_register(raw_handler);
+    stage = 6;
     result = esp_zigbee_start(false);
     if (result != ESP_OK) goto failed;
     portENTER_CRITICAL(&state_lock);
@@ -1028,7 +1278,7 @@ static void stack_task(void *context)
     emit_status(ZB_EVENT_STARTED, ESP_OK, 0);
     result = esp_zigbee_launch_mainloop();
 failed:
-    if (result != ESP_OK) emit_status(ZB_EVENT_ERROR, result, 0);
+    if (result != ESP_OK) emit_status(ZB_EVENT_ERROR, result, stage);
     if (ota_server_file) {
         ezb_zcl_ota_upgrade_remove_ota_file(ota_server.endpoint, ota_server_file);
         ota_server_file = NULL;
@@ -1672,6 +1922,14 @@ int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t pri
             .primary_mask = primary_mask, .secondary_mask = secondary_mask,
             .auto_commission = auto_commission != 0};
     portEXIT_CRITICAL(&state_lock);
+    if (!command_semaphore)
+        command_semaphore = xSemaphoreCreateBinaryStatic(&command_semaphore_storage);
+    if (!command_semaphore) {
+        portENTER_CRITICAL(&state_lock);
+        state = 0;
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
     portENTER_CRITICAL(&queue_lock);
     queue_read = queue_write = queue_dropped = 0;
     portEXIT_CRITICAL(&queue_lock);
@@ -2302,8 +2560,78 @@ int bmx_esp32_zigbee_core_set_local_ias_zone_status(int endpoint, int status)
     ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
             EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
             EZB_ZCL_ATTR_IAS_ZONE_ZONE_STATUS_ID, EZB_ZCL_STD_MANUF_CODE, &value, false);
+    ezb_err_t sent = EZB_ERR_NONE;
+    zb_measurement_cluster_t *zone = ias_server(endpoint);
+    if (result == EZB_ZCL_STATUS_SUCCESS && zone && zone->enrolled) {
+        // SDK 2.1.0 does not emit a notification for this local attribute update.
+        uint8_t payload[6] = {(uint8_t)value, (uint8_t)(value >> 8), 0,
+                              zone->zone_id, 0, 0};
+        ezb_zcl_custom_cmd_t notification = {.cmd_ctrl = {
+            .dst_addr = EZB_ADDRESS_SHORT(zone->cie_short),
+            .dst_ep = zone->cie_endpoint, .src_ep = (uint8_t)endpoint,
+            .cluster_id = EZB_ZCL_CLUSTER_ID_IAS_ZONE,
+            .fc = {.direction = 1, .dis_default_rsp = 1}},
+            .cmd_id = EZB_ZCL_CMD_IAS_ZONE_ZONE_STATUS_CHANGE_NOTIFICATION_ID,
+            .data_length = sizeof(payload), .data = payload};
+        sent = ezb_zcl_custom_cmd_req(&notification);
+    }
     esp_zigbee_lock_release();
-    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+    return result == EZB_ZCL_STATUS_SUCCESS && sent == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_request_ias_enrollment(int endpoint, int cie_addr,
+        int cie_endpoint, uint64_t cie_ieee)
+{
+    if (!has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_IAS_ZONE) ||
+            cie_addr < 0 || cie_addr > 65535 || cie_endpoint < 1 || cie_endpoint > 240 ||
+            !cie_ieee) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t zone_type = 0;
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].endpoint == endpoint &&
+                measurement_clusters[i].cluster == EZB_ZCL_CLUSTER_ID_IAS_ZONE &&
+                measurement_clusters[i].role == EZB_ZCL_CLUSTER_SERVER)
+            zone_type = measurement_clusters[i].sensor_type;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t set_result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_IAS_ZONE, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_IAS_ZONE_IAS_CIE_ADDRESS_ID, EZB_ZCL_STD_MANUF_CODE,
+            &cie_ieee, false);
+    ezb_err_t sent = ESP_FAIL;
+    if (set_result == EZB_ZCL_STATUS_SUCCESS) {
+        zb_measurement_cluster_t *zone = ias_server(endpoint);
+        if (zone) {
+            zone->cie_short = (uint16_t)cie_addr;
+            zone->cie_endpoint = (uint8_t)cie_endpoint;
+            zone->enrolled = false;
+        }
+        ezb_zcl_ias_zone_enroll_req_cmd_t request = {.cmd_ctrl = {
+            .dst_addr = EZB_ADDRESS_SHORT((uint16_t)cie_addr),
+            .dst_ep = (uint8_t)cie_endpoint, .src_ep = (uint8_t)endpoint},
+            .payload = {.zone_type = zone_type, .manuf_code = 0}};
+        sent = ezb_zcl_ias_zone_enroll_cmd_req(&request);
+    }
+    esp_zigbee_lock_release();
+    return set_result != EZB_ZCL_STATUS_SUCCESS ? ESP_FAIL :
+            sent == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_respond_ias_enrollment(int endpoint, int sensor_addr,
+        int sensor_endpoint, int response_code, int zone_id)
+{
+    if (!endpoint_kind(endpoint) || sensor_addr < 0 || sensor_addr > 65535 ||
+            sensor_endpoint < 1 || sensor_endpoint > 240 || response_code < 0 ||
+            response_code > 3 || zone_id < 0 || zone_id > 255) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_ias_zone_enroll_rsp_cmd_t response = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)sensor_addr),
+        .dst_ep = (uint8_t)sensor_endpoint, .src_ep = (uint8_t)endpoint},
+        .payload = {.enroll_rsp_code = (uint8_t)response_code,
+                    .zone_id = (uint8_t)zone_id}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_ias_zone_enroll_cmd_resp(&response);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
 int bmx_esp32_zigbee_core_set_local_pressure(int endpoint, int kilopascals)

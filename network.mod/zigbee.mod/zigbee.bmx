@@ -286,6 +286,21 @@ Rem
 bbdoc: OTA Upgrade progress or a query response; see signal and dataType.
 End Rem
 Const ZigbeeEventOta:Int = 22
+Rem
+bbdoc: A lock or covering server received a command; signal is its reply token.
+about: cluster selects Door Lock or Window Covering. value is lock (1/0) or
+covering command ID; attribute is the covering target. dataType is the sender
+endpoint. Call ZigbeeCompleteActuatorCommand within five seconds.
+End Rem
+Const ZigbeeEventActuatorCommand:Int = 23
+Const ZigbeeEventDoorLockResponse:Int = 24
+Const ZigbeeEventIasEnrollRequest:Int = 25
+Const ZigbeeEventIasEnrollResponse:Int = 26
+Const ZigbeeEventIasStatus:Int = 27
+Const ZigbeeCommandSuccess:Int = 0
+Const ZigbeeCommandFailure:Int = 1
+Const ZigbeeCommandUnsupported:Int = $81
+Const ZigbeeCommandInvalidValue:Int = $87
 
 Const ZigbeeOtaQueryResponse:Int = -1
 Const ZigbeeOtaStart:Int = 0
@@ -604,6 +619,13 @@ Extern "C"
 	Function _ZigbeeCoreWindowCoveringCommand:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, command:Int, value:Int) = ..
 		"bmx_esp32_zigbee_core_window_covering_command"
+	Function _ZigbeeCoreCompleteActuatorCommand:Int(token:Int, status:Int) = ..
+		"bmx_esp32_zigbee_core_complete_actuator_command"
+	Function _ZigbeeCoreRequestIasEnrollment:Int(endpoint:Int, cieAddress:Int, ..
+		cieEndpoint:Int, cieIeee:Long) = "bmx_esp32_zigbee_core_request_ias_enrollment"
+	Function _ZigbeeCoreRespondIasEnrollment:Int(endpoint:Int, sensorAddress:Int, ..
+		sensorEndpoint:Int, responseCode:Int, zoneId:Int) = ..
+		"bmx_esp32_zigbee_core_respond_ias_enrollment"
 	Function _ZigbeeCoreReadOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_read_onoff"
 	Function _ZigbeeCorePoll:Int(kind:Int Var, status:Int Var, signal:Int Var, endpoint:Int Var, ..
@@ -1302,6 +1324,38 @@ Function ZigbeeSendWindowCovering:Int(sourceEndpoint:Int, destinationAddress:Int
 		destinationEndpoint:Int, command:Int, value:Int = 0)
 	Return _ZigbeeCoreWindowCoveringCommand(sourceEndpoint, destinationAddress, ..
 		destinationEndpoint, command, value)
+End Function
+
+Rem
+bbdoc: Completes a received Door Lock or Window Covering command.
+about: Pass the event's signal token and an appropriate ZigbeeCommand status.
+Complete it after the actuator accepts or rejects the requested operation;
+the Zigbee callback times out after five seconds and replies with failure.
+End Rem
+Function ZigbeeCompleteActuatorCommand:Int(token:Int, status:Int)
+	Return _ZigbeeCoreCompleteActuatorCommand(token, status)
+End Function
+
+Rem
+bbdoc: Requests IAS Zone enrollment from a CIE client.
+about: The CIE IEEE address is written to the sensor's IAS Zone attribute
+before the request. Poll for ZigbeeEventIasEnrollResponse; status zero is
+accepted and value is the assigned zone ID.
+End Rem
+Function ZigbeeRequestIasEnrollment:Int(endpoint:Int, cieAddress:Int, ..
+		cieEndpoint:Int, cieIeee:Long)
+	Return _ZigbeeCoreRequestIasEnrollment(endpoint, cieAddress, cieEndpoint, cieIeee)
+End Function
+
+Rem
+bbdoc: Responds to an IAS Zone enrollment request on a CIE client.
+about: Use the request event's endpoint, shortAddress, and dataType as the
+first three arguments. A zero response code accepts and assigns zoneId.
+End Rem
+Function ZigbeeRespondIasEnrollment:Int(endpoint:Int, sensorAddress:Int, ..
+		sensorEndpoint:Int, responseCode:Int, zoneId:Int)
+	Return _ZigbeeCoreRespondIasEnrollment(endpoint, sensorAddress, ..
+		sensorEndpoint, responseCode, zoneId)
 End Function
 
 Rem

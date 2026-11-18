@@ -34,10 +34,15 @@ If result Then RuntimeError "Zigbee start failed"
 
 Local event:SZigbeeEvent
 Local completedWrites:Int
+Local cieIeee:Long
 While True
 	While ZigbeePollEvent(event)
-		Print "event=" + event.kind + " status=" + event.status + " endpoint=" + event.endpoint
+		Print "event=" + event.kind + " status=" + event.status + ..
+			" signal=" + event.signal + " endpoint=" + event.endpoint
 		If event.kind = ZigbeeEventStartup And event.status = 0 Then
+			Print "ieee-result=" + ZigbeeGetIEEEAddress(cieIeee)
+			Print "ieee=" + cieIeee
+			Print "permit-join=" + ZigbeePermitJoining(180)
 			Print "lock-state=" + ZigbeeSetLocalDoorLockState(14, ZigbeeDoorLockUnlocked)
 			Print "covering-lift=" + ZigbeeSetLocalCoveringLift(15, 42)
 			Print "zone-status=" + ZigbeeSetLocalIasZoneStatus(12, ZigbeeIasZoneAlarm1)
@@ -51,6 +56,49 @@ While True
 			Print "covering-read=" + ZigbeeReadAttribute(16, 0, 15, ZigbeeClusterWindowCovering, ..
 				ZigbeeWindowCoveringLiftPercentageAttribute)
 			Print "zone-read=" + ZigbeeReadAttribute(13, 0, 12, ZigbeeClusterIasZone, ZigbeeIasZoneStatusAttribute)
+			Print "lock-command=" + ZigbeeSendDoorLock(13, 0, 14, 1)
+		End If
+		If event.kind = ZigbeeEventDoorLockResponse Then
+			Delay 200
+			Print "covering-command=" + ZigbeeSendWindowCovering(16, 0, 15, ..
+				ZigbeeCoveringGoToLiftPercentage, 55)
+		End If
+		If event.kind = ZigbeeEventActuatorCommand Then
+			Print "actuator cluster=" + event.cluster + " command=" + event.value + ..
+				" target=" + event.attribute + " source=" + event.shortAddress
+			Print "actuator-ack=" + ZigbeeCompleteActuatorCommand(event.signal, ZigbeeCommandSuccess)
+			If event.cluster = ZigbeeClusterDoorLock Then
+				Print "observed-lock=" + ZigbeeSetLocalDoorLockState(event.endpoint, ZigbeeDoorLockLocked)
+			Else If event.value = ZigbeeCoveringGoToLiftPercentage Then
+				Print "observed-covering=" + ZigbeeSetLocalCoveringLift(event.endpoint, event.attribute)
+				Delay 200
+				Print "ias-enroll=" + ZigbeeRequestIasEnrollment(12, 0, 13, cieIeee)
+			End If
+		End If
+		If event.kind = ZigbeeEventIasEnrollRequest Then
+			Print "ias-request zone-type=" + event.value + " source=" + event.shortAddress + ..
+				" source-ep=" + event.dataType
+			Delay 1000
+			Print "ias-response=" + ZigbeeRespondIasEnrollment(event.endpoint, ..
+				event.shortAddress, event.dataType, 0, 3)
+			If event.shortAddress Then
+				Delay 500
+				Print "remote-zone-read=" + ZigbeeReadAttribute(13, event.shortAddress, ..
+					event.dataType, ZigbeeClusterIasZone, 0)
+			End If
+			Delay 200
+			Print "zone-state-read=" + ZigbeeReadAttribute(13, 0, 12, ZigbeeClusterIasZone, 0)
+			Print "zone-id-read=" + ZigbeeReadAttribute(13, 0, 12, ZigbeeClusterIasZone, $11)
+		End If
+		If event.kind = ZigbeeEventIasEnrollResponse Then
+			Print "ias-enroll-result=" + event.status + " zone-id=" + event.value
+			If event.status = 0 Then
+				Print "zone-status-notification=" + ZigbeeSetLocalIasZoneStatus(12, ..
+					ZigbeeIasZoneAlarm1 | ZigbeeIasZoneTamper)
+			End If
+		End If
+		If event.kind = ZigbeeEventIasStatus Then
+			Print "ias-status=" + event.value + " zone-id=" + event.attribute
 		End If
 		If event.kind = ZigbeeEventRead Then
 			Print "read cluster=" + event.cluster + " attr=" + event.attribute + ..

@@ -220,14 +220,30 @@ Close, Stop, or lift/tilt position commands with `ZigbeeSendWindowCovering`.
 The return value confirms SDK submission only. Server templates expose their
 standard attributes. `ZigbeeSetLocalDoorLockState` and
 `ZigbeeSetLocalCoveringLift` report observed physical state. These APIs do not
-drive a physical lock or motor or provide application command callbacks yet;
-applications must not advertise them as working actuators without that handling.
+drive a physical lock or motor. Incoming commands arrive as
+`ZigbeeEventActuatorCommand` with `cluster`, `value` (lock/unlock or covering
+command), `attribute` (covering target), `shortAddress`, and `dataType` (source
+endpoint). The application must call `ZigbeeCompleteActuatorCommand` with the
+event's `signal` token and a `ZigbeeCommand` result within five seconds. The
+stack replies with failure if the application does not complete the command.
+The application should update the observed state only after its actuator has
+accepted the request. A Door Lock controller receives
+`ZigbeeEventDoorLockResponse` with the remote status. The C6 loopback smoke test
+exercised Lock and GoToLiftPercentage callbacks and successful acknowledgements.
 
 `ZigbeeAddIasZoneCluster` attaches an IAS Zone server or client to an endpoint.
 The server starts unenrolled with zero status and the chosen zone type, such as
 `ZigbeeIasZoneContactSwitch` or `ZigbeeIasZoneMotionSensor`.
-`ZigbeeSetLocalIasZoneStatus` updates its status bitmap. Enrollment and
-status-change notification handling are still needed for a working alarm sensor.
+`ZigbeeRequestIasEnrollment` writes the CIE IEEE address and sends an Enroll
+Request. The CIE receives `ZigbeeEventIasEnrollRequest` and answers with
+`ZigbeeRespondIasEnrollment`, assigning a zone ID. The sensor receives
+`ZigbeeEventIasEnrollResponse`; on success, its ZoneState and ZoneId attributes
+are updated. `ZigbeeSetLocalIasZoneStatus` updates the status bitmap and sends
+a Zone Status Change Notification for an enrolled zone, which the CIE receives
+as `ZigbeeEventIasStatus`. SDK 2.1.0 exposes incoming enrollment responses as
+raw ZCL frames without invoking its documented IAS response callback, and does
+not automatically send a notification after a local status update. The module
+handles the response frame and sends the notification explicitly.
 
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
@@ -261,7 +277,10 @@ attributes, and read/report events use `text` or `bytes` with the corresponding
 `ZigbeeTypeLongString` or `ZigbeeTypeLongOctets`. Values are bounded to 256
 bytes in this module; a remote value beyond that limit produces a negative
 `valueSize`. The Zigbee transport or peer may impose a smaller practical
-message limit. Array and structure values are still unsupported.
+message limit. Array and structure values remain unsupported: SDK 2.1.0
+returns the invalid size `0xffff` for both and rejects their custom attribute
+registration on a C6. A working public API needs an SDK fix or a separate ZCL
+attribute implementation.
 
 `ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
 ID, device ID, and four-bit version. It includes a Basic server; add other
@@ -439,8 +458,10 @@ Controller endpoints; optional Relative Humidity, Illuminance, Pressure
 Measurement, Occupancy Sensing, Power Configuration, Electrical Measurement,
 Level Control, Color Control, Thermostat, and IAS Zone clusters; custom
 endpoint profiles; and custom scalar, short string, long string, and octet
-attributes. Actuator command handling, IAS Zone enrollment and notifications,
-and array/structure values remain open.
+attributes. Actuator command handling is implemented and C6 loopback tested.
+IAS Zone enrollment and status notifications are verified between C6 and H2.
+Array and structure attributes remain blocked by the
+ESP Zigbee SDK 2.1.0 registration behavior described above.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
@@ -459,7 +480,11 @@ and IAS Zone status (1). It registered a 72-byte long string, read back its
 78-byte local update, and read back an 80-byte long octet value through the
 Zigbee event path. The same firmware wrote a 79-byte string and 80-byte
 octets through Zigbee and read both back with successful responses. These
-additions have not yet been exercised across the two physical boards.
+IAS Zone was also exercised across both physical boards: the H2 joined the C6,
+sent an enrollment request, accepted zone ID 3, and updated its status to
+Alarm1 plus Tamper. The C6 read the H2's enrolled state (1) and zone ID (3),
+and received a status notification with bitmap 5 and zone ID 3. Door Lock,
+Window Covering, and long custom values remain C6 loopback checks.
 
 - The H2 deep-sleep sensor joined the C6 network, stopped Zigbee cleanly,
   woke on its ten-second timer, and restored the saved network on consecutive
