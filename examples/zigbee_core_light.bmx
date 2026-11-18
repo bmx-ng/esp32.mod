@@ -4,6 +4,7 @@ Framework BRL.StandardIO
 Import ESP32.Network.Zigbee
 
 If ZigbeeAddOnOffEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Second light endpoint failed"
+If ZigbeeAddEndpoint(ZigbeeDeviceTemperatureSensor, 12) Then RuntimeError "Temperature endpoint failed"
 If ZigbeeAddCustomCluster(11, $fc00, ZigbeeClusterServer) Then RuntimeError "Custom cluster failed"
 If ZigbeeAddCustomScalar(11, $fc00, 1, ZigbeeTypeUInt16, ..
 		ZigbeeAttributeRead | ZigbeeAttributeWrite | ZigbeeAttributeReport, 42) Then
@@ -27,6 +28,8 @@ While True
 			Print "Second light state result=" + result
 			result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
 			Print "Custom local state result=" + result
+			result = ZigbeeSetLocalTemperature(12, 2345) ' Simulated 23.45 C reading.
+			Print "Temperature update result=" + result
 		End If
 		If event.kind = ZigbeeEventDeviceAnnounced Then
 			result = ZigbeeBindCluster(10, event.shortAddress, 1, 6)

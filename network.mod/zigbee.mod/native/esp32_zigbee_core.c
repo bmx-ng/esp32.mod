@@ -319,9 +319,14 @@ static esp_err_t add_standard_endpoint(ezb_af_device_desc_t device, int kind, in
     if (kind == 1) {
         ezb_zha_on_off_light_config_t light = EZB_ZHA_ON_OFF_LIGHT_CONFIG();
         endpoint = ezb_zha_create_on_off_light(id, &light);
-    } else {
+    } else if (kind == 2) {
         ezb_zha_on_off_switch_config_t sw = EZB_ZHA_ON_OFF_SWITCH_CONFIG();
         endpoint = ezb_zha_create_on_off_switch(id, &sw);
+    } else {
+        ezb_zha_temperature_sensor_config_t sensor = EZB_ZHA_TEMPERATURE_SENSOR_CONFIG();
+        sensor.temp_meas_cfg.min_measured_value = -27315;
+        sensor.temp_meas_cfg.max_measured_value = 32767;
+        endpoint = ezb_zha_create_temperature_sensor(id, &sensor);
     }
     if (!endpoint) return ESP_ERR_NO_MEM;
     if (kind == 2 && !ezb_af_endpoint_get_cluster_desc(endpoint,
@@ -335,6 +340,22 @@ static esp_err_t add_standard_endpoint(ezb_af_device_desc_t device, int kind, in
         esp_err_t added = ezb_af_endpoint_add_cluster_desc(endpoint, groups);
         if (added != ESP_OK) {
             ezb_zcl_free_cluster_desc(groups);
+            ezb_af_free_endpoint_desc(endpoint);
+            return added;
+        }
+    }
+    if (kind == 2 && !ezb_af_endpoint_get_cluster_desc(endpoint,
+            EZB_ZCL_CLUSTER_ID_TEMPERATURE_MEASUREMENT, EZB_ZCL_CLUSTER_CLIENT)) {
+        ezb_zcl_cluster_desc_t temperature =
+                ezb_zcl_temperature_measurement_create_cluster_desc(NULL,
+                        EZB_ZCL_CLUSTER_CLIENT);
+        if (!temperature) {
+            ezb_af_free_endpoint_desc(endpoint);
+            return ESP_ERR_NO_MEM;
+        }
+        esp_err_t added = ezb_af_endpoint_add_cluster_desc(endpoint, temperature);
+        if (added != ESP_OK) {
+            ezb_zcl_free_cluster_desc(temperature);
             ezb_af_free_endpoint_desc(endpoint);
             return added;
         }
@@ -446,7 +467,7 @@ failed:
 
 int bmx_esp32_zigbee_core_add_endpoint(int device, int endpoint)
 {
-    if (device < 1 || device > 2 || endpoint < 1 || endpoint > 240)
+    if (device < 1 || device > 3 || endpoint < 1 || endpoint > 240)
         return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
     if (state != 0) {
@@ -563,7 +584,7 @@ int bmx_esp32_zigbee_core_clear_custom_clusters(void)
 int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t primary_mask,
         uint32_t secondary_mask, int auto_commission)
 {
-    if (role < 1 || role > 4 || device < 1 || device > 2 || endpoint < 1 || endpoint > 240 ||
+    if (role < 1 || role > 4 || device < 1 || device > 3 || endpoint < 1 || endpoint > 240 ||
             !(primary_mask & ZB_CHANNEL_MASK) || (primary_mask & ~ZB_CHANNEL_MASK) ||
             (secondary_mask & ~ZB_CHANNEL_MASK)) return ESP_ERR_INVALID_ARG;
 #if CONFIG_ZB_ZCZR
@@ -845,6 +866,21 @@ int bmx_esp32_zigbee_core_set_local_onoff(int endpoint, int on)
     ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
             EZB_ZCL_CLUSTER_ID_ON_OFF, EZB_ZCL_CLUSTER_SERVER,
             EZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, EZB_ZCL_STD_MANUF_CODE, &value, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_temperature(int endpoint, int centi_celsius)
+{
+    if (endpoint_kind(endpoint) != 3 || centi_celsius < -27315 || centi_celsius > 32767)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    int16_t value = (int16_t)centi_celsius;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_TEMPERATURE_MEASUREMENT, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_TEMPERATURE_MEASUREMENT_MEASURED_VALUE_ID,
+            EZB_ZCL_STD_MANUF_CODE, &value, false);
     esp_zigbee_lock_release();
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
 }

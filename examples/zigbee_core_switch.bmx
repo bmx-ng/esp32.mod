@@ -18,8 +18,13 @@ Local lightEndpoint:Int
 Local customAddress:Int
 Local customEndpoint:Int
 Local customFound:Int
+Local temperatureAddress:Int
+Local temperatureEndpoint:Int
+Local temperatureFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
+Local nextTemperatureFind:UInt = MilliSecs() + 2500
+Local nextTemperatureRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextReporting:UInt = MilliSecs() + 1000
@@ -53,6 +58,12 @@ While True
 			If Not customFound Then nextCustomRead = MilliSecs() + 100
 			customFound = True
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterTemperatureMeasurement Then
+			temperatureAddress = event.shortAddress
+			temperatureEndpoint = event.endpoint
+			temperatureFound = True
+			nextTemperatureRead = MilliSecs() + 200
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -71,6 +82,17 @@ While True
 		result = ZigbeeFindServers($fc00)
 		Print "Find custom cluster submission=" + result
 		nextCustomFind = MilliSecs() + 15000
+	End If
+	If joined And MilliSecs() >= nextTemperatureFind Then
+		result = ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement)
+		Print "Find temperature submission=" + result
+		nextTemperatureFind = MilliSecs() + 15000
+	End If
+	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
+		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..
+			ZigbeeClusterTemperatureMeasurement, 0)
+		Print "Temperature read submission=" + result
+		nextTemperatureRead = MilliSecs() + 15000
 	End If
 	If customFound And MilliSecs() >= nextCustomWrite Then
 		result = ZigbeeWriteScalar(1, customAddress, customEndpoint, $fc00, 1, ZigbeeTypeUInt16, 43)

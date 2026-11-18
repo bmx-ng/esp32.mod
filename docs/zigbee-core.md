@@ -3,8 +3,8 @@
 `ESP32.Network.Zigbee` uses the pinned ESP Zigbee SDK 2.1.0 component with
 ESP-IDF 6.1. It currently provides a configurable stack lifecycle, network
 commissioning, a bounded event queue, and standard Home Automation On/Off
-light and switch endpoints. See `zigbee-bringup.md` for the earlier diagnostic
-probe and the optional component integration.
+light, switch, and temperature sensor endpoints. See `zigbee-bringup.md` for
+the earlier diagnostic probe and the optional component integration.
 
 ## Build configuration
 
@@ -42,10 +42,11 @@ for existing build scripts.
 ## Application flow
 
 Call `ZigbeeStart(role, device, endpoint, primaryMask, secondaryMask,
-autoCommission)`. Call `ZigbeeAddOnOffEndpoint` before starting to register up
-to eight more standard light or switch endpoints. The extra endpoint list is
-retained across stop/start cycles; `ZigbeeClearExtraEndpoints` clears it while
-stopped. The default channel mask selects channel 15. Startup is
+autoCommission)`. Call `ZigbeeAddEndpoint` before starting to register up
+to eight more standard light, switch, or temperature sensor endpoints. The
+extra endpoint list is retained across stop/start cycles;
+`ZigbeeClearExtraEndpoints` clears it while stopped. The default channel mask
+selects channel 15. Startup is
 asynchronous; process `ZigbeePollEvent` from the application thread. With
 auto commissioning enabled and no saved Zigbee network, a coordinator forms a
 network, while a router or end device attempts to join one. A coordinator
@@ -73,6 +74,13 @@ an On/Off server and reports changes as `ZigbeeEventAttribute`.
 `ZigbeeSetLocalOnOff` lets the application update that server attribute when
 its own hardware controls the light. The application must also update its
 physical output.
+
+The temperature sensor template exposes the standard Temperature Measurement
+cluster (0x0402). Call `ZigbeeSetLocalTemperature` with a measurement in
+hundredths of a degree Celsius. Remote clients can discover it with
+`ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement)` and read attribute
+zero with `ZigbeeReadAttribute`; a successful read event has type `Int16`.
+The light example adds a sensor endpoint with a simulated 23.45 °C value.
 
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured standard endpoint.
@@ -118,8 +126,9 @@ writes then reads back its IdentifyTime attribute.
 
 ## Examples
 
-- `examples/zigbee_core_light.bmx`: coordinator with two light endpoints and a
-  custom scalar cluster; run with a `zczr` build on H2 or C6.
+- `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
+  temperature sensor endpoint, and a custom scalar cluster; run with a `zczr`
+  build on H2 or C6.
 - `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
@@ -133,11 +142,11 @@ network. The saved network belongs to the previous role and topology.
 
 ## Scope
 
-The public API covers multiple standard On/Off light or switch endpoints and
-custom scalar clusters on those endpoints. Custom endpoint profiles, broader
-standard cluster templates, nonscalar attribute types, broader group management,
-security configuration, OTA, and application-managed sleep are further work.
-`ZigbeeRoleSleepyEndDevice` currently configures an end
+The public API covers multiple standard On/Off light, switch, or temperature
+sensor endpoints and custom scalar clusters on those endpoints. Custom endpoint
+profiles, other standard cluster templates, nonscalar attribute types, broader
+group management, security configuration, OTA, and application-managed sleep
+are further work. `ZigbeeRoleSleepyEndDevice` currently configures an end
 device with a longer keepalive; it does not enter low-power sleep itself.
 
 ## Hardware checks on 17 November 2026
@@ -171,3 +180,12 @@ device with a longer keepalive; it does not enter low-power sleep itself.
 - The C6 application then updated that local custom attribute to 44;
   `tests/zigbee_core_pair.py --require-local-update` confirmed the H2 read
   back 44 while the other pair checks still passed.
+
+## Hardware check on 18 November 2026
+
+- The C6 coordinator/light exposed a temperature sensor on endpoint 12 and
+  set its measured value to 23.45 °C. The H2 end-device/switch discovered the
+  Temperature Measurement server and read attribute zero as a signed 16-bit
+  value of 2345. `tests/zigbee_core_pair.py --require-temperature` passed
+  alongside the reporting, group, scalar, write, extra endpoint, custom
+  cluster, and local update checks.

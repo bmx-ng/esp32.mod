@@ -88,6 +88,15 @@ Rem
 bbdoc: Standard Home Automation On/Off switch endpoint template.
 End Rem
 Const ZigbeeDeviceOnOffSwitch:Int = 2
+Rem
+bbdoc: Standard Home Automation temperature sensor endpoint template.
+End Rem
+Const ZigbeeDeviceTemperatureSensor:Int = 3
+
+Rem
+bbdoc: Temperature Measurement cluster identifier.
+End Rem
+Const ZigbeeClusterTemperatureMeasurement:Int = $0402
 
 Rem
 bbdoc: Zigbee stack is stopped.
@@ -364,6 +373,8 @@ Extern "C"
 		destinationEndpoint:Int, clusterId:Int) = "bmx_esp32_zigbee_core_bind_cluster"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
+	Function _ZigbeeCoreSetLocalTemperature:Int(endpoint:Int, centiCelsius:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_temperature"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -389,13 +400,21 @@ End Extern
 Public
 
 Rem
-bbdoc: Adds another standard On/Off light or switch endpoint before ZigbeeStart.
+bbdoc: Adds another standard endpoint before ZigbeeStart.
 about: Call while the stack is stopped. Up to eight extra endpoints are kept
 across stop/start cycles until ZigbeeClearExtraEndpoints is called. Endpoint
 numbers must be distinct, including from the primary endpoint in ZigbeeStart.
 End Rem
-Function ZigbeeAddOnOffEndpoint:Int(device:Int, endpoint:Int)
+Function ZigbeeAddEndpoint:Int(device:Int, endpoint:Int)
 	Return _ZigbeeCoreAddEndpoint(device, endpoint)
+End Function
+
+Rem
+bbdoc: Adds another standard On/Off light or switch endpoint before ZigbeeStart.
+about: Use ZigbeeAddEndpoint to add any supported standard device template.
+End Rem
+Function ZigbeeAddOnOffEndpoint:Int(device:Int, endpoint:Int)
+	Return ZigbeeAddEndpoint(device, endpoint)
 End Function
 
 Rem
@@ -409,7 +428,7 @@ Rem
 bbdoc: Adds a custom server or client cluster to a standard endpoint before ZigbeeStart.
 about: Custom cluster identifiers are 0x8000 to 0xFFFF. The endpoint must be
 the primary endpoint passed to ZigbeeStart or one registered with
-ZigbeeAddOnOffEndpoint. Up to eight custom clusters are supported.
+ZigbeeAddEndpoint. Up to eight custom clusters are supported.
 End Rem
 Function ZigbeeAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int)
 	Return _ZigbeeCoreAddCustomCluster(endpoint, clusterId, role)
@@ -435,9 +454,9 @@ Function ZigbeeClearCustomClusters:Int()
 End Function
 
 Rem
-bbdoc: Starts the Zigbee stack with a standard light or switch endpoint.
+bbdoc: Starts the Zigbee stack with a supported standard endpoint.
 param: Coordinator, router, end-device or sleepy-end-device role.
-param: Standard on/off light or switch device template.
+param: Standard On/Off light, On/Off switch, or temperature sensor device template.
 param: Zigbee endpoint number from 1 to 240.
 param: Primary channel bitmask; bit n selects IEEE 802.15.4 channel n (11 to 26).
 param: Secondary channel bitmask used after primary-channel scanning.
@@ -590,6 +609,17 @@ the application is responsible for applying the state to its physical output.
 End Rem
 Function ZigbeeSetLocalOnOff:Int(endpoint:Int, on:Int)
 	Return _ZigbeeCoreSetLocalOnOff(endpoint, on)
+End Function
+
+Rem
+bbdoc: Updates a local temperature sensor's measured value.
+about: Pass temperature in hundredths of a degree Celsius, from -27315 to
+32767. The application obtains the measurement from its own sensor. Use
+ZigbeeReadAttribute with cluster ZigbeeClusterTemperatureMeasurement and
+attribute zero to read it from another device.
+End Rem
+Function ZigbeeSetLocalTemperature:Int(endpoint:Int, centiCelsius:Int)
+	Return _ZigbeeCoreSetLocalTemperature(endpoint, centiCelsius)
 End Function
 
 Rem
