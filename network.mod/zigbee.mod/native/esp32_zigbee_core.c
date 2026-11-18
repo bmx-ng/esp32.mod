@@ -21,6 +21,7 @@
 #define ZB_MAX_STRING_BYTES 64u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
 #define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
+#define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 18u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
 #define ZB_EVENT_STARTUP 2
@@ -79,6 +80,11 @@ typedef struct {
 } zb_illuminance_cluster_t;
 
 typedef struct {
+    uint8_t endpoint, role, sensor_type;
+    uint16_t cluster;
+} zb_measurement_cluster_t;
+
+typedef struct {
     uint8_t endpoint, type, access;
     uint16_t cluster, attribute;
     int32_t value;
@@ -106,6 +112,8 @@ static zb_humidity_cluster_t humidity_clusters[ZB_MAX_HUMIDITY_CLUSTERS];
 static uint8_t humidity_cluster_count;
 static zb_illuminance_cluster_t illuminance_clusters[ZB_MAX_ILLUMINANCE_CLUSTERS];
 static uint8_t illuminance_cluster_count;
+static zb_measurement_cluster_t measurement_clusters[ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS];
+static uint8_t measurement_cluster_count;
 
 static int endpoint_kind(int endpoint)
 {
@@ -142,7 +150,7 @@ static void copy_scalar(zb_event_t *event, int type, const void *data)
 {
     event->data_type = type;
     if (!data) return;
-    if (type == EZB_ZCL_ATTR_TYPE_STRING) {
+    if (type == EZB_ZCL_ATTR_TYPE_STRING || type == EZB_ZCL_ATTR_TYPE_OCTSTR) {
         const uint8_t *string = data;
         unsigned length = string[0];
         if (length > ZB_MAX_STRING_BYTES) {
@@ -461,7 +469,8 @@ static esp_err_t add_custom_clusters(ezb_af_device_desc_t device)
                     attribute->cluster == entry->cluster) {
                 result = ezb_zcl_custom_cluster_desc_add_attr(cluster, attribute->attribute,
                         attribute->type, attribute->access,
-                        attribute->type == EZB_ZCL_ATTR_TYPE_STRING ?
+                        (attribute->type == EZB_ZCL_ATTR_TYPE_STRING ||
+                         attribute->type == EZB_ZCL_ATTR_TYPE_OCTSTR) ?
                         (const void *)attribute->text : (const void *)&attribute->value);
                 if (result != ESP_OK) break;
             }
@@ -519,6 +528,39 @@ static esp_err_t add_illuminance_clusters(ezb_af_device_desc_t device)
     return ESP_OK;
 }
 
+static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
+{
+    for (unsigned i = 0; i < measurement_cluster_count; ++i) {
+        const zb_measurement_cluster_t *entry = &measurement_clusters[i];
+        ezb_af_ep_desc_t endpoint = ezb_af_device_get_endpoint_desc(device, entry->endpoint);
+        if (!endpoint || ezb_af_endpoint_get_cluster_desc(endpoint, entry->cluster, entry->role))
+            return ESP_ERR_INVALID_ARG;
+        ezb_zcl_cluster_desc_t cluster = NULL;
+        if (entry->cluster == EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT) {
+            ezb_zcl_pressure_measurement_cluster_server_config_t server = {
+                .measured_value = INT16_MIN, .min_measured_value = -32767,
+                .max_measured_value = INT16_MAX};
+            cluster = ezb_zcl_pressure_measurement_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        } else {
+            uint8_t bitmap = entry->sensor_type == 2 ? 3 :
+                    entry->sensor_type == 3 ? 4 : (uint8_t)(1u << entry->sensor_type);
+            ezb_zcl_occupancy_sensing_cluster_server_config_t server = {
+                .occupancy = 0, .occupancy_sensor_type = entry->sensor_type,
+                .occupancy_sensor_type_bitmap = bitmap};
+            cluster = ezb_zcl_occupancy_sensing_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        }
+        if (!cluster) return ESP_ERR_NO_MEM;
+        esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            return result;
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t add_custom_endpoints(ezb_af_device_desc_t device)
 {
     for (unsigned i = 0; i < custom_endpoint_count; ++i) {
@@ -563,6 +605,7 @@ static esp_err_t register_device(const zb_config_t *options)
     if (result == ESP_OK) result = add_custom_endpoints(device);
     if (result == ESP_OK) result = add_humidity_clusters(device);
     if (result == ESP_OK) result = add_illuminance_clusters(device);
+    if (result == ESP_OK) result = add_measurement_clusters(device);
     if (result == ESP_OK) result = add_custom_clusters(device);
     if (result != ESP_OK) {
         ezb_af_free_device_desc(device);
@@ -794,6 +837,75 @@ int bmx_esp32_zigbee_core_clear_illuminance_clusters(void)
     return ESP_OK;
 }
 
+static int add_measurement_cluster(int endpoint, int role, int cluster, int sensor_type)
+{
+    if (endpoint < 1 || endpoint > 240 ||
+            (role != EZB_ZCL_CLUSTER_SERVER && role != EZB_ZCL_CLUSTER_CLIENT) ||
+            (cluster != EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT &&
+             cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) ||
+            (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
+             (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < measurement_cluster_count; ++i) {
+        if (measurement_clusters[i].endpoint == endpoint &&
+                measurement_clusters[i].role == role &&
+                measurement_clusters[i].cluster == cluster) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (measurement_cluster_count == ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    measurement_clusters[measurement_cluster_count++] = (zb_measurement_cluster_t){
+        .endpoint = (uint8_t)endpoint, .role = (uint8_t)role,
+        .sensor_type = (uint8_t)sensor_type, .cluster = (uint16_t)cluster};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+static int clear_measurement_clusters(int cluster)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    unsigned keep = 0;
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].cluster != cluster)
+            measurement_clusters[keep++] = measurement_clusters[i];
+    measurement_cluster_count = (uint8_t)keep;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_pressure_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_pressure_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT);
+}
+
+int bmx_esp32_zigbee_core_add_occupancy_cluster(int endpoint, int role, int sensor_type)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            sensor_type);
+}
+
+int bmx_esp32_zigbee_core_clear_occupancy_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING);
+}
+
 int bmx_esp32_zigbee_core_add_custom_cluster(int endpoint, int cluster_id, int role)
 {
     if (endpoint < 1 || endpoint > 240 || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
@@ -873,8 +985,8 @@ int bmx_esp32_zigbee_core_clear_custom_clusters(void)
     return ESP_OK;
 }
 
-int bmx_esp32_zigbee_core_add_custom_string(int endpoint, int cluster_id,
-        int attribute_id, int access, const uint8_t *text, int length)
+static int add_custom_bytes(int endpoint, int cluster_id, int attribute_id, int access,
+        const uint8_t *text, int length, uint8_t type)
 {
     if (endpoint < 1 || endpoint > 240 || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
             cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
@@ -911,12 +1023,26 @@ int bmx_esp32_zigbee_core_add_custom_string(int endpoint, int cluster_id,
     attribute->endpoint = (uint8_t)endpoint;
     attribute->cluster = (uint16_t)cluster_id;
     attribute->attribute = (uint16_t)attribute_id;
-    attribute->type = EZB_ZCL_ATTR_TYPE_STRING;
+    attribute->type = type;
     attribute->access = (uint8_t)access;
     attribute->text[0] = (uint8_t)length;
     if (length) memcpy(attribute->text + 1, text, length);
     portEXIT_CRITICAL(&state_lock);
     return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_custom_string(int endpoint, int cluster_id,
+        int attribute_id, int access, const uint8_t *text, int length)
+{
+    return add_custom_bytes(endpoint, cluster_id, attribute_id, access, text, length,
+            EZB_ZCL_ATTR_TYPE_STRING);
+}
+
+int bmx_esp32_zigbee_core_add_custom_octets(int endpoint, int cluster_id,
+        int attribute_id, int access, const uint8_t *bytes, int length)
+{
+    return add_custom_bytes(endpoint, cluster_id, attribute_id, access, bytes, length,
+            EZB_ZCL_ATTR_TYPE_OCTSTR);
 }
 
 int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t primary_mask,
@@ -1233,8 +1359,8 @@ int bmx_esp32_zigbee_core_write_scalar(int source_ep, int destination_addr, int 
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
-int bmx_esp32_zigbee_core_write_string(int source_ep, int destination_addr, int destination_ep,
-        int cluster_id, int attribute_id, const uint8_t *text, int length)
+static int write_bytes(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id, const uint8_t *text, int length, uint8_t type)
 {
     if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
             destination_ep < 1 || destination_ep > 240 || cluster_id < 0 || cluster_id > 65535 ||
@@ -1244,7 +1370,7 @@ int bmx_esp32_zigbee_core_write_string(int source_ep, int destination_addr, int 
     uint8_t value[ZB_MAX_STRING_BYTES + 1u] = {(uint8_t)length};
     if (length) memcpy(value + 1, text, length);
     ezb_zcl_attribute_t attribute = {.id = (uint16_t)attribute_id,
-                                     .data = {.type = EZB_ZCL_ATTR_TYPE_STRING,
+                                     .data = {.type = type,
                                               .size = (uint16_t)(length + 1), .value = value}};
     ezb_zcl_write_attr_cmd_t request = {.cmd_ctrl = {
         .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
@@ -1255,6 +1381,20 @@ int bmx_esp32_zigbee_core_write_string(int source_ep, int destination_addr, int 
     ezb_err_t result = ezb_zcl_write_attr_cmd_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_write_string(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id, const uint8_t *text, int length)
+{
+    return write_bytes(source_ep, destination_addr, destination_ep, cluster_id, attribute_id,
+            text, length, EZB_ZCL_ATTR_TYPE_STRING);
+}
+
+int bmx_esp32_zigbee_core_write_octets(int source_ep, int destination_addr, int destination_ep,
+        int cluster_id, int attribute_id, const uint8_t *bytes, int length)
+{
+    return write_bytes(source_ep, destination_addr, destination_ep, cluster_id, attribute_id,
+            bytes, length, EZB_ZCL_ATTR_TYPE_OCTSTR);
 }
 
 int bmx_esp32_zigbee_core_find_servers(int profile_id, int cluster_id)
@@ -1397,6 +1537,48 @@ int bmx_esp32_zigbee_core_set_local_illuminance(int endpoint, int encoded_value)
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
 }
 
+static bool has_measurement_server(int endpoint, int cluster)
+{
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].endpoint == endpoint &&
+                measurement_clusters[i].cluster == cluster &&
+                measurement_clusters[i].role == EZB_ZCL_CLUSTER_SERVER) return true;
+    return false;
+}
+
+int bmx_esp32_zigbee_core_set_local_pressure(int endpoint, int kilopascals)
+{
+    if (endpoint < 1 || endpoint > 240 || kilopascals < INT16_MIN ||
+            kilopascals > INT16_MAX ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    int16_t value = (int16_t)kilopascals;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_PRESSURE_MEASUREMENT_MEASURED_VALUE_ID,
+            EZB_ZCL_STD_MANUF_CODE, &value, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_occupancy(int endpoint, int occupied)
+{
+    if (endpoint < 1 || endpoint > 240 || (occupied != 0 && occupied != 1) ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint8_t value = (uint8_t)occupied;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            EZB_ZCL_STD_MANUF_CODE, &value, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,
         int attribute_id, int32_t value)
 {
@@ -1413,7 +1595,8 @@ int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,
             break;
         }
     }
-    if (!attribute || attribute->type == EZB_ZCL_ATTR_TYPE_STRING) return ESP_ERR_INVALID_ARG;
+    if (!attribute || attribute->type == EZB_ZCL_ATTR_TYPE_STRING ||
+            attribute->type == EZB_ZCL_ATTR_TYPE_OCTSTR) return ESP_ERR_INVALID_ARG;
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
     ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
             (uint16_t)cluster_id, EZB_ZCL_CLUSTER_SERVER, (uint16_t)attribute_id,
@@ -1423,8 +1606,8 @@ int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
 }
 
-int bmx_esp32_zigbee_core_set_custom_string(int endpoint, int cluster_id,
-        int attribute_id, const uint8_t *text, int length)
+static int set_custom_bytes(int endpoint, int cluster_id, int attribute_id,
+        const uint8_t *text, int length, uint8_t type)
 {
     if (!endpoint_kind(endpoint) || cluster_id < EZB_ZCL_CLUSTER_ID_MIN_CUSTOM ||
             cluster_id > 65535 || attribute_id < 0 || attribute_id > 65535 ||
@@ -1440,7 +1623,7 @@ int bmx_esp32_zigbee_core_set_custom_string(int endpoint, int cluster_id,
             break;
         }
     }
-    if (!attribute || attribute->type != EZB_ZCL_ATTR_TYPE_STRING) return ESP_ERR_INVALID_ARG;
+    if (!attribute || attribute->type != type) return ESP_ERR_INVALID_ARG;
     uint8_t value[ZB_MAX_STRING_BYTES + 1u] = {(uint8_t)length};
     if (length) memcpy(value + 1, text, length);
     if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
@@ -1451,6 +1634,20 @@ int bmx_esp32_zigbee_core_set_custom_string(int endpoint, int cluster_id,
         memcpy(attribute->text, value, (size_t)length + 1u);
     esp_zigbee_lock_release();
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_custom_string(int endpoint, int cluster_id,
+        int attribute_id, const uint8_t *text, int length)
+{
+    return set_custom_bytes(endpoint, cluster_id, attribute_id, text, length,
+            EZB_ZCL_ATTR_TYPE_STRING);
+}
+
+int bmx_esp32_zigbee_core_set_custom_octets(int endpoint, int cluster_id,
+        int attribute_id, const uint8_t *bytes, int length)
+{
+    return set_custom_bytes(endpoint, cluster_id, attribute_id, bytes, length,
+            EZB_ZCL_ATTR_TYPE_OCTSTR);
 }
 
 int bmx_esp32_zigbee_core_configure_reporting(int source_ep, int destination_addr,
@@ -1626,7 +1823,8 @@ int bmx_esp32_zigbee_core_poll(int *kind, int *status, int *signal, int *endpoin
     *short_addr = event.short_addr; *pan_id = event.pan_id;
     *channel = event.channel; *factory_new = event.factory_new;
     *data_type = event.data_type; *value_size = event.value_size;
-    if (event.data_type == EZB_ZCL_ATTR_TYPE_STRING && event.value_size > 0)
+    if ((event.data_type == EZB_ZCL_ATTR_TYPE_STRING ||
+            event.data_type == EZB_ZCL_ATTR_TYPE_OCTSTR) && event.value_size > 0)
         memcpy(text, event.text, (size_t)event.value_size);
     return 1;
 }

@@ -133,6 +133,20 @@ with `ZigbeeConfigureReporting`. The examples alternate encoded values 20001
 and 20101, and the switch checks both readback and a changed report.
 `ZigbeeClearIlluminanceClusters` removes these additions while stopped.
 
+Call `ZigbeeAddPressureCluster(endpoint, role)` before starting to add a
+Pressure Measurement server or client. `ZigbeeSetLocalPressure` updates its
+signed 16-bit MeasuredValue in whole kilopascals; -32768 means unavailable.
+A client can discover cluster 0x0403, read attribute zero as `Int16`, and
+configure reports on that attribute.
+
+Call `ZigbeeAddOccupancyCluster(endpoint, role, sensorType)` before starting
+to add an Occupancy Sensing server or client. The default sensor type is PIR;
+ultrasonic, combined, and physical-contact types are also supported.
+`ZigbeeSetLocalOccupancy` sets attribute zero to zero (unoccupied) or one
+(occupied). Clients can discover cluster 0x0406, read the `Bitmap8` attribute,
+and request reports. `ZigbeeClearPressureClusters` and
+`ZigbeeClearOccupancyClusters` remove their respective additions while stopped.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -149,6 +163,15 @@ application, so a remote client can read its new value.
 `Zigbee é` and reads it back; the light then restores `ready` locally, which
 the switch reads again. `ZigbeeConfigureReporting` currently handles scalar
 types only.
+
+`ZigbeeAddCustomOctets` registers a binary octet-string attribute with up to
+64 bytes, including zero and non-UTF-8 byte values. `ZigbeeWriteOctets`
+writes a remote attribute and `ZigbeeSetCustomOctets` updates a local one.
+An incoming read or attribute event carries its bytes in `SZigbeeEvent.bytes`
+with `dataType` `ZigbeeTypeOctets` and `valueSize` set to the byte count.
+The public `ZigbeeTypeBitmap8`, `ZigbeeTypeBitmap16`, `ZigbeeTypeEnum8`, and
+`ZigbeeTypeEnum16` constants name types already accepted by the scalar read,
+write, and report paths.
 
 `ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
 ID, device ID, and four-bit version. It includes a Basic server; add other
@@ -197,8 +220,9 @@ toggles, clears the table, then adds the group again.
 Boolean, 8-bit, 16-bit, and 32-bit integer, bitmap, enum, and raw data types.
 Signed values are sign-extended in `value`; for a 32-bit unsigned value, use
 its raw bit pattern. For `ZigbeeTypeString`, `text` holds the decoded UTF-8
-value and `valueSize` counts its bytes. A string longer than 64 bytes has
-`valueSize` -1 and no `text`; an unsupported type has `valueSize` zero. The same
+value and `valueSize` counts its bytes. For `ZigbeeTypeOctets`, `bytes` holds
+the binary value. A string longer than 64 bytes has `valueSize` -1 and no
+`text` or `bytes`; an unsupported type has `valueSize` zero. The same
 fields are available on incoming attribute reports. `ZigbeeWriteScalar`
 writes one of those scalar types, with a `ZigbeeEventWrite` response carrying
 the remote status. The switch example reads the light's cluster revision and
@@ -207,9 +231,9 @@ writes then reads back its IdentifyTime attribute.
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
-  temperature sensor endpoint with humidity and illuminance measurements, a custom
-  scalar cluster, and a custom-profile endpoint; run with a `zczr` build on
-  H2 or C6.
+  sensor endpoint with temperature, humidity, illuminance, pressure, and
+  occupancy measurements, custom scalar, text, and binary attributes, and a
+  custom-profile endpoint; run with a `zczr` build on H2 or C6.
 - `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
@@ -226,9 +250,10 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints, optional Relative Humidity and Illuminance Measurement clusters, custom
-endpoint profiles, and custom scalar and short string attributes. Other
-standard cluster templates, additional nonscalar attribute types, further
+sensor endpoints, optional Relative Humidity, Illuminance, and Pressure
+Measurement and Occupancy Sensing clusters, custom endpoint profiles, and
+custom scalar, short string, and octet-string attributes. Other standard
+cluster templates, additional nonscalar attribute types, further
 security controls, OTA, and application-managed deep sleep are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
@@ -240,6 +265,13 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The C6 exposed Pressure Measurement (0x0403) and Occupancy Sensing (0x0406)
+  on endpoint 12. The H2 discovered both, read pressure as `Int16` and
+  occupancy as `Bitmap8`, and received changed reports. A custom octet-string
+  attribute carried the binary sequence `01 00 FE FF` through a remote write
+  and readback; the light's local setter restored `00 80 FF`. The full
+  two-board regression passed with `--require-pressure --require-occupancy
+  --require-octets` alongside all earlier checks.
 - With a fresh Zigbee storage partition on the H2 end device, the C6
   coordinator accepted its provisioned 18-byte install code and the H2 joined
   and sent bound On/Off toggles. The coordinator returned success from both

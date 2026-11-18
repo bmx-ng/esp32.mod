@@ -106,6 +106,31 @@ Rem
 bbdoc: Illuminance Measurement cluster identifier.
 End Rem
 Const ZigbeeClusterIlluminanceMeasurement:Int = $0400
+Rem
+bbdoc: Pressure Measurement cluster identifier.
+End Rem
+Const ZigbeeClusterPressureMeasurement:Int = $0403
+Rem
+bbdoc: Occupancy Sensing cluster identifier.
+End Rem
+Const ZigbeeClusterOccupancySensing:Int = $0406
+
+Rem
+bbdoc: PIR occupancy sensor type.
+End Rem
+Const ZigbeeOccupancySensorPIR:Int = 0
+Rem
+bbdoc: Ultrasonic occupancy sensor type.
+End Rem
+Const ZigbeeOccupancySensorUltrasonic:Int = 1
+Rem
+bbdoc: Combined PIR and ultrasonic occupancy sensor type.
+End Rem
+Const ZigbeeOccupancySensorPIRUltrasonic:Int = 2
+Rem
+bbdoc: Physical-contact occupancy sensor type.
+End Rem
+Const ZigbeeOccupancySensorContact:Int = 3
 
 Rem
 bbdoc: Zigbee stack is stopped.
@@ -222,6 +247,14 @@ bbdoc: ZCL Boolean scalar data type.
 End Rem
 Const ZigbeeTypeBool:Int = $10
 Rem
+bbdoc: ZCL 8-bit bitmap data type.
+End Rem
+Const ZigbeeTypeBitmap8:Int = $18
+Rem
+bbdoc: ZCL 16-bit bitmap data type.
+End Rem
+Const ZigbeeTypeBitmap16:Int = $19
+Rem
 bbdoc: ZCL unsigned 8-bit scalar data type.
 End Rem
 Const ZigbeeTypeUInt8:Int = $20
@@ -245,6 +278,19 @@ Rem
 bbdoc: ZCL signed 32-bit scalar data type.
 End Rem
 Const ZigbeeTypeInt32:Int = $2b
+Rem
+bbdoc: ZCL 8-bit enumeration data type.
+End Rem
+Const ZigbeeTypeEnum8:Int = $30
+Rem
+bbdoc: ZCL 16-bit enumeration data type.
+End Rem
+Const ZigbeeTypeEnum16:Int = $31
+
+Rem
+bbdoc: ZCL length-prefixed binary octet string data type.
+End Rem
+Const ZigbeeTypeOctets:Int = $41
 
 Rem
 bbdoc: ZCL length-prefixed UTF-8 character string data type.
@@ -255,6 +301,10 @@ Rem
 bbdoc: Maximum UTF-8 byte length handled by Zigbee string attributes.
 End Rem
 Const ZigbeeStringMaxBytes:Int = 64
+Rem
+bbdoc: Maximum binary byte length handled by Zigbee octet-string attributes.
+End Rem
+Const ZigbeeOctetsMaxBytes:Int = 64
 
 Rem
 bbdoc: Server role for a custom cluster.
@@ -332,13 +382,17 @@ Struct SZigbeeEvent
 	End Rem
 	Field dataType:Int
 	Rem
-	bbdoc: Number of value bytes copied; negative means the string exceeded 64 bytes.
+	bbdoc: Number of value bytes copied; negative means a string exceeded 64 bytes.
 	End Rem
 	Field valueSize:Int
 	Rem
 	bbdoc: Text for a ZigbeeTypeString attribute event.
 	End Rem
 	Field text:String
+	Rem
+	bbdoc: Binary data for a ZigbeeTypeOctets attribute event; Null for other types.
+	End Rem
+	Field bytes:Byte[]
 End Struct
 
 Rem
@@ -387,12 +441,22 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_illuminance_cluster"
 	Function _ZigbeeCoreClearIlluminanceClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_illuminance_clusters"
+	Function _ZigbeeCoreAddPressureCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_pressure_cluster"
+	Function _ZigbeeCoreClearPressureClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_pressure_clusters"
+	Function _ZigbeeCoreAddOccupancyCluster:Int(endpoint:Int, role:Int, sensorType:Int) = ..
+		"bmx_esp32_zigbee_core_add_occupancy_cluster"
+	Function _ZigbeeCoreClearOccupancyClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_occupancy_clusters"
 	Function _ZigbeeCoreAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int) = ..
 		"bmx_esp32_zigbee_core_add_custom_cluster"
 	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		dataType:Int, access:Int, value:Int) = "bmx_esp32_zigbee_core_add_custom_scalar"
 	Function _ZigbeeCoreAddCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		access:Int, text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_string"
+	Function _ZigbeeCoreAddCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_octets"
 	Function _ZigbeeCoreClearCustomClusters:Int() = "bmx_esp32_zigbee_core_clear_custom_clusters"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
@@ -440,13 +504,22 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_humidity"
 	Function _ZigbeeCoreSetLocalIlluminance:Int(endpoint:Int, encodedValue:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_illuminance"
+	Function _ZigbeeCoreSetLocalPressure:Int(endpoint:Int, kilopascals:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_pressure"
+	Function _ZigbeeCoreSetLocalOccupancy:Int(endpoint:Int, occupied:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_occupancy"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_string"
+	Function _ZigbeeCoreSetCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_octets"
 	Function _ZigbeeCoreWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int, text:Byte Ptr, ..
 		length:Int) = "bmx_esp32_zigbee_core_write_string"
+	Function _ZigbeeCoreWriteOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_octets"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
@@ -554,6 +627,40 @@ Function ZigbeeClearIlluminanceClusters:Int()
 End Function
 
 Rem
+bbdoc: Adds a standard Pressure Measurement server or client cluster.
+about: Register it on a configured endpoint before ZigbeeStart. A server's
+MeasuredValue attribute is a signed 16-bit integer in kilopascals.
+End Rem
+Function ZigbeeAddPressureCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddPressureCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes configured Pressure Measurement clusters while stopped.
+End Rem
+Function ZigbeeClearPressureClusters:Int()
+	Return _ZigbeeCoreClearPressureClusters()
+End Function
+
+Rem
+bbdoc: Adds a standard Occupancy Sensing server or client cluster.
+about: Register it on a configured endpoint before ZigbeeStart. For a server,
+sensorType selects PIR (default), ultrasonic, combined, or physical contact.
+The Occupancy attribute is a one-bit bitmap in an 8-bit value.
+End Rem
+Function ZigbeeAddOccupancyCluster:Int(endpoint:Int, role:Int, ..
+		sensorType:Int = ZigbeeOccupancySensorPIR)
+	Return _ZigbeeCoreAddOccupancyCluster(endpoint, role, sensorType)
+End Function
+
+Rem
+bbdoc: Removes configured Occupancy Sensing clusters while stopped.
+End Rem
+Function ZigbeeClearOccupancyClusters:Int()
+	Return _ZigbeeCoreClearOccupancyClusters()
+End Function
+
+Rem
 bbdoc: Adds a custom server or client cluster to a configured endpoint before ZigbeeStart.
 about: Custom cluster identifiers are 0x8000 to 0xFFFF. The endpoint must be
 the primary endpoint passed to ZigbeeStart or one registered with
@@ -593,6 +700,20 @@ Function ZigbeeAddCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 		access, bytes, Int(length))
 	MemFree(bytes)
 	Return result
+End Function
+
+Rem
+bbdoc: Adds a binary octet-string attribute to a custom server cluster.
+about: Register its cluster first and call while stopped. The value may contain
+zero bytes or any byte values, up to 64 bytes. Combine ZigbeeAttributeRead
+and ZigbeeAttributeWrite for access. Octet-string reporting is not supported.
+End Rem
+Function ZigbeeAddCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeOctetsMaxBytes Then Return -5
+	Return _ZigbeeCoreAddCustomOctets(endpoint, clusterId, attributeId, access, ..
+		value, value.length)
 End Function
 
 Rem
@@ -857,6 +978,25 @@ Function ZigbeeSetLocalIlluminance:Int(endpoint:Int, encodedValue:Int)
 End Function
 
 Rem
+bbdoc: Updates a local Pressure Measurement server's MeasuredValue.
+about: The value is an integer number of kilopascals from -32767 to 32767;
+-32768 means unavailable. Read or configure reporting on attribute zero as
+ZigbeeTypeInt16.
+End Rem
+Function ZigbeeSetLocalPressure:Int(endpoint:Int, kilopascals:Int)
+	Return _ZigbeeCoreSetLocalPressure(endpoint, kilopascals)
+End Function
+
+Rem
+bbdoc: Updates a local Occupancy Sensing server's Occupancy bitmap.
+about: Pass zero for unoccupied or one for occupied. Read or configure
+reporting on attribute zero as ZigbeeTypeBitmap8.
+End Rem
+Function ZigbeeSetLocalOccupancy:Int(endpoint:Int, occupied:Int)
+	Return _ZigbeeCoreSetLocalOccupancy(endpoint, occupied)
+End Function
+
+Rem
 bbdoc: Updates one local custom scalar server attribute.
 about: The attribute must have been registered before ZigbeeStart. The value
 uses its registered ZCL type. For a 32-bit unsigned attribute, pass the raw
@@ -884,6 +1024,17 @@ Function ZigbeeSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 		bytes, Int(length))
 	MemFree(bytes)
 	Return result
+End Function
+
+Rem
+bbdoc: Updates a local custom binary octet-string attribute.
+about: The attribute must have been registered before ZigbeeStart. At most
+64 bytes are accepted.
+End Rem
+Function ZigbeeSetCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeOctetsMaxBytes Then Return -5
+	Return _ZigbeeCoreSetCustomOctets(endpoint, clusterId, attributeId, value, value.length)
 End Function
 
 Rem
@@ -975,7 +1126,8 @@ Rem
 bbdoc: Requests one attribute from any remote cluster.
 about: The response is a ZigbeeEventRead. Boolean, 8-bit, 16-bit and 32-bit
 integer, bitmap, enum and raw data types are copied into value with their
-ZCL dataType and valueSize. Other types report valueSize zero.
+ZCL dataType and valueSize. Character strings appear in text and octet strings
+in bytes. Other types report valueSize zero.
 End Rem
 Function ZigbeeReadAttribute:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int)
@@ -1015,6 +1167,19 @@ Function ZigbeeWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 End Function
 
 Rem
+bbdoc: Writes one remote binary octet-string attribute.
+about: At most 64 bytes are accepted. Poll for ZigbeeEventWrite to inspect
+the remote status.
+End Rem
+Function ZigbeeWriteOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeOctetsMaxBytes Then Return -5
+	Return _ZigbeeCoreWriteOctets(sourceEndpoint, destinationAddress, destinationEndpoint, ..
+		clusterId, attributeId, value, value.length)
+End Function
+
+Rem
 bbdoc: Removes the oldest event from the native Zigbee queue.
 returns: True if an event was returned; False if the queue is empty.
 about: Native callbacks copy bounded values into a queue. The
@@ -1028,8 +1193,14 @@ Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
 		ZigbeeStringMaxBytes)
 	If found Then
 		event.text = ""
+		event.bytes = Null
 		If event.dataType = ZigbeeTypeString And event.valueSize > 0 Then
 			event.text = String.FromUTF8Bytes(bytes, event.valueSize)
+		Else If event.dataType = ZigbeeTypeOctets And event.valueSize >= 0 And ..
+				event.valueSize <= ZigbeeOctetsMaxBytes Then
+			event.bytes = New Byte[event.valueSize]
+			If event.valueSize > 0 Then MemCopy(Varptr event.bytes[0], Varptr bytes[0], ..
+				Size_T(event.valueSize))
 		End If
 	End If
 	Return found

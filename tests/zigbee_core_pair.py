@@ -56,6 +56,12 @@ def main():
                         help="also require humidity discovery, readback and a changed report")
     parser.add_argument("--require-illuminance", action="store_true",
                         help="also require illuminance discovery, readback and a changed report")
+    parser.add_argument("--require-pressure", action="store_true",
+                        help="also require pressure discovery, readback and a changed report")
+    parser.add_argument("--require-occupancy", action="store_true",
+                        help="also require occupancy discovery, readback and a changed report")
+    parser.add_argument("--require-octets", action="store_true",
+                        help="also require binary octet-string write, readback and local restoration")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -73,6 +79,9 @@ def main():
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
     illuminance_match = illuminance_read = illuminance_report = False
+    pressure_match = pressure_read = pressure_report = False
+    occupancy_match = occupancy_read = occupancy_report = False
+    octets_write = octets_read = octets_restored = False
     group_viewed = group_member = group_membership_complete = False
     group_clear_submission = group_empty = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
@@ -97,6 +106,12 @@ def main():
                 toggle = True
             if name == "switch" and "String write submission=0" in line:
                 string_submission = True
+            if name == "switch" and "Octets write submission=0" in line:
+                octets_write = True
+            if name == "switch" and "Octets read valid=1" in line and octets_write:
+                octets_read = True
+            if name == "switch" and "Octets restored valid=1" in line and octets_read:
+                octets_restored = True
             if name == "switch" and "Group toggle submission=0" in line:
                 group = True
             if name == "switch" and "Remove all groups submission=0" in line:
@@ -130,6 +145,12 @@ def main():
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=12 cluster=1024" in line):
                 illuminance_match = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=12 cluster=1027" in line):
+                pressure_match = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=12 cluster=1030" in line):
+                occupancy_match = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -161,6 +182,12 @@ def main():
                 if ("cluster=1024 attribute=0" in line and "type=33" in line
                         and "size=2" in line and "value=20001 " in line):
                     illuminance_read = True
+                if ("cluster=1027 attribute=0" in line and "type=41" in line
+                        and "size=2" in line and ("value=101 " in line or "value=102 " in line)):
+                    pressure_read = True
+                if ("cluster=1030 attribute=0" in line and "type=24" in line
+                        and "size=1" in line and ("value=0 " in line or "value=1 " in line)):
+                    occupancy_read = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=1026 attribute=0" in line and "type=41 size=2" in line
                     and "value=2355 " in line):
@@ -173,6 +200,14 @@ def main():
                     and "cluster=1024 attribute=0" in line and "type=33 size=2" in line
                     and "value=20101 " in line):
                 illuminance_report = True
+            if (name == "switch" and "Zigbee event 15 status=0" in line
+                    and "cluster=1027 attribute=0" in line and "type=41 size=2" in line
+                    and "value=102 " in line):
+                pressure_report = True
+            if (name == "switch" and "Zigbee event 15 status=0" in line
+                    and "cluster=1030 attribute=0" in line and "type=24 size=1" in line
+                    and "value=1 " in line):
+                occupancy_report = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=6 attribute=0" in line):
                 report = True
@@ -206,7 +241,13 @@ def main():
                     and (humidity_match and humidity_read and humidity_report
                          or not args.require_humidity)
                     and (illuminance_match and illuminance_read and illuminance_report
-                         or not args.require_illuminance)):
+                         or not args.require_illuminance)
+                    and (pressure_match and pressure_read and pressure_report
+                         or not args.require_pressure)
+                    and (occupancy_match and occupancy_read and occupancy_report
+                         or not args.require_occupancy)
+                    and (octets_write and octets_read and octets_restored
+                         or not args.require_octets)):
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
@@ -223,7 +264,10 @@ def main():
                       + (", and received a changed temperature report"
                          if args.require_temperature_report else "")
                       + (", and read and received humidity" if args.require_humidity else "")
-                      + (", and read and received illuminance" if args.require_illuminance else ""), flush=True)
+                      + (", and read and received illuminance" if args.require_illuminance else "")
+                      + (", and read and received pressure" if args.require_pressure else "")
+                      + (", and read and received occupancy" if args.require_occupancy else "")
+                      + (", and wrote and read back binary octets" if args.require_octets else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
               f"report={report}, group={group}, group_change={group_change}, "
@@ -240,7 +284,12 @@ def main():
               f"temperature_read={temperature_read}, temperature_report={temperature_report}, "
               f"humidity_match={humidity_match}, humidity_read={humidity_read}, "
               f"humidity_report={humidity_report}, illuminance_match={illuminance_match}, "
-              f"illuminance_read={illuminance_read}, illuminance_report={illuminance_report}",
+              f"illuminance_read={illuminance_read}, illuminance_report={illuminance_report}, "
+              f"pressure_match={pressure_match}, pressure_read={pressure_read}, "
+              f"pressure_report={pressure_report}, occupancy_match={occupancy_match}, "
+              f"occupancy_read={occupancy_read}, occupancy_report={occupancy_report}, "
+              f"octets_write={octets_write}, octets_read={octets_read}, "
+              f"octets_restored={octets_restored}",
               flush=True)
         return 1
     finally:
