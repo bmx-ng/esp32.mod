@@ -27,6 +27,10 @@ While True
 			joined = True
 			Print "Deep-sleep saved network restored"
 		End If
+		If event.kind = ZigbeeEventStartup And event.status <> 0 Then
+			result = ZigbeeJoinNetwork()
+			Print "Deep-sleep retry join submission=" + result
+		End If
 		If event.kind = ZigbeeEventStopped Then
 			If event.status Then RuntimeError "Zigbee stop failed: " + event.status
 			Print "Deep-sleep Zigbee stopped"

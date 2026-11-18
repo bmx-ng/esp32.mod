@@ -38,6 +38,7 @@ If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee coordinator/light starting"
 
 Local event:SZigbeeEvent
+Local nextNetworkStatus:UInt = MilliSecs() + 10000
 Local nextCustomUpdate:UInt = MilliSecs() + 20000
 Local nextTemperatureUpdate:UInt = MilliSecs() + 10000
 Local temperature:Int = 2345
@@ -111,12 +112,20 @@ While True
 			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterElectricalMeasurement)
 			Print "Electrical report binding result=" + result
 		End If
-		If event.kind = ZigbeeEventFormed Or ..
-			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
+		If (event.kind = ZigbeeEventFormed And event.status = 0) Or ..
+			(event.kind = ZigbeeEventStartup And event.status = 0 And Not event.factoryNew) Then
 			result = ZigbeePermitJoining(180)
 			Print "Permit joining result=" + result
 		End If
 	Wend
+	If MilliSecs() >= nextNetworkStatus Then
+		Local network:SZigbeeNetworkInfo
+		result = ZigbeeGetNetworkInfo(network)
+		Print "Coordinator network result=" + result + " joined=" + network.joined + ..
+			" factoryNew=" + network.factoryNew + " pan=" + network.panId + ..
+			" channel=" + network.channel
+		nextNetworkStatus = MilliSecs() + 10000
+	End If
 	If MilliSecs() >= nextCustomUpdate Then
 		result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)
 		Print "Custom local update result=" + result

@@ -146,7 +146,11 @@ While True
 			End Select
 		End If
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
-		If event.kind = ZigbeeEventStartup And Not event.factoryNew Then joined = True
+		If event.kind = ZigbeeEventStartup And event.status = 0 And Not event.factoryNew Then joined = True
+		If event.kind = ZigbeeEventStartup And event.status <> 0 Then
+			result = ZigbeeJoinNetwork()
+			Print "Retry join submission=" + result
+		End If
 		If event.kind = ZigbeeEventMatch And event.cluster = 6 Then
 			If Not bound And Not bindPending Then
 				lightAddress = event.shortAddress
