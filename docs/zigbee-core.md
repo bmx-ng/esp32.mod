@@ -229,6 +229,67 @@ writes one of those scalar types, with a `ZigbeeEventWrite` response carrying
 the remote status. The switch example reads the light's cluster revision and
 writes then reads back its IdentifyTime attribute.
 
+## Zigbee OTA firmware updates
+
+`ZigbeeAddOtaClient(endpoint, manufacturer, imageType, version)` adds the OTA
+Upgrade client cluster before `ZigbeeStart`. A matching server can notify the
+client, or the client can discover the server with `ZigbeeFindServers(0x0019)`
+and call `ZigbeeOtaQuery`. The native client checks the Zigbee OTA file header,
+requires a strictly newer version and one raw firmware sub-element, and streams
+that firmware into the inactive ESP32 OTA slot. ESP-IDF validates the firmware
+image before it becomes the boot partition. The client reboots after the
+server's upgrade response. This path requires an OTA partition layout. With
+bootloader rollback enabled, the updated application must call
+`OTAMarkRunningImageValid` after its startup checks; the reference client does
+so after Zigbee starts successfully.
+
+`ZigbeeAddOtaServer(endpoint)` adds an image server. Once running,
+`ZigbeeOtaServeImage` registers one complete Zigbee OTA file from stable memory
+such as `IncbinPtr`; retain that memory until `ZigbeeOtaRemoveImage` or
+`ZigbeeStop`. `ZigbeeOtaNotify` announces the image to a device. An
+`SZigbeeEvent` with kind `ZigbeeEventOta` reports client or server activity:
+`dataType` is the cluster role (client or server), `signal` is one of the
+`ZigbeeOta*` progress constants, `value` is a version for query responses or
+byte progress during transfer, and `attribute` is the total byte count when
+known. `status` is zero on successful progress. A query response uses signal
+`ZigbeeOtaQueryResponse` and its ZCL status in `status`.
+
+The reference H2 client has separate version 1 and version 2 examples. From
+`mod/esp32.mod`, build both client versions and package the version 2 application
+image:
+
+```sh
+../../bin/bmk makeapp -r -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v1.bmx
+../../bin/bmk makeapp -r -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v2.bmx
+python3 tests/zigbee_ota_pack.py examples/zigbee_ota_client_v2.bin \
+  examples/assets/zigbee_ota_update.ota \
+  --manufacturer 0x1234 --image-type 1 --version 2
+```
+
+Flash the C6 server after packaging, then flash version 1 to the H2:
+
+```sh
+../../bin/bmk makeapp -r -x -l esp32 -g riscv32 -board xiao_esp32c6 examples/zigbee_ota_server.bmx
+../../bin/bmk makeapp -r -x -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v1.bmx
+```
+
+The server embeds the generated `.ota` package. The client discovers the server,
+queries for the newer image, downloads it, and boots version 2. Run
+`tests/zigbee_ota_pair.py` with `--server` and `--client` serial ports and
+`--require-mark-valid` to check the transfer and rollback confirmation. Start
+the monitor before flashing version 1 if you want the complete startup log. The
+monitor requires PySerial, available in the ESP-IDF Python environment. The
+generated package is ignored by Git.
+
+This implementation accepts the mandatory 56-byte Zigbee OTA header without
+optional fields and a single uncompressed firmware element, without additional
+signature or delta sub-elements. Production deployments should use
+ESP32 secure boot and signed firmware as appropriate to their trust model.
+
+Hardware validation on a XIAO ESP32-C6 server and Waveshare ESP32-H2 client
+completed the version 1 to version 2 transfer, image validation, boot slot
+activation, reboot, and rollback confirmation.
+
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
@@ -241,6 +302,8 @@ writes then reads back its IdentifyTime attribute.
 - `examples/zigbee_core_lifecycle.bmx`: two bounded start/stop cycles.
 - `examples/zigbee_sleepy_switch.bmx`: sleepy end-device switch that yields
   between bound On/Off commands; run with a `zed` build on H2 or C6.
+- `examples/zigbee_ota_client_v1.bmx`, `zigbee_ota_client_v2.bmx`, and
+  `zigbee_ota_server.bmx`: two-board OTA transfer and reboot proof.
 
 Use each board's `ESPPORT` and the normal `bmk makeapp -a -r -x -l esp32 -g
 riscv32 -board <board> <example>` flow. The H2 may need a manual reset after
@@ -255,7 +318,7 @@ sensor endpoints, optional Relative Humidity, Illuminance, and Pressure
 Measurement and Occupancy Sensing clusters, custom endpoint profiles, and
 custom scalar, short string, and octet-string attributes. Other standard
 cluster templates, additional nonscalar attribute types, further
-security controls, OTA, and application-managed deep sleep are further work.
+security controls, and application-managed deep sleep are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.

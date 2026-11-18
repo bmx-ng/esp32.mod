@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.4"
+ModuleInfo "Version: 1.5"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -70,6 +70,10 @@ Rem
 bbdoc: Occupancy Sensing cluster identifier.
 End Rem
 Const ZigbeeClusterOccupancySensing:Int = $0406
+Rem
+bbdoc: OTA Upgrade cluster identifier.
+End Rem
+Const ZigbeeClusterOtaUpgrade:Int = $0019
 
 Rem
 bbdoc: PIR occupancy sensor type.
@@ -197,6 +201,19 @@ Rem
 bbdoc: End of a Get Group Membership response; value is count and attribute is remaining capacity.
 End Rem
 Const ZigbeeEventGroupMembershipComplete:Int = 21
+Rem
+bbdoc: OTA Upgrade progress or a query response; see signal and dataType.
+End Rem
+Const ZigbeeEventOta:Int = 22
+
+Const ZigbeeOtaQueryResponse:Int = -1
+Const ZigbeeOtaStart:Int = 0
+Const ZigbeeOtaReceiving:Int = 1
+Const ZigbeeOtaSending:Int = 2
+Const ZigbeeOtaCheck:Int = 3
+Const ZigbeeOtaApply:Int = 4
+Const ZigbeeOtaFinish:Int = 5
+Const ZigbeeOtaAbort:Int = 6
 
 Rem
 bbdoc: ZCL Boolean scalar data type.
@@ -405,6 +422,19 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_occupancy_cluster"
 	Function _ZigbeeCoreClearOccupancyClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_occupancy_clusters"
+	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
+		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
+	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
+	Function _ZigbeeCoreClearOtaClusters:Int() = "bmx_esp32_zigbee_core_clear_ota_clusters"
+	Function _ZigbeeCoreOtaServeImage:Int(endpoint:Int, image:Byte Ptr, size:UInt) = ..
+		"bmx_esp32_zigbee_core_ota_serve_image"
+	Function _ZigbeeCoreOtaRemoveImage:Int(endpoint:Int) = ..
+		"bmx_esp32_zigbee_core_ota_remove_image"
+	Function _ZigbeeCoreOtaNotify:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, manufacturer:Int, imageType:Int, version:UInt) = ..
+		"bmx_esp32_zigbee_core_ota_notify"
+	Function _ZigbeeCoreOtaQuery:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_ota_query"
 	Function _ZigbeeCoreAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int) = ..
 		"bmx_esp32_zigbee_core_add_custom_cluster"
 	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -614,6 +644,69 @@ bbdoc: Removes configured Occupancy Sensing clusters while stopped.
 End Rem
 Function ZigbeeClearOccupancyClusters:Int()
 	Return _ZigbeeCoreClearOccupancyClusters()
+End Function
+
+Rem
+bbdoc: Adds one OTA Upgrade client on a configured endpoint before ZigbeeStart.
+about: manufacturer and imageType identify firmware for this device. version is
+the running image's monotonically increasing file version. The client accepts
+a newer matching Zigbee OTA file with one raw firmware sub-element, validates
+the ESP image, writes the inactive OTA slot, and reboots after activation.
+End Rem
+Function ZigbeeAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, version:UInt)
+	Return _ZigbeeCoreAddOtaClient(endpoint, manufacturer, imageType, version)
+End Function
+
+Rem
+bbdoc: Adds one OTA Upgrade image server on a configured endpoint before ZigbeeStart.
+End Rem
+Function ZigbeeAddOtaServer:Int(endpoint:Int)
+	Return _ZigbeeCoreAddOtaServer(endpoint)
+End Function
+
+Rem
+bbdoc: Removes configured OTA Upgrade clusters while stopped.
+End Rem
+Function ZigbeeClearOtaClusters:Int()
+	Return _ZigbeeCoreClearOtaClusters()
+End Function
+
+Rem
+bbdoc: Adds a complete Zigbee OTA file to a running image server.
+about: The file must have a Zigbee OTA header and one raw firmware sub-element.
+image must point to stable memory until ZigbeeOtaRemoveImage or ZigbeeStop;
+IncbinPtr is suitable. Only one image can be served at a time.
+End Rem
+Function ZigbeeOtaServeImage:Int(endpoint:Int, image:Byte Ptr, size:UInt)
+	Return _ZigbeeCoreOtaServeImage(endpoint, image, size)
+End Function
+
+Rem
+bbdoc: Removes the current OTA image from a running image server.
+End Rem
+Function ZigbeeOtaRemoveImage:Int(endpoint:Int)
+	Return _ZigbeeCoreOtaRemoveImage(endpoint)
+End Function
+
+Rem
+bbdoc: Notifies a remote OTA client that a served image is available.
+about: Call after ZigbeeOtaServeImage. The manufacturer, image type and version
+must match the image header. The client then queries and downloads the image.
+End Rem
+Function ZigbeeOtaNotify:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, manufacturer:Int, imageType:Int, version:UInt)
+	Return _ZigbeeCoreOtaNotify(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, manufacturer, imageType, version)
+End Function
+
+Rem
+bbdoc: Requests a newer image from a discovered remote OTA Upgrade server.
+about: The configured client manufacturer, image type and version are sent.
+The response appears as ZigbeeEventOta with signal ZigbeeOtaQueryResponse.
+End Rem
+Function ZigbeeOtaQuery:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int)
+	Return _ZigbeeCoreOtaQuery(sourceEndpoint, destinationAddress, destinationEndpoint)
 End Function
 
 Rem

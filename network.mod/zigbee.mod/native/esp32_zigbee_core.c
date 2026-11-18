@@ -4,6 +4,8 @@
 #include <string.h>
 #include "esp_err.h"
 #include "esp_pm.h"
+#include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -22,6 +24,7 @@
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
 #define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
 #define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 18u
+#define ZB_OTA_PREFIX_BYTES 128u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
 #define ZB_EVENT_STARTUP 2
@@ -44,6 +47,7 @@
 #define ZB_EVENT_GROUP_VIEWED 19
 #define ZB_EVENT_GROUP_MEMBER 20
 #define ZB_EVENT_GROUP_MEMBERSHIP_COMPLETE 21
+#define ZB_EVENT_OTA 22
 
 typedef struct {
     int32_t kind, status, signal, endpoint, cluster, attribute, value;
@@ -85,6 +89,22 @@ typedef struct {
 } zb_measurement_cluster_t;
 
 typedef struct {
+    uint8_t endpoint;
+    uint16_t manufacturer, image_type;
+    uint32_t version;
+    bool configured;
+} zb_ota_cluster_t;
+
+typedef struct {
+    esp_ota_handle_t handle;
+    const esp_partition_t *partition;
+    uint32_t total, received, image_offset, image_size, written;
+    uint8_t prefix[ZB_OTA_PREFIX_BYTES];
+    uint32_t prefix_used;
+    bool active, validated, applied, header_valid;
+} zb_ota_download_t;
+
+typedef struct {
     uint8_t endpoint, type, access;
     uint16_t cluster, attribute;
     int32_t value;
@@ -114,6 +134,13 @@ static zb_illuminance_cluster_t illuminance_clusters[ZB_MAX_ILLUMINANCE_CLUSTERS
 static uint8_t illuminance_cluster_count;
 static zb_measurement_cluster_t measurement_clusters[ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS];
 static uint8_t measurement_cluster_count;
+static zb_ota_cluster_t ota_client, ota_server;
+static ezb_zcl_ota_file_handle_t ota_server_file;
+static uint16_t ota_served_manufacturer, ota_served_image_type;
+static uint32_t ota_served_version;
+static zb_ota_download_t ota_download;
+
+int bmx_esp32_zigbee_core_state(void);
 
 static int endpoint_kind(int endpoint)
 {
@@ -217,6 +244,167 @@ static int scalar_size(int type)
     return event.value_size;
 }
 
+static uint16_t ota_u16(const uint8_t *data)
+{
+    return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
+}
+
+static uint32_t ota_u32(const uint8_t *data)
+{
+    return (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
+            ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+static void ota_emit(int endpoint, int progress, int status, uint32_t value, uint32_t total,
+        int role)
+{
+    zb_event_t event = {.kind = ZB_EVENT_OTA, .status = status, .signal = progress,
+                        .endpoint = endpoint, .cluster = EZB_ZCL_CLUSTER_ID_OTA_UPGRADE,
+                        .value = (int32_t)value, .attribute = (int32_t)total,
+                        .data_type = role};
+    emit(event);
+}
+
+static void ota_abort_download(void)
+{
+    if (ota_download.active) (void)esp_ota_abort(ota_download.handle);
+    memset(&ota_download, 0, sizeof(ota_download));
+}
+
+/* This first firmware path accepts one complete, uncompressed upgrade-image element. */
+static esp_err_t ota_parse_prefix(void)
+{
+    const uint8_t *data = ota_download.prefix;
+    if (ota_download.prefix_used < 56) return ESP_OK;
+    uint16_t header_size = ota_u16(data + 6);
+    if (ota_u32(data) != EZB_ZCL_OTA_FILE_IDENTIFIER ||
+            ota_u16(data + 4) != EZB_ZCL_OTA_FILE_HEADER_VERSION ||
+            header_size != 56 || ota_u16(data + 8) != 0 ||
+            ota_u16(data + 10) != ota_client.manufacturer ||
+            ota_u16(data + 12) != ota_client.image_type ||
+            ota_u32(data + 14) <= ota_client.version ||
+            ota_u32(data + 52) != ota_download.total)
+        return ESP_ERR_INVALID_RESPONSE;
+    if ((uint32_t)header_size + 6u > ota_download.total) return ESP_ERR_INVALID_SIZE;
+    if (ota_download.prefix_used < (uint32_t)header_size + 6u) return ESP_OK;
+    uint32_t image_size = ota_u32(data + header_size + 2);
+    if (ota_u16(data + header_size) != EZB_ZCL_OTA_FILE_TAG_ID_UPGRADE_IMAGE ||
+            !image_size || image_size > ota_download.partition->size ||
+            image_size != ota_download.total - (uint32_t)header_size - 6u)
+        return ESP_ERR_INVALID_SIZE;
+    ota_download.image_offset = (uint32_t)header_size + 6u;
+    ota_download.image_size = image_size;
+    ota_download.header_valid = true;
+    return ESP_OK;
+}
+
+static esp_err_t ota_receive(uint32_t offset, const uint8_t *block, uint8_t size)
+{
+    if (!ota_download.active || !block || !size ||
+            offset > ota_download.total || size > ota_download.total - offset)
+        return ESP_ERR_INVALID_ARG;
+    if (offset < ota_download.received &&
+            size <= ota_download.received - offset) return ESP_OK; /* Retransmitted block. */
+    if (offset != ota_download.received) return ESP_ERR_INVALID_STATE;
+    uint32_t prefix_end = offset + size;
+    if (prefix_end > ZB_OTA_PREFIX_BYTES) prefix_end = ZB_OTA_PREFIX_BYTES;
+    if (prefix_end > ota_download.prefix_used && offset <= ota_download.prefix_used) {
+        uint32_t length = prefix_end - ota_download.prefix_used;
+        memcpy(ota_download.prefix + ota_download.prefix_used,
+                block + ota_download.prefix_used - offset, length);
+        ota_download.prefix_used = prefix_end;
+    }
+    if (!ota_download.header_valid) {
+        esp_err_t result = ota_parse_prefix();
+        if (result != ESP_OK) return result;
+    }
+    if (ota_download.header_valid && offset + size > ota_download.image_offset) {
+        uint32_t skip = offset < ota_download.image_offset ?
+                ota_download.image_offset - offset : 0;
+        uint32_t length = size - skip;
+        esp_err_t result = esp_ota_write(ota_download.handle, block + skip, length);
+        if (result != ESP_OK) return result;
+        ota_download.written += length;
+    }
+    ota_download.received += size;
+    if ((ota_download.written & 0x3fff) < size ||
+            ota_download.received == ota_download.total)
+        ota_emit(ota_client.endpoint, EZB_ZCL_OTA_UPGRADE_PROGRESS_RECEIVING, ESP_OK,
+                ota_download.written, ota_download.image_size, EZB_ZCL_CLUSTER_CLIENT);
+    return ESP_OK;
+}
+
+static void ota_reboot_task(void *context)
+{
+    (void)context;
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+}
+
+static void ota_client_progress(ezb_zcl_ota_upgrade_client_progress_message_t *message)
+{
+    esp_err_t result = ESP_OK;
+    int progress = message->in.progress;
+    if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_START) {
+        ota_abort_download();
+        uint32_t size = message->in.start.image_size;
+        const esp_partition_t *partition = esp_ota_get_next_update_partition(NULL);
+        if (!partition) result = ESP_ERR_NOT_FOUND;
+        else if (message->in.start.manuf_code != ota_client.manufacturer ||
+                message->in.start.image_type != ota_client.image_type ||
+                message->in.start.file_version <= ota_client.version ||
+                size < 62 || size > partition->size + ZB_OTA_PREFIX_BYTES)
+            result = ESP_ERR_INVALID_ARG;
+        else {
+            result = esp_ota_begin(partition, OTA_SIZE_UNKNOWN, &ota_download.handle);
+            if (result == ESP_OK) {
+                ota_download.partition = partition;
+                ota_download.total = size;
+                ota_download.active = true;
+            }
+        }
+        ota_emit(ota_client.endpoint, progress, result, 0, size, EZB_ZCL_CLUSTER_CLIENT);
+    } else if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_RECEIVING) {
+        result = ota_receive(message->in.receiving.file_offset,
+                message->in.receiving.block, message->in.receiving.block_size);
+    } else if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_CHECK) {
+        if (!ota_download.active || !ota_download.header_valid ||
+                ota_download.received != ota_download.total ||
+                ota_download.written != ota_download.image_size)
+            result = ESP_ERR_INVALID_STATE;
+        else {
+            result = esp_ota_end(ota_download.handle);
+            ota_download.active = false;
+            ota_download.validated = result == ESP_OK;
+        }
+        ota_emit(ota_client.endpoint, progress, result, ota_download.written,
+                ota_download.image_size, EZB_ZCL_CLUSTER_CLIENT);
+    } else if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_APPLY) {
+        result = ota_download.validated ?
+                esp_ota_set_boot_partition(ota_download.partition) : ESP_ERR_INVALID_STATE;
+        ota_download.applied = result == ESP_OK;
+        ota_emit(ota_client.endpoint, progress, result, ota_download.written,
+                ota_download.image_size, EZB_ZCL_CLUSTER_CLIENT);
+    } else if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_FINISH) {
+        result = ota_download.applied ? ESP_OK : ESP_ERR_INVALID_STATE;
+        if (result == ESP_OK && xTaskCreate(ota_reboot_task, "zigbee_ota_reboot",
+                2048, NULL, 5, NULL) != pdPASS) result = ESP_ERR_NO_MEM;
+        ota_emit(ota_client.endpoint, progress, result, ota_download.written,
+                ota_download.image_size, EZB_ZCL_CLUSTER_CLIENT);
+        message->out.result = result == ESP_OK ? EZB_ZCL_STATUS_SUCCESS : EZB_ZCL_STATUS_ABORT;
+        return;
+    } else if (progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_ABORT) {
+        ota_abort_download();
+        ota_emit(ota_client.endpoint, progress, ESP_FAIL, 0, 0, EZB_ZCL_CLUSTER_CLIENT);
+    }
+    if (result != ESP_OK) {
+        ota_abort_download();
+        ota_emit(ota_client.endpoint, EZB_ZCL_OTA_UPGRADE_PROGRESS_ABORT, result, 0, 0,
+                EZB_ZCL_CLUSTER_CLIENT);
+    }
+    message->out.result = result == ESP_OK ? EZB_ZCL_STATUS_SUCCESS : EZB_ZCL_STATUS_ABORT;
+}
+
 static bool signal_handler(const ezb_app_signal_t *signal)
 {
     ezb_app_signal_type_t type = ezb_app_signal_get_type(signal);
@@ -262,7 +450,28 @@ static bool signal_handler(const ezb_app_signal_t *signal)
 
 static void action_handler(ezb_zcl_core_action_callback_id_t action, void *message)
 {
-    if (action == EZB_ZCL_CORE_SET_ATTR_VALUE_CB_ID && message) {
+    if (action == EZB_ZCL_CORE_OTA_UPGRADE_CLIENT_PROGRESS_CB_ID && message) {
+        ota_client_progress((ezb_zcl_ota_upgrade_client_progress_message_t *)message);
+    } else if (action == EZB_ZCL_CORE_OTA_UPGRADE_QUERY_NEXT_IMAGE_RSP_CB_ID && message) {
+        ezb_zcl_ota_upgrade_query_next_image_rsp_message_t *response = message;
+        ota_emit(ota_client.endpoint, -1, response->in.image.status,
+                response->in.image.file_version, response->in.image.size,
+                EZB_ZCL_CLUSTER_CLIENT);
+        response->out.result = EZB_ZCL_STATUS_SUCCESS;
+    } else if (action == EZB_ZCL_CORE_OTA_UPGRADE_SERVER_PROGRESS_CB_ID && message) {
+        ezb_zcl_ota_upgrade_server_progress_message_t *progress = message;
+        uint32_t offset = progress->in.progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_SENDING ?
+                progress->in.sending.file_offset : 0;
+        if (progress->in.progress != EZB_ZCL_OTA_UPGRADE_PROGRESS_SENDING ||
+                (offset & 0x3fff) < 223)
+            ota_emit(ota_server.endpoint, progress->in.progress, ESP_OK, offset, 0,
+                    EZB_ZCL_CLUSTER_SERVER);
+        progress->out.result = EZB_ZCL_STATUS_SUCCESS;
+        if (progress->in.progress == EZB_ZCL_OTA_UPGRADE_PROGRESS_FINISH) {
+            progress->out.finish.current_time = 0;
+            progress->out.finish.upgrade_time = 0;
+        }
+    } else if (action == EZB_ZCL_CORE_SET_ATTR_VALUE_CB_ID && message) {
         const ezb_zcl_set_attr_value_message_t *attribute = message;
         zb_event_t event = {.kind = ZB_EVENT_ATTRIBUTE,
                             .status = attribute->info.status,
@@ -561,6 +770,49 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
     return ESP_OK;
 }
 
+static esp_err_t add_ota_clusters(ezb_af_device_desc_t device)
+{
+    if (ota_client.configured) {
+        ezb_af_ep_desc_t endpoint = ezb_af_device_get_endpoint_desc(device, ota_client.endpoint);
+        if (!endpoint || ezb_af_endpoint_get_cluster_desc(endpoint,
+                EZB_ZCL_CLUSTER_ID_OTA_UPGRADE, EZB_ZCL_CLUSTER_CLIENT))
+            return ESP_ERR_INVALID_ARG;
+        ezb_zcl_ota_upgrade_cluster_client_config_t config = {
+            .upgrade_server_id = EZB_ZCL_OTA_UPGRADE_UPGRADE_SERVER_ID_DEFAULT_VALUE,
+            .file_offset = 0,
+            .image_upgrade_status = EZB_ZCL_OTA_UPGRADE_IMAGE_UPGRADE_STATUS_NORMAL,
+            .manufacturer_id = ota_client.manufacturer,
+            .image_type_id = ota_client.image_type};
+        ezb_zcl_cluster_desc_t cluster = ezb_zcl_ota_upgrade_create_cluster_desc(
+                &config, EZB_ZCL_CLUSTER_CLIENT);
+        if (!cluster) return ESP_ERR_NO_MEM;
+        esp_err_t result = ezb_zcl_ota_upgrade_cluster_desc_add_attr(cluster,
+                EZB_ZCL_ATTR_OTA_UPGRADE_CURRENT_FILE_VERSION_ID, &ota_client.version);
+        if (result == ESP_OK) result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            return result;
+        }
+    }
+    if (ota_server.configured) {
+        ezb_af_ep_desc_t endpoint = ezb_af_device_get_endpoint_desc(device, ota_server.endpoint);
+        if (!endpoint || ezb_af_endpoint_get_cluster_desc(endpoint,
+                EZB_ZCL_CLUSTER_ID_OTA_UPGRADE, EZB_ZCL_CLUSTER_SERVER))
+            return ESP_ERR_INVALID_ARG;
+        ezb_zcl_ota_upgrade_cluster_server_config_t config = {
+            .ota_upgrade_file_table_size = 1};
+        ezb_zcl_cluster_desc_t cluster = ezb_zcl_ota_upgrade_create_cluster_desc(
+                &config, EZB_ZCL_CLUSTER_SERVER);
+        if (!cluster) return ESP_ERR_NO_MEM;
+        esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            return result;
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t add_custom_endpoints(ezb_af_device_desc_t device)
 {
     for (unsigned i = 0; i < custom_endpoint_count; ++i) {
@@ -606,14 +858,19 @@ static esp_err_t register_device(const zb_config_t *options)
     if (result == ESP_OK) result = add_humidity_clusters(device);
     if (result == ESP_OK) result = add_illuminance_clusters(device);
     if (result == ESP_OK) result = add_measurement_clusters(device);
+    if (result == ESP_OK) result = add_ota_clusters(device);
     if (result == ESP_OK) result = add_custom_clusters(device);
     if (result != ESP_OK) {
         ezb_af_free_device_desc(device);
         return result;
     }
     result = ezb_af_device_desc_register(device);
-    if (result != ESP_OK) ezb_af_free_device_desc(device);
-    return result;
+    if (result != ESP_OK) {
+        ezb_af_free_device_desc(device);
+        return result;
+    }
+    return ota_client.configured ?
+            ezb_zcl_ota_upgrade_set_download_block_size(ota_client.endpoint, 223) : ESP_OK;
 }
 
 static void stack_task(void *context)
@@ -658,6 +915,11 @@ static void stack_task(void *context)
     result = esp_zigbee_launch_mainloop();
 failed:
     if (result != ESP_OK) emit_status(ZB_EVENT_ERROR, result, 0);
+    if (ota_server_file) {
+        ezb_zcl_ota_upgrade_remove_ota_file(ota_server.endpoint, ota_server_file);
+        ota_server_file = NULL;
+    }
+    ota_abort_download();
     if (initialized) (void)esp_zigbee_deinit();
     (void)nvs_flash_deinit_partition("zb_storage");
     if (restore_pm_config) {
@@ -904,6 +1166,138 @@ int bmx_esp32_zigbee_core_add_occupancy_cluster(int endpoint, int role, int sens
 int bmx_esp32_zigbee_core_clear_occupancy_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING);
+}
+
+int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
+        int image_type, uint32_t version)
+{
+    if (endpoint < 1 || endpoint > 240 || manufacturer < 0 || manufacturer > 65534 ||
+            image_type < 0 || image_type > 65534 || version == UINT32_MAX)
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    ota_client = (zb_ota_cluster_t){.endpoint = (uint8_t)endpoint,
+        .manufacturer = (uint16_t)manufacturer, .image_type = (uint16_t)image_type,
+        .version = version, .configured = true};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_ota_server(int endpoint)
+{
+    if (endpoint < 1 || endpoint > 240) return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    ota_server = (zb_ota_cluster_t){.endpoint = (uint8_t)endpoint, .configured = true};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_clear_ota_clusters(void)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    memset(&ota_client, 0, sizeof(ota_client));
+    memset(&ota_server, 0, sizeof(ota_server));
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+static bool ota_file_valid(const uint8_t *image, uint32_t size)
+{
+    if (!image || size <= 62 || ota_u32(image) != EZB_ZCL_OTA_FILE_IDENTIFIER ||
+            ota_u16(image + 4) != EZB_ZCL_OTA_FILE_HEADER_VERSION ||
+            ota_u32(image + 52) != size) return false;
+    uint16_t header = ota_u16(image + 6);
+    return header == 56 && ota_u16(image + 8) == 0 &&
+            ota_u16(image + header) == EZB_ZCL_OTA_FILE_TAG_ID_UPGRADE_IMAGE &&
+            ota_u32(image + header + 2) == size - header - 6;
+}
+
+int bmx_esp32_zigbee_core_ota_serve_image(int endpoint, const uint8_t *image,
+        uint32_t size)
+{
+    if (!ota_server.configured || endpoint != ota_server.endpoint ||
+            !ota_file_valid(image, size)) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    if (ota_server_file) {
+        esp_zigbee_lock_release();
+        return ESP_ERR_INVALID_STATE;
+    }
+    ota_server_file = ezb_zcl_ota_upgrade_add_ota_file((uint8_t)endpoint, image, size);
+    if (ota_server_file) {
+        ota_served_manufacturer = ota_u16(image + 10);
+        ota_served_image_type = ota_u16(image + 12);
+        ota_served_version = ota_u32(image + 14);
+    }
+    esp_zigbee_lock_release();
+    return ota_server_file ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_ota_remove_image(int endpoint)
+{
+    if (!ota_server.configured || endpoint != ota_server.endpoint) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    if (ota_server_file) {
+        ezb_zcl_ota_upgrade_remove_ota_file((uint8_t)endpoint, ota_server_file);
+        ota_server_file = NULL;
+        ota_served_version = 0;
+    }
+    esp_zigbee_lock_release();
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_ota_notify(int source_ep, int destination_addr,
+        int destination_ep, int manufacturer, int image_type, uint32_t version)
+{
+    if (!ota_server.configured || source_ep != ota_server.endpoint || !ota_server_file ||
+            destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240 || manufacturer < 0 ||
+            manufacturer > 65534 || image_type < 0 || image_type > 65534 ||
+            manufacturer != ota_served_manufacturer ||
+            image_type != ota_served_image_type || version != ota_served_version)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_ota_upgrade_image_notify_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.type = EZB_ZCL_OTA_UPGRADE_IMAGE_NOTIFY_PAYLOAD_TYPE_JITTER_CODE_IMAGE_VERSION,
+                    .query_jitter = 100, .manuf_code = (uint16_t)manufacturer,
+                    .image_type = (uint16_t)image_type, .file_version = version}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_ota_upgrade_image_notify_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_ota_query(int source_ep, int destination_addr,
+        int destination_ep)
+{
+    if (!ota_client.configured || source_ep != ota_client.endpoint ||
+            destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_ota_upgrade_query_next_image_req_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.fc = 0, .manuf_code = ota_client.manufacturer,
+                    .image_type = ota_client.image_type,
+                    .file_version = ota_client.version}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_ota_upgrade_query_next_image_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
 int bmx_esp32_zigbee_core_add_custom_cluster(int endpoint, int cluster_id, int role)
