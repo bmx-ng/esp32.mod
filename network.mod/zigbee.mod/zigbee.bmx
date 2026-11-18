@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.8"
+ModuleInfo "Version: 1.9"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -89,6 +89,12 @@ bbdoc: Level Control cluster identifier.
 End Rem
 Const ZigbeeClusterLevelControl:Int = $0008
 Const ZigbeeCurrentLevelAttribute:Int = $0000
+Rem
+bbdoc: Color Control cluster and current CIE x/y attribute identifiers.
+End Rem
+Const ZigbeeClusterColorControl:Int = $0300
+Const ZigbeeCurrentColorXAttribute:Int = $0003
+Const ZigbeeCurrentColorYAttribute:Int = $0004
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -453,6 +459,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_level_cluster"
 	Function _ZigbeeCoreClearLevelClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_level_clusters"
+	Function _ZigbeeCoreAddColorControlCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_color_control_cluster"
+	Function _ZigbeeCoreClearColorControlClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_color_control_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -540,6 +550,11 @@ Extern "C"
 	Function _ZigbeeCoreMoveToLevel:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, level:Int, transitionTenths:Int, withOnOff:Int) = ..
 		"bmx_esp32_zigbee_core_move_to_level"
+	Function _ZigbeeCoreSetLocalColor:Int(endpoint:Int, x:Int, y:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_color"
+	Function _ZigbeeCoreMoveToColor:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, x:Int, y:Int, transitionTenths:Int) = ..
+		"bmx_esp32_zigbee_core_move_to_color"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -737,6 +752,21 @@ bbdoc: Removes Level Control clusters while the stack is stopped.
 End Rem
 Function ZigbeeClearLevelControlClusters:Int()
 	Return _ZigbeeCoreClearLevelClusters()
+End Function
+
+Rem
+bbdoc: Adds a Color Control server or client cluster to a configured endpoint.
+about: Register before ZigbeeStart. The server supports CIE x/y color coordinates.
+End Rem
+Function ZigbeeAddColorControlCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddColorControlCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes Color Control clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearColorControlClusters:Int()
+	Return _ZigbeeCoreClearColorControlClusters()
 End Function
 
 Rem
@@ -1197,6 +1227,27 @@ Function ZigbeeMoveToLevel:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, level:Int, transitionTenths:Int = 0, withOnOff:Int = False)
 	Return _ZigbeeCoreMoveToLevel(sourceEndpoint, destinationAddress, ..
 		destinationEndpoint, level, transitionTenths, withOnOff)
+End Function
+
+Rem
+bbdoc: Sets a local Color Control server's CurrentX and CurrentY attributes.
+about: Coordinates are unsigned CIE 1931 x/y values scaled to 0 through 65535.
+Update the physical output in the application.
+End Rem
+Function ZigbeeSetLocalColor:Int(endpoint:Int, x:Int, y:Int)
+	Return _ZigbeeCoreSetLocalColor(endpoint, x, y)
+End Function
+
+Rem
+bbdoc: Sends Move To Color to a remote Color Control server.
+about: Coordinates are unsigned CIE 1931 x/y values scaled to 0 through 65535.
+transitionTenths is in tenths of a second. A zero result means the request
+was accepted for transmission.
+End Rem
+Function ZigbeeMoveToColor:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, x:Int, y:Int, transitionTenths:Int = 0)
+	Return _ZigbeeCoreMoveToColor(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, x, y, transitionTenths)
 End Function
 
 Rem

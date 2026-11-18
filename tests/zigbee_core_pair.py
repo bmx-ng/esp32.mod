@@ -66,6 +66,8 @@ def main():
                         help="also require RMS voltage, current, active power and a changed power report")
     parser.add_argument("--require-level", action="store_true",
                         help="also require Level Control discovery, Move To Level and readback")
+    parser.add_argument("--require-color", action="store_true",
+                        help="also require Color Control discovery, Move To Color and x/y readback")
     parser.add_argument("--require-octets", action="store_true",
                         help="also require binary octet-string write, readback and local restoration")
     args = parser.parse_args()
@@ -91,6 +93,7 @@ def main():
     electrical_match = rms_voltage_read = rms_current_read = active_power_read = False
     current_divisor_read = active_power_report = False
     level_match = level_move = level_read = False
+    color_match = color_move = color_x_read = color_y_read = False
     octets_write = octets_read = octets_restored = False
     group_viewed = group_member = group_membership_complete = False
     group_clear_submission = group_empty = False
@@ -172,6 +175,11 @@ def main():
                 level_match = True
             if name == "switch" and "Move to level submission=0" in line:
                 level_move = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=10 cluster=768" in line):
+                color_match = True
+            if name == "switch" and "Move to color submission=0" in line:
+                color_move = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -230,6 +238,12 @@ def main():
                 if ("cluster=8 attribute=0" in line and "type=32" in line
                         and "size=1" in line and "value=180 " in line):
                     level_read = True
+                if ("cluster=768 attribute=3" in line and "type=33" in line
+                        and "size=2" in line and "value=20000 " in line):
+                    color_x_read = True
+                if ("cluster=768 attribute=4" in line and "type=33" in line
+                        and "size=2" in line and "value=30000 " in line):
+                    color_y_read = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=1026 attribute=0" in line and "type=41 size=2" in line
                     and "value=2355 " in line):
@@ -302,6 +316,8 @@ def main():
                          and active_power_read and current_divisor_read and active_power_report
                          or not args.require_electrical)
                     and (level_match and level_move and level_read or not args.require_level)
+                    and (color_match and color_move and color_x_read and color_y_read
+                         or not args.require_color)
                     and (octets_write and octets_read and octets_restored
                          or not args.require_octets)):
                 print("PASS: switch toggled both light states, read the attribute"
@@ -326,6 +342,7 @@ def main():
                       + (", and read and received battery status" if args.require_battery else "")
                       + (", and read and received electrical measurements" if args.require_electrical else "")
                       + (", and moved the light level" if args.require_level else "")
+                      + (", and moved the light color" if args.require_color else "")
                       + (", and wrote and read back binary octets" if args.require_octets else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
@@ -353,6 +370,8 @@ def main():
               f"rms_current_read={rms_current_read}, active_power_read={active_power_read}, "
               f"current_divisor_read={current_divisor_read}, active_power_report={active_power_report}, "
               f"level_match={level_match}, level_move={level_move}, level_read={level_read}, "
+              f"color_match={color_match}, color_move={color_move}, "
+              f"color_x_read={color_x_read}, color_y_read={color_y_read}, "
               f"octets_write={octets_write}, octets_read={octets_read}, "
               f"octets_restored={octets_restored}",
               flush=True)

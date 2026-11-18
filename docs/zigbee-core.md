@@ -174,6 +174,14 @@ On/Off variant. The light example starts at level 30 and the switch requests
 level 180, then reads CurrentLevel back. Applications must apply the reported
 level to their physical output.
 
+`ZigbeeAddColorControlCluster` adds an x/y Color Control server or client.
+The server exposes CurrentX and CurrentY and declares x/y color support.
+`ZigbeeSetLocalColor` updates these attributes; `ZigbeeMoveToColor` sends a
+transition command from a client. Coordinates use the Zigbee unsigned
+16-bit representation of CIE 1931 x/y. The light example starts at
+(16384, 16384); the switch requests (20000, 30000) and reads both attributes
+back. Applications must translate the color state to their physical output.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -342,7 +350,7 @@ network. The saved network belongs to the previous role and topology.
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
 Occupancy Sensing, Power Configuration, Electrical Measurement, and Level
-Control clusters,
+Control and Color Control clusters,
 custom endpoint profiles, and
 custom scalar, short string, and octet-string attributes. Other standard
 cluster templates, additional nonscalar attribute types, further
@@ -357,6 +365,9 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The C6 exposed x/y Color Control on its light endpoint. The H2 discovered
+  it, sent Move To Color for (20000, 30000), and read both coordinates back.
+  The full pair regression passed with `--require-color` and all earlier checks.
 - The C6 exposed Level Control on its light endpoint. The H2 discovered the
   cluster, sent Move To Level With On/Off, and read back CurrentLevel 180.
   The full pair regression passed with `--require-level` and all earlier checks.

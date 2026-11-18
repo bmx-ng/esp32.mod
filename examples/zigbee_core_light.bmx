@@ -12,6 +12,7 @@ If ZigbeeAddOccupancyCluster(12, ZigbeeClusterServer) Then RuntimeError "Occupan
 If ZigbeeAddPowerConfigurationCluster(12, ZigbeeClusterServer) Then RuntimeError "Power cluster failed"
 If ZigbeeAddElectricalMeasurementCluster(12, ZigbeeClusterServer) Then RuntimeError "Electrical cluster failed"
 If ZigbeeAddLevelControlCluster(10, ZigbeeClusterServer) Then RuntimeError "Level cluster failed"
+If ZigbeeAddColorControlCluster(10, ZigbeeClusterServer) Then RuntimeError "Color cluster failed"
 If ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1) Then RuntimeError "Custom endpoint failed"
 If ZigbeeAddCustomCluster(13, $fc01, ZigbeeClusterServer) Then RuntimeError "Custom profile cluster failed"
 If ZigbeeAddCustomScalar(13, $fc01, 1, ZigbeeTypeUInt16, ZigbeeAttributeRead, 77) Then
@@ -56,6 +57,8 @@ While True
 			Print "Initial light state result=" + result
 			result = ZigbeeSetLocalLevel(10, 30)
 			Print "Initial light level result=" + result
+			result = ZigbeeSetLocalColor(10, 16384, 16384)
+			Print "Initial light color result=" + result
 			result = ZigbeeSetLocalOnOff(11, 0)
 			Print "Second light state result=" + result
 			result = ZigbeeSetCustomScalar(11, $fc00, 1, 44)

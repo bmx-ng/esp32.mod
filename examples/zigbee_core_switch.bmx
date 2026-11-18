@@ -11,6 +11,7 @@ If ZigbeeAddOccupancyCluster(1, ZigbeeClusterClient) Then RuntimeError "Occupanc
 If ZigbeeAddPowerConfigurationCluster(1, ZigbeeClusterClient) Then RuntimeError "Power client cluster failed"
 If ZigbeeAddElectricalMeasurementCluster(1, ZigbeeClusterClient) Then RuntimeError "Electrical client cluster failed"
 If ZigbeeAddLevelControlCluster(1, ZigbeeClusterClient) Then RuntimeError "Level client cluster failed"
+If ZigbeeAddColorControlCluster(1, ZigbeeClusterClient) Then RuntimeError "Color client cluster failed"
 If ZigbeeAddCustomEndpoint(2, $c0de, $1235, 1) Then RuntimeError "Custom client endpoint failed"
 If ZigbeeAddCustomCluster(2, $fc01, ZigbeeClusterClient) Then RuntimeError "Custom profile client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
@@ -61,6 +62,9 @@ Local electricalFound:Int
 Local levelAddress:Int
 Local levelEndpoint:Int
 Local levelFound:Int
+Local colorAddress:Int
+Local colorEndpoint:Int
+Local colorFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
 Local nextCustomProfileFind:UInt = MilliSecs() + 2250
@@ -82,6 +86,9 @@ Local nextElectricalRead:UInt
 Local nextLevelFind:UInt = MilliSecs() + 4250
 Local nextLevelMove:UInt
 Local nextLevelRead:UInt
+Local nextColorFind:UInt = MilliSecs() + 4500
+Local nextColorMove:UInt
+Local nextColorRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextStringWrite:UInt = MilliSecs() + 9000
@@ -205,6 +212,12 @@ While True
 			If Not levelFound Then nextLevelMove = MilliSecs() + 1000
 			levelFound = True
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterColorControl Then
+			colorAddress = event.shortAddress
+			colorEndpoint = event.endpoint
+			If Not colorFound Then nextColorMove = MilliSecs() + 1000
+			colorFound = True
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -300,6 +313,26 @@ While True
 			ZigbeeClusterLevelControl, ZigbeeCurrentLevelAttribute)
 		Print "Level read submission=" + result
 		nextLevelRead = MilliSecs() + 5000
+	End If
+	If joined And MilliSecs() >= nextColorFind Then
+		result = ZigbeeFindServers(ZigbeeClusterColorControl)
+		Print "Find color submission=" + result
+		nextColorFind = MilliSecs() + 15000
+	End If
+	If colorFound And nextColorMove And MilliSecs() >= nextColorMove Then
+		result = ZigbeeMoveToColor(1, colorAddress, colorEndpoint, 20000, 30000)
+		Print "Move to color submission=" + result
+		If result = 0 Then nextColorRead = MilliSecs() + 1500
+		nextColorMove = MilliSecs() + 30000
+	End If
+	If colorFound And nextColorRead And MilliSecs() >= nextColorRead Then
+		result = ZigbeeReadAttribute(1, colorAddress, colorEndpoint, ..
+			ZigbeeClusterColorControl, ZigbeeCurrentColorXAttribute)
+		Print "Color X read submission=" + result
+		result = ZigbeeReadAttribute(1, colorAddress, colorEndpoint, ..
+			ZigbeeClusterColorControl, ZigbeeCurrentColorYAttribute)
+		Print "Color Y read submission=" + result
+		nextColorRead = MilliSecs() + 5000
 	End If
 	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
 		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..

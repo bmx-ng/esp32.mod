@@ -808,6 +808,12 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
             ezb_zcl_level_cluster_server_config_t server = {.current_level = 0};
             cluster = ezb_zcl_level_create_cluster_desc(
                     entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_COLOR_CONTROL) {
+            ezb_zcl_color_control_cluster_server_config_t server = {
+                .current_x = 0x4000, .current_y = 0x4000,
+                .color_capabilities = EZB_ZCL_COLOR_CONTROL_COLOR_CAPABILITIES_XY_SUPPORTED};
+            cluster = ezb_zcl_color_control_create_cluster_desc(
+                    entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
         }
         if (!cluster) return ESP_ERR_NO_MEM;
         esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -1156,7 +1162,8 @@ static int add_measurement_cluster(int endpoint, int role, int cluster, int sens
              cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG &&
              cluster != EZB_ZCL_CLUSTER_ID_ELECTRICAL_MEASUREMENT &&
-             cluster != EZB_ZCL_CLUSTER_ID_LEVEL) ||
+             cluster != EZB_ZCL_CLUSTER_ID_LEVEL &&
+             cluster != EZB_ZCL_CLUSTER_ID_COLOR_CONTROL) ||
             (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
@@ -1248,6 +1255,16 @@ int bmx_esp32_zigbee_core_add_level_cluster(int endpoint, int role)
 int bmx_esp32_zigbee_core_clear_level_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_LEVEL);
+}
+
+int bmx_esp32_zigbee_core_add_color_control_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_COLOR_CONTROL, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_color_control_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_COLOR_CONTROL);
 }
 
 int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
@@ -2157,6 +2174,52 @@ int bmx_esp32_zigbee_core_move_to_level(int source_ep, int destination_addr,
     ezb_err_t result = with_onoff ?
             ezb_zcl_level_move_to_level_with_on_off_cmd_req(&request) :
             ezb_zcl_level_move_to_level_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_color(int endpoint, int x, int y)
+{
+    if (endpoint < 1 || endpoint > 240 || x < 0 || x > 65535 || y < 0 || y > 65535 ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_COLOR_CONTROL))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t encoded_x = (uint16_t)x, encoded_y = (uint16_t)y;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t x_result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_COLOR_CONTROL, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_COLOR_CONTROL_CURRENT_X_ID, EZB_ZCL_STD_MANUF_CODE,
+            &encoded_x, false);
+    ezb_zcl_status_t y_result = x_result == EZB_ZCL_STATUS_SUCCESS ?
+            ezb_zcl_set_attr_value((uint8_t)endpoint, EZB_ZCL_CLUSTER_ID_COLOR_CONTROL,
+                    EZB_ZCL_CLUSTER_SERVER, EZB_ZCL_ATTR_COLOR_CONTROL_CURRENT_Y_ID,
+                    EZB_ZCL_STD_MANUF_CODE, &encoded_y, false) : x_result;
+    esp_zigbee_lock_release();
+    return y_result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_move_to_color(int source_ep, int destination_addr,
+        int destination_ep, int x, int y, int transition_tenths)
+{
+    if (source_ep < 1 || source_ep > 240 || destination_addr < 0 ||
+            destination_addr > 65535 || destination_ep < 1 || destination_ep > 240 ||
+            x < 0 || x > 65535 || y < 0 || y > 65535 ||
+            transition_tenths < 0 || transition_tenths > 65535)
+        return ESP_ERR_INVALID_ARG;
+    bool client = false;
+    for (unsigned i = 0; i < measurement_cluster_count; ++i)
+        if (measurement_clusters[i].endpoint == source_ep &&
+                measurement_clusters[i].cluster == EZB_ZCL_CLUSTER_ID_COLOR_CONTROL &&
+                measurement_clusters[i].role == EZB_ZCL_CLUSTER_CLIENT) client = true;
+    if (!client) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_color_control_move_to_color_cmd_t request = {.cmd_ctrl = {
+        .dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+        .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+        .payload = {.color_x = (uint16_t)x, .color_y = (uint16_t)y,
+                    .transition_time = (uint16_t)transition_tenths}};
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_color_control_move_to_color_cmd_req(&request);
     esp_zigbee_lock_release();
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
