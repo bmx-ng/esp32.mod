@@ -444,8 +444,9 @@ param: Secondary channel bitmask used after primary-channel scanning.
 param: True to form or seek a network automatically when factory new.
 returns: ESP_OK when the asynchronous start was accepted, otherwise an ESP-IDF error code.
 about: Coordinator and router need a `zczr` stack build; end devices need `zed`.
-Set BMX_ESP32_ZIGBEE_STACK_MODE before bmk to override the board default. The
-stack's callbacks are delivered through ZigbeePollEvent.
+Set esp32.zigbee.stack to zczr or zed in custom.bmk or an app pre.bmk file to
+override the board default. The stack's callbacks are delivered through
+ZigbeePollEvent.
 End Rem
 Function ZigbeeStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt = 1 Shl 15, ..
 		secondaryMask:UInt = 0, autoCommission:Int = True)

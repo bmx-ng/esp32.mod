@@ -12,16 +12,32 @@ The Zigbee import selects its own `sdkconfig.zigbee.<mode>` and partition table.
 Without the import, a normal application keeps its board configuration and may
 use any valid partition layout for that board. The Zigbee default partition
 layout includes `zb_storage` and `zb_fct`, alongside the normal NVS, OTA and
-LittleFS partitions. `BMX_ESP32_ZIGBEE_PARTITIONS` selects a custom table; its
-absolute path must name a table containing `zb_storage` as `data,nvs`.
+LittleFS partitions. `esp32.zigbee.partitions` selects a custom table; its path
+may be absolute or relative to the application's source directory and must name
+a table containing `zb_storage` as `data,nvs`.
 
 The build selects `zczr` (coordinator/router) on H2 and `zed` (end device) on
-C6 by default. Either board can select the other mode with
-`BMX_ESP32_ZIGBEE_STACK_MODE=zczr` or `=zed` before running `bmk`. Each mode
-has its own sdkconfig variant, so switching roles rebuilds the correct SDK
+C6 by default. Set `esp32.zigbee.stack` to `zczr` or `zed` in
+`bin/custom.bmk` for an installation default, or in `pre.bmk` beside the
+source for an application override. Use `<output-name>.pre.bmk` to target one
+application output. For example, a switch application's file can contain:
+
+```bmk
+setoption esp32.zigbee.stack zed
+```
+
+The light and switch examples include their own app-specific `pre.bmk` files,
+so they choose the correct library on either board. Each mode has its own
+sdkconfig variant, so switching roles rebuilds the correct SDK
 library. A coordinator or router role requires `zczr`; an end-device role
 requires `zed`. `ZigbeeStart` rejects a role that does not match the linked
 library.
+
+Set a custom partition table in the same configuration file with
+`setoption esp32.zigbee.partitions "partitions.csv"`. The bmk options take
+precedence over the older `BMX_ESP32_ZIGBEE_STACK_MODE` and
+`BMX_ESP32_ZIGBEE_PARTITIONS` environment variables, which remain available
+for existing build scripts.
 
 ## Application flow
 

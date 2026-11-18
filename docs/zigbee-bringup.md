@@ -18,16 +18,18 @@ Component Manager cache.
 The Zigbee import uses a separate `sdkconfig.zigbee.<mode>` file and
 `zigbee.partitions.csv`. By default, H2 selects coordinator/router stack
 libraries and C6 selects end-device libraries. The current public API allows
-either board to select the other library with `BMX_ESP32_ZIGBEE_STACK_MODE`.
-The default 4 MiB Zigbee layout retains both
-1.5 MiB OTA slots and the normal `nvs`, `otadata` and LittleFS partitions. It
+either board to select the other library with the `esp32.zigbee.stack` bmk
+option in `bin/custom.bmk` or an application `pre.bmk` file. The default 4 MiB
+Zigbee layout retains both 1.5 MiB OTA slots and the normal `nvs`, `otadata`
+and LittleFS partitions. It
 adds `zb_storage` as NVS and `zb_fct` as FAT data. The test passes `zb_storage`
 to the SDK as its persistent storage partition. The normal board profiles and
 normal application partitions are unaffected.
 
-Applications can choose their own Zigbee partition layout by setting
-`BMX_ESP32_ZIGBEE_PARTITIONS` to an **absolute path** before invoking bmk. The
-table must include `zb_storage` with type `data` and subtype `nvs`; it may
+Applications can choose their own Zigbee partition layout with the
+`esp32.zigbee.partitions` bmk option. Paths may be absolute or relative to the
+application source directory. The table must include `zb_storage` with type
+`data` and subtype `nvs`; it may
 resize the OTA and application storage regions. bmk selects a separate
 sdkconfig variant keyed to the table's contents, so changing that table does
 not reuse stale Zigbee partition settings.

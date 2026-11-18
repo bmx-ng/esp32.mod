@@ -334,6 +334,8 @@ addoption esp32.port "/dev/cu.usbmodem101"
 addoption esp32.board.dirs "/path/to/custom/board/profiles"
 addoption esp32.heap.region "psram"
 addoption esp32.stack "16k"
+#addoption esp32.zigbee.stack "zczr"
+#addoption esp32.zigbee.partitions "/path/to/zigbee-partitions.csv"
 ```
 
 The corresponding environment variables are:
@@ -348,6 +350,8 @@ The corresponding environment variables are:
 | `esp32.target` | — | Default board profile when `-board` is omitted |
 | `esp32.heap.region` | — | Default managed-heap region, `sram` or `psram` |
 | `esp32.stack` | — | ESP-IDF main-task stack size; defaults to `16k` for BlitzMax precise-GC call frames |
+| `esp32.zigbee.stack` | `BMX_ESP32_ZIGBEE_STACK_MODE` | Zigbee library mode: `zczr` for coordinator/router or `zed` for end device |
+| `esp32.zigbee.partitions` | `BMX_ESP32_ZIGBEE_PARTITIONS` | Optional Zigbee partition table; relative paths use the application's source directory |
 
 A command-line `-board` or `-heap-region` overrides the applicable persistent
 default. For settings with both forms, the `custom.bmk` option takes precedence
