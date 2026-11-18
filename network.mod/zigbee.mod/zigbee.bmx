@@ -435,6 +435,8 @@ Extern "C"
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_add_group"
 	Function _ZigbeeCoreRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_remove_group"
+	Function _ZigbeeCoreRemoveAllGroups:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_remove_all_groups"
 	Function _ZigbeeCoreViewGroup:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, groupId:Int) = "bmx_esp32_zigbee_core_view_group"
 	Function _ZigbeeCoreGetGroupMembership:Int(sourceEndpoint:Int, destinationAddress:Int, ..
@@ -813,6 +815,15 @@ about: Poll for ZigbeeEventGroupRemoved to check the remote response.
 End Rem
 Function ZigbeeRemoveGroup:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int, groupId:Int)
 	Return _ZigbeeCoreRemoveGroup(sourceEndpoint, destinationAddress, destinationEndpoint, groupId)
+End Function
+
+Rem
+bbdoc: Removes every group association from one remote Groups server endpoint.
+about: This ZCL command has no specific response. Query membership afterward to
+confirm the endpoint's group table is empty.
+End Rem
+Function ZigbeeRemoveAllGroups:Int(sourceEndpoint:Int, destinationAddress:Int, destinationEndpoint:Int)
+	Return _ZigbeeCoreRemoveAllGroups(sourceEndpoint, destinationAddress, destinationEndpoint)
 End Function
 
 Rem

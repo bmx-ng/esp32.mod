@@ -32,6 +32,8 @@ def main():
                         help="also require a group-addressed toggle submission")
     parser.add_argument("--require-group-query", action="store_true",
                         help="also require View Group and Get Group Membership readback")
+    parser.add_argument("--require-group-clear", action="store_true",
+                        help="also require Remove All Groups and an empty membership readback")
     parser.add_argument("--require-scalar", action="store_true",
                         help="also require a typed 16-bit cluster revision read")
     parser.add_argument("--require-write", action="store_true",
@@ -69,6 +71,7 @@ def main():
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
     group_viewed = group_member = group_membership_complete = False
+    group_clear_submission = group_empty = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
     try:
         while time.monotonic() < deadline:
@@ -93,6 +96,10 @@ def main():
                 string_submission = True
             if name == "switch" and "Group toggle submission=0" in line:
                 group = True
+            if name == "switch" and "Remove all groups submission=0" in line:
+                group_clear_submission = True
+            if name == "switch" and "Group table empty=1" in line:
+                group_empty = True
             if (name == "switch" and "Zigbee event 19 status=0" in line
                     and "value=4660 " in line and "cluster=4" in line):
                 group_viewed = True
@@ -169,6 +176,8 @@ def main():
                     and (group_change or not args.require_group)
                     and (group_viewed and group_member and group_membership_complete
                          or not args.require_group_query)
+                    and (group_clear_submission and group_empty
+                         or not args.require_group_clear)
                     and (scalar or not args.require_scalar)
                     and (write and write_readback or not args.require_write)
                     and (extra or not args.require_extra_endpoint)
@@ -187,6 +196,7 @@ def main():
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
                       + (", and confirmed group membership" if args.require_group_query else "")
+                      + (", and cleared the group table" if args.require_group_clear else "")
                       + (", and read a typed scalar" if args.require_scalar else "")
                       + (", and wrote and read back a scalar" if args.require_write else "")
                       + (", and found a second endpoint" if args.require_extra_endpoint else "")
@@ -203,6 +213,7 @@ def main():
               f"report={report}, group={group}, group_change={group_change}, "
               f"group_viewed={group_viewed}, group_member={group_member}, "
               f"group_membership_complete={group_membership_complete}, scalar={scalar}, "
+              f"group_clear_submission={group_clear_submission}, group_empty={group_empty}, "
               f"write={write}, write_readback={write_readback}, extra={extra}, "
               f"custom_match={custom_match}, custom_write={custom_write}, custom_read={custom_read}, "
               f"custom_profile_match={custom_profile_match}, custom_profile_read={custom_profile_read}, "

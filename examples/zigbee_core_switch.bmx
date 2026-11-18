@@ -50,6 +50,9 @@ Local nextHumidityReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
 Local nextGroupView:UInt
 Local nextGroupMembership:UInt
+Local nextRemoveAllGroups:UInt = MilliSecs() + 20000
+Local nextEmptyGroupQuery:UInt
+Local awaitingEmptyGroups:Int
 Local nextRevision:UInt = MilliSecs() + 3000
 Local nextIdentifyWrite:UInt = MilliSecs() + 5000
 Local nextIdentifyRead:UInt
@@ -113,6 +116,10 @@ While True
 			groupReady = True
 			nextGroupView = MilliSecs() + 100
 			nextGroupMembership = MilliSecs() + 300
+		End If
+		If event.kind = ZigbeeEventGroupMembershipComplete And awaitingEmptyGroups Then
+			Print "Group table empty=" + Int(event.status = 0 And event.value = 0)
+			awaitingEmptyGroups = False
 		End If
 	Wend
 	If joined And MilliSecs() >= nextFind Then
@@ -200,6 +207,24 @@ While True
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)
 		Print "Add group submission=" + result
 		nextGroup = MilliSecs() + 10000
+	End If
+	If groupReady And MilliSecs() >= nextRemoveAllGroups Then
+		result = ZigbeeRemoveAllGroups(1, lightAddress, lightEndpoint)
+		Print "Remove all groups submission=" + result
+		If result = 0 Then
+			groupReady = False
+			nextGroupView = 0
+			nextGroupMembership = 0
+			nextEmptyGroupQuery = MilliSecs() + 1500
+			nextGroup = MilliSecs() + 5000
+		End If
+		nextRemoveAllGroups = MilliSecs() + 30000
+	End If
+	If nextEmptyGroupQuery And MilliSecs() >= nextEmptyGroupQuery Then
+		result = ZigbeeGetGroupMembership(1, lightAddress, lightEndpoint)
+		Print "Empty group query submission=" + result
+		If result = 0 Then awaitingEmptyGroups = True
+		nextEmptyGroupQuery = 0
 	End If
 	If groupReady And nextGroupView And MilliSecs() >= nextGroupView Then
 		result = ZigbeeViewGroup(1, lightAddress, lightEndpoint, 4660)

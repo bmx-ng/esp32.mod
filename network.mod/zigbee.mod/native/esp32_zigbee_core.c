@@ -1331,6 +1331,22 @@ int bmx_esp32_zigbee_core_remove_group(int source_ep, int destination_addr, int 
     return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
 }
 
+int bmx_esp32_zigbee_core_remove_all_groups(int source_ep, int destination_addr,
+        int destination_ep)
+{
+    if (!endpoint_kind(source_ep) || destination_addr < 0 || destination_addr > 65535 ||
+            destination_ep < 1 || destination_ep > 240) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    ezb_zcl_groups_remove_all_groups_cmd_t request = {
+        .cmd_ctrl = {.dst_addr = EZB_ADDRESS_SHORT((uint16_t)destination_addr),
+                     .dst_ep = (uint8_t)destination_ep, .src_ep = (uint8_t)source_ep},
+    };
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_zcl_groups_remove_all_groups_cmd_req(&request);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_view_group(int source_ep, int destination_addr, int destination_ep,
         int group_id)
 {

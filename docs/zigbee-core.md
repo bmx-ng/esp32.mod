@@ -146,9 +146,12 @@ endpoint: zero or more `ZigbeeEventGroupMember` records are followed by
 whose attribute field is the remaining group table capacity. The group query
 events identify the remote device with `shortAddress` and the local client
 endpoint with `endpoint`.
+`ZigbeeRemoveAllGroups` clears every group on one remote endpoint. It has no
+specific response; request its membership list afterward to confirm the table
+is empty.
 `ZigbeeSendGroupOnOff` sends an On/Off command to every endpoint in the group.
-The switch example adds group 4660, queries its membership, and sends group
-toggles.
+The switch example adds group 4660, queries its membership, sends group
+toggles, clears the table, then adds the group again.
 
 `ZigbeeReadAttribute` reads one attribute from any remote cluster. A
 `ZigbeeEventRead` provides its ZCL `dataType`, `valueSize`, and `value` for
@@ -184,7 +187,7 @@ network. The saved network belongs to the previous role and topology.
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity Measurement clusters, custom
 endpoint profiles, and custom scalar and short string attributes. Other
-standard cluster templates, additional nonscalar attribute types, additional group commands, security
+standard cluster templates, additional nonscalar attribute types, security
 configuration, OTA, and application-managed sleep are further work.
 `ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
 keepalive; it does not enter low-power sleep itself.
@@ -250,3 +253,6 @@ keepalive; it does not enter low-power sleep itself.
   `Zigbee é`, read back its nine UTF-8 bytes, then read `ready` after the C6
   changed the attribute locally. The full pair check passed with
   `--require-string` alongside all earlier checks.
+- The H2 sent Remove All Groups to the C6 light, then queried membership and
+  received a list with zero groups. The full pair check passed with
+  `--require-group-clear` alongside all earlier checks.
