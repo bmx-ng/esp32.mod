@@ -23,7 +23,7 @@
 #define ZB_MAX_STRING_BYTES 64u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
 #define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
-#define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 18u
+#define ZB_MAX_ADDITIONAL_MEASUREMENT_CLUSTERS 24u
 #define ZB_OTA_PREFIX_BYTES 128u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
@@ -751,7 +751,7 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
                 .max_measured_value = INT16_MAX};
             cluster = ezb_zcl_pressure_measurement_create_cluster_desc(
                     entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
-        } else {
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) {
             uint8_t bitmap = entry->sensor_type == 2 ? 3 :
                     entry->sensor_type == 3 ? 4 : (uint8_t)(1u << entry->sensor_type);
             ezb_zcl_occupancy_sensing_cluster_server_config_t server = {
@@ -759,6 +759,20 @@ static esp_err_t add_measurement_clusters(ezb_af_device_desc_t device)
                 .occupancy_sensor_type_bitmap = bitmap};
             cluster = ezb_zcl_occupancy_sensing_create_cluster_desc(
                     entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        } else if (entry->cluster == EZB_ZCL_CLUSTER_ID_POWER_CONFIG) {
+            cluster = ezb_zcl_power_config_create_cluster_desc(NULL, entry->role);
+            if (cluster && entry->role == EZB_ZCL_CLUSTER_SERVER) {
+                uint8_t unknown = 0xff;
+                esp_err_t result = ezb_zcl_power_config_cluster_desc_add_attr(cluster,
+                        EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, &unknown);
+                if (result == ESP_OK) result = ezb_zcl_power_config_cluster_desc_add_attr(
+                        cluster, EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID,
+                        &unknown);
+                if (result != ESP_OK) {
+                    ezb_zcl_free_cluster_desc(cluster);
+                    return result;
+                }
+            }
         }
         if (!cluster) return ESP_ERR_NO_MEM;
         esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
@@ -1104,7 +1118,8 @@ static int add_measurement_cluster(int endpoint, int role, int cluster, int sens
     if (endpoint < 1 || endpoint > 240 ||
             (role != EZB_ZCL_CLUSTER_SERVER && role != EZB_ZCL_CLUSTER_CLIENT) ||
             (cluster != EZB_ZCL_CLUSTER_ID_PRESSURE_MEASUREMENT &&
-             cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING) ||
+             cluster != EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
+             cluster != EZB_ZCL_CLUSTER_ID_POWER_CONFIG) ||
             (cluster == EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING &&
              (sensor_type < 0 || sensor_type > 3))) return ESP_ERR_INVALID_ARG;
     portENTER_CRITICAL(&state_lock);
@@ -1166,6 +1181,16 @@ int bmx_esp32_zigbee_core_add_occupancy_cluster(int endpoint, int role, int sens
 int bmx_esp32_zigbee_core_clear_occupancy_clusters(void)
 {
     return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING);
+}
+
+int bmx_esp32_zigbee_core_add_power_config_cluster(int endpoint, int role)
+{
+    return add_measurement_cluster(endpoint, role, EZB_ZCL_CLUSTER_ID_POWER_CONFIG, 0);
+}
+
+int bmx_esp32_zigbee_core_clear_power_config_clusters(void)
+{
+    return clear_measurement_clusters(EZB_ZCL_CLUSTER_ID_POWER_CONFIG);
 }
 
 int bmx_esp32_zigbee_core_add_ota_client(int endpoint, int manufacturer,
@@ -1971,6 +1996,34 @@ int bmx_esp32_zigbee_core_set_local_occupancy(int endpoint, int occupied)
             EZB_ZCL_STD_MANUF_CODE, &value, false);
     esp_zigbee_lock_release();
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+static int set_local_battery_attribute(int endpoint, int attribute, int value)
+{
+    if (endpoint < 1 || endpoint > 240 || value < 0 || value > 0xff ||
+            !has_measurement_server(endpoint, EZB_ZCL_CLUSTER_ID_POWER_CONFIG))
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint8_t encoded = (uint8_t)value;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_POWER_CONFIG, EZB_ZCL_CLUSTER_SERVER,
+            (uint16_t)attribute, EZB_ZCL_STD_MANUF_CODE, &encoded, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_battery_voltage(int endpoint, int decivolts)
+{
+    return set_local_battery_attribute(endpoint,
+            EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_VOLTAGE_ID, decivolts);
+}
+
+int bmx_esp32_zigbee_core_set_local_battery_percentage(int endpoint, int half_percent)
+{
+    if (half_percent > 200 && half_percent != 0xff) return ESP_ERR_INVALID_ARG;
+    return set_local_battery_attribute(endpoint,
+            EZB_ZCL_ATTR_POWER_CONFIG_BATTERY_PERCENTAGE_REMAINING_ID, half_percent);
 }
 
 int bmx_esp32_zigbee_core_set_custom_scalar(int endpoint, int cluster_id,

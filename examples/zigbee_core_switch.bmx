@@ -8,6 +8,7 @@ If ZigbeeAddHumidityCluster(1, ZigbeeClusterClient) Then RuntimeError "Humidity 
 If ZigbeeAddIlluminanceCluster(1, ZigbeeClusterClient) Then RuntimeError "Illuminance client cluster failed"
 If ZigbeeAddPressureCluster(1, ZigbeeClusterClient) Then RuntimeError "Pressure client cluster failed"
 If ZigbeeAddOccupancyCluster(1, ZigbeeClusterClient) Then RuntimeError "Occupancy client cluster failed"
+If ZigbeeAddPowerConfigurationCluster(1, ZigbeeClusterClient) Then RuntimeError "Power client cluster failed"
 If ZigbeeAddCustomEndpoint(2, $c0de, $1235, 1) Then RuntimeError "Custom client endpoint failed"
 If ZigbeeAddCustomCluster(2, $fc01, ZigbeeClusterClient) Then RuntimeError "Custom profile client cluster failed"
 Local result:Int = ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1)
@@ -23,6 +24,7 @@ Local humidityReportingConfigured:Int
 Local illuminanceReportingConfigured:Int
 Local pressureReportingConfigured:Int
 Local occupancyReportingConfigured:Int
+Local batteryReportingConfigured:Int
 Local groupReady:Int
 Local lightAddress:Int
 Local lightEndpoint:Int
@@ -47,6 +49,9 @@ Local pressureFound:Int
 Local occupancyAddress:Int
 Local occupancyEndpoint:Int
 Local occupancyFound:Int
+Local batteryAddress:Int
+Local batteryEndpoint:Int
+Local batteryFound:Int
 Local nextFind:UInt = MilliSecs() + 1000
 Local nextCustomFind:UInt = MilliSecs() + 2000
 Local nextCustomProfileFind:UInt = MilliSecs() + 2250
@@ -61,6 +66,8 @@ Local nextPressureFind:UInt = MilliSecs() + 3250
 Local nextPressureRead:UInt
 Local nextOccupancyFind:UInt = MilliSecs() + 3500
 Local nextOccupancyRead:UInt
+Local nextBatteryFind:UInt = MilliSecs() + 3750
+Local nextBatteryRead:UInt
 Local nextCustomWrite:UInt = MilliSecs() + 8000
 Local nextCustomRead:UInt
 Local nextStringWrite:UInt = MilliSecs() + 9000
@@ -74,6 +81,7 @@ Local nextHumidityReporting:UInt = MilliSecs() + 1000
 Local nextIlluminanceReporting:UInt = MilliSecs() + 1000
 Local nextPressureReporting:UInt = MilliSecs() + 1000
 Local nextOccupancyReporting:UInt = MilliSecs() + 1000
+Local nextBatteryReporting:UInt = MilliSecs() + 1000
 Local nextGroup:UInt = MilliSecs() + 1000
 Local nextGroupView:UInt
 Local nextGroupMembership:UInt
@@ -164,6 +172,12 @@ While True
 			occupancyFound = True
 			nextOccupancyRead = MilliSecs() + 200
 		End If
+		If event.kind = ZigbeeEventMatch And event.cluster = ZigbeeClusterPowerConfiguration Then
+			batteryAddress = event.shortAddress
+			batteryEndpoint = event.endpoint
+			batteryFound = True
+			nextBatteryRead = MilliSecs() + 200
+		End If
 		If event.kind = ZigbeeEventBound And event.cluster = 6 Then
 			bindPending = False
 			If event.status = 0 Then bound = True
@@ -175,6 +189,7 @@ While True
 			If event.cluster = ZigbeeClusterIlluminanceMeasurement Then illuminanceReportingConfigured = True
 			If event.cluster = ZigbeeClusterPressureMeasurement Then pressureReportingConfigured = True
 			If event.cluster = ZigbeeClusterOccupancySensing Then occupancyReportingConfigured = True
+			If event.cluster = ZigbeeClusterPowerConfiguration Then batteryReportingConfigured = True
 		End If
 		If event.kind = ZigbeeEventGroupAdded And event.status = 0 Then
 			groupReady = True
@@ -231,6 +246,11 @@ While True
 		Print "Find occupancy submission=" + result
 		nextOccupancyFind = MilliSecs() + 15000
 	End If
+	If joined And MilliSecs() >= nextBatteryFind Then
+		result = ZigbeeFindServers(ZigbeeClusterPowerConfiguration)
+		Print "Find battery submission=" + result
+		nextBatteryFind = MilliSecs() + 15000
+	End If
 	If temperatureFound And nextTemperatureRead And MilliSecs() >= nextTemperatureRead Then
 		result = ZigbeeReadAttribute(1, temperatureAddress, temperatureEndpoint, ..
 			ZigbeeClusterTemperatureMeasurement, 0)
@@ -260,6 +280,15 @@ While True
 			ZigbeeClusterOccupancySensing, 0)
 		Print "Occupancy read submission=" + result
 		nextOccupancyRead = MilliSecs() + 15000
+	End If
+	If batteryFound And nextBatteryRead And MilliSecs() >= nextBatteryRead Then
+		result = ZigbeeReadAttribute(1, batteryAddress, batteryEndpoint, ..
+			ZigbeeClusterPowerConfiguration, ZigbeeBatteryVoltageAttribute)
+		Print "Battery voltage read submission=" + result
+		result = ZigbeeReadAttribute(1, batteryAddress, batteryEndpoint, ..
+			ZigbeeClusterPowerConfiguration, ZigbeeBatteryPercentageAttribute)
+		Print "Battery percentage read submission=" + result
+		nextBatteryRead = MilliSecs() + 15000
 	End If
 	If customFound And MilliSecs() >= nextCustomWrite Then
 		result = ZigbeeWriteScalar(1, customAddress, customEndpoint, $fc00, 1, ZigbeeTypeUInt16, 43)
@@ -329,6 +358,12 @@ While True
 			ZigbeeClusterOccupancySensing, 0, ZigbeeTypeBitmap8, 0, 5)
 		Print "Occupancy reporting submission=" + result
 		nextOccupancyReporting = MilliSecs() + 10000
+	End If
+	If batteryFound And Not batteryReportingConfigured And MilliSecs() >= nextBatteryReporting Then
+		result = ZigbeeConfigureReporting(1, batteryAddress, batteryEndpoint, ..
+			ZigbeeClusterPowerConfiguration, ZigbeeBatteryPercentageAttribute, ZigbeeTypeUInt8, 0, 5, 1)
+		Print "Battery reporting submission=" + result
+		nextBatteryReporting = MilliSecs() + 10000
 	End If
 	If bound And Not groupReady And MilliSecs() >= nextGroup Then
 		result = ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)

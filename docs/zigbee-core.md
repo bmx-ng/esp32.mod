@@ -148,6 +148,15 @@ ultrasonic, combined, and physical-contact types are also supported.
 and request reports. `ZigbeeClearPressureClusters` and
 `ZigbeeClearOccupancyClusters` remove their respective additions while stopped.
 
+`ZigbeeAddPowerConfigurationCluster(endpoint, role)` adds the standard Power
+Configuration cluster to any configured endpoint. A server exposes battery
+voltage (attribute 0x0020, tenths of a volt) and percentage remaining
+(attribute 0x0021, half-percent units). `ZigbeeSetLocalBatteryVoltage` accepts
+0 to 254 or 255 for unknown; `ZigbeeSetLocalBatteryPercentage` accepts 0 to
+200 or 255 for unknown. A client can discover the server, read both attributes
+as `UInt8`, and configure percentage reporting. The light example uses
+simulated 3.0 V and 74 to 75 percent readings.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -314,8 +323,8 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints, optional Relative Humidity, Illuminance, and Pressure
-Measurement and Occupancy Sensing clusters, custom endpoint profiles, and
+sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
+Occupancy Sensing, and Power Configuration clusters, custom endpoint profiles, and
 custom scalar, short string, and octet-string attributes. Other standard
 cluster templates, additional nonscalar attribute types, further
 security controls, and application-managed deep sleep are further work.
@@ -329,6 +338,10 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The C6 exposed Power Configuration battery voltage and percentage on its
+  sensor endpoint. The H2 discovered the cluster, read 3.0 V and 74 to 75
+  percent, and received a changed percentage report. The full pair regression
+  passed with `--require-battery` alongside all earlier checks.
 - The C6 exposed Pressure Measurement (0x0403) and Occupancy Sensing (0x0406)
   on endpoint 12. The H2 discovered both, read pressure as `Int16` and
   occupancy as `Bitmap8`, and received changed reports. A custom octet-string

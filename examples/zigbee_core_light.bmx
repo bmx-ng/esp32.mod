@@ -9,6 +9,7 @@ If ZigbeeAddHumidityCluster(12, ZigbeeClusterServer) Then RuntimeError "Humidity
 If ZigbeeAddIlluminanceCluster(12, ZigbeeClusterServer) Then RuntimeError "Illuminance cluster failed"
 If ZigbeeAddPressureCluster(12, ZigbeeClusterServer) Then RuntimeError "Pressure cluster failed"
 If ZigbeeAddOccupancyCluster(12, ZigbeeClusterServer) Then RuntimeError "Occupancy cluster failed"
+If ZigbeeAddPowerConfigurationCluster(12, ZigbeeClusterServer) Then RuntimeError "Power cluster failed"
 If ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1) Then RuntimeError "Custom endpoint failed"
 If ZigbeeAddCustomCluster(13, $fc01, ZigbeeClusterServer) Then RuntimeError "Custom profile cluster failed"
 If ZigbeeAddCustomScalar(13, $fc01, 1, ZigbeeTypeUInt16, ZigbeeAttributeRead, 77) Then
@@ -40,6 +41,7 @@ Local humidity:Int = 4550
 Local illuminance:Int = 20001
 Local pressure:Int = 101
 Local occupancy:Int = 0
+Local batteryPercentage:Int = 150
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
@@ -65,6 +67,10 @@ While True
 			Print "Pressure update result=" + result + " value=" + pressure
 			result = ZigbeeSetLocalOccupancy(12, occupancy)
 			Print "Occupancy update result=" + result + " value=" + occupancy
+			result = ZigbeeSetLocalBatteryVoltage(12, 30) ' Simulated 3.0 V reading.
+			Print "Battery voltage update result=" + result
+			result = ZigbeeSetLocalBatteryPercentage(12, batteryPercentage)
+			Print "Battery percentage update result=" + result + " value=" + batteryPercentage
 		End If
 		If event.kind = ZigbeeEventDeviceAnnounced Then
 			result = ZigbeeBindCluster(10, event.shortAddress, 1, 6)
@@ -81,6 +87,8 @@ While True
 			Print "Pressure report binding result=" + result
 			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterOccupancySensing)
 			Print "Occupancy report binding result=" + result
+			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterPowerConfiguration)
+			Print "Battery report binding result=" + result
 		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
@@ -113,6 +121,9 @@ While True
 		occupancy = 1 - occupancy
 		result = ZigbeeSetLocalOccupancy(12, occupancy)
 		Print "Occupancy update result=" + result + " value=" + occupancy
+		If batteryPercentage = 150 Then batteryPercentage = 148 Else batteryPercentage = 150
+		result = ZigbeeSetLocalBatteryPercentage(12, batteryPercentage)
+		Print "Battery percentage update result=" + result + " value=" + batteryPercentage
 		nextTemperatureUpdate = MilliSecs() + 10000
 	End If
 	Delay 20

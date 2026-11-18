@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.5"
+ModuleInfo "Version: 1.6"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -70,6 +70,12 @@ Rem
 bbdoc: Occupancy Sensing cluster identifier.
 End Rem
 Const ZigbeeClusterOccupancySensing:Int = $0406
+Rem
+bbdoc: Power Configuration cluster identifier, including battery status.
+End Rem
+Const ZigbeeClusterPowerConfiguration:Int = $0001
+Const ZigbeeBatteryVoltageAttribute:Int = $0020
+Const ZigbeeBatteryPercentageAttribute:Int = $0021
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -422,6 +428,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_occupancy_cluster"
 	Function _ZigbeeCoreClearOccupancyClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_occupancy_clusters"
+	Function _ZigbeeCoreAddPowerConfigCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_power_config_cluster"
+	Function _ZigbeeCoreClearPowerConfigClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_power_config_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -494,6 +504,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_pressure"
 	Function _ZigbeeCoreSetLocalOccupancy:Int(endpoint:Int, occupied:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_occupancy"
+	Function _ZigbeeCoreSetLocalBatteryVoltage:Int(endpoint:Int, decivolts:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_battery_voltage"
+	Function _ZigbeeCoreSetLocalBatteryPercentage:Int(endpoint:Int, halfPercent:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_battery_percentage"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -644,6 +658,22 @@ bbdoc: Removes configured Occupancy Sensing clusters while stopped.
 End Rem
 Function ZigbeeClearOccupancyClusters:Int()
 	Return _ZigbeeCoreClearOccupancyClusters()
+End Function
+
+Rem
+bbdoc: Adds a Power Configuration server or client cluster to a configured endpoint.
+about: The server exposes BatteryVoltage (0x0020) and
+BatteryPercentageRemaining (0x0021). Register before ZigbeeStart.
+End Rem
+Function ZigbeeAddPowerConfigurationCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddPowerConfigCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes Power Configuration clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearPowerConfigurationClusters:Int()
+	Return _ZigbeeCoreClearPowerConfigClusters()
 End Function
 
 Rem
@@ -1043,6 +1073,22 @@ reporting on attribute zero as ZigbeeTypeBitmap8.
 End Rem
 Function ZigbeeSetLocalOccupancy:Int(endpoint:Int, occupied:Int)
 	Return _ZigbeeCoreSetLocalOccupancy(endpoint, occupied)
+End Function
+
+Rem
+bbdoc: Updates the local battery voltage in tenths of a volt.
+about: Values 0 to 254 represent 0.0 to 25.4 volts; 255 means unknown.
+End Rem
+Function ZigbeeSetLocalBatteryVoltage:Int(endpoint:Int, decivolts:Int)
+	Return _ZigbeeCoreSetLocalBatteryVoltage(endpoint, decivolts)
+End Function
+
+Rem
+bbdoc: Updates the local battery percentage in half-percent units.
+about: Values 0 to 200 represent 0 to 100 percent; 255 means unknown.
+End Rem
+Function ZigbeeSetLocalBatteryPercentage:Int(endpoint:Int, halfPercent:Int)
+	Return _ZigbeeCoreSetLocalBatteryPercentage(endpoint, halfPercent)
 End Function
 
 Rem
