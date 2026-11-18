@@ -11,7 +11,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.9"
+ModuleInfo "Version: 1.10"
 ModuleInfo "License: zlib/libpng"
 
 ' The v2 stack calls native callbacks on its own task. This API only transfers
@@ -494,6 +494,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_ieee_address"
 	Function _ZigbeeCoreRequireInstallCodes:Int(required:Int) = ..
 		"bmx_esp32_zigbee_core_require_install_codes"
+	Function _ZigbeeCoreRequireLinkKeyExchange:Int(required:Int) = ..
+		"bmx_esp32_zigbee_core_require_link_key_exchange"
+	Function _ZigbeeCoreAllowWellKnownKeyRejoins:Int(allow:Int) = ..
+		"bmx_esp32_zigbee_core_allow_well_known_key_rejoins"
 	Function _ZigbeeCoreAddJoinerInstallCode:Int(address:Long, code:Byte Ptr, length:Int) = ..
 		"bmx_esp32_zigbee_core_add_joiner_install_code"
 	Function _ZigbeeCoreRemoveJoinerInstallCode:Int(address:Long) = ..
@@ -949,6 +953,26 @@ Existing network members are unaffected.
 End Rem
 Function ZigbeeRequireInstallCodes:Int(required:Int = True)
 	Return _ZigbeeCoreRequireInstallCodes(required)
+End Function
+
+Rem
+bbdoc: Requires trust-center link-key exchange when a device joins.
+about: Call on the running coordinator and joiner after ZigbeeEventStarted,
+before forming or joining a new network. The default stack policy is unchanged
+unless this function is called. A saved network may bypass new commissioning.
+End Rem
+Function ZigbeeRequireLinkKeyExchange:Int(required:Int = True)
+	Return _ZigbeeCoreRequireLinkKeyExchange(required)
+End Function
+
+Rem
+bbdoc: Allows or blocks rejoins using the Zigbee well-known link key.
+about: Call on the running coordinator before permitting a rejoin. False
+requires a device-specific link key for that rejoin. The current setting can
+be changed while running; this function does not remove existing members.
+End Rem
+Function ZigbeeAllowWellKnownKeyRejoins:Int(allow:Int)
+	Return _ZigbeeCoreAllowWellKnownKeyRejoins(allow)
 End Function
 
 Rem

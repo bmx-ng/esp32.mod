@@ -1662,6 +1662,28 @@ int bmx_esp32_zigbee_core_require_install_codes(int required)
     return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
 }
 
+int bmx_esp32_zigbee_core_require_link_key_exchange(int required)
+{
+    if (required != 0 && required != 1) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_set_tclk_exchange_required(required != 0);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_allow_well_known_key_rejoins(int allow)
+{
+    if (allow != 0 && allow != 1) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(allow != 0);
+    bool applied = ezb_secur_tcpol_get_allow_rejoins_with_well_known_key() == (allow != 0);
+    esp_zigbee_lock_release();
+    return applied ? ESP_OK : ESP_FAIL;
+}
+
 int bmx_esp32_zigbee_core_add_joiner_install_code(uint64_t address,
         const uint8_t *code, int length)
 {
