@@ -94,6 +94,15 @@ can request reports with `ZigbeeConfigureReporting`. The examples attach the
 server to the temperature endpoint and alternate between 45.50% and 45.60%.
 `ZigbeeClearHumidityClusters` removes these additions while stopped.
 
+Call `ZigbeeAddIlluminanceCluster(endpoint, role)` before starting to add an
+Illuminance Measurement server or client to an existing endpoint. Use
+`ZigbeeSetLocalIlluminance` with the ZCL encoded 16-bit MeasuredValue; 65535
+means unavailable, and the setter accepts 0 through 65534. Clients can
+discover cluster 0x0400, read attribute zero as `UInt16`, and request reports
+with `ZigbeeConfigureReporting`. The examples alternate encoded values 20001
+and 20101, and the switch checks both readback and a changed report.
+`ZigbeeClearIlluminanceClusters` removes these additions while stopped.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -168,7 +177,7 @@ writes then reads back its IdentifyTime attribute.
 ## Examples
 
 - `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
-  temperature sensor endpoint with optional humidity measurement, a custom
+  temperature sensor endpoint with humidity and illuminance measurements, a custom
   scalar cluster, and a custom-profile endpoint; run with a `zczr` build on
   H2 or C6.
 - `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
@@ -185,7 +194,7 @@ network. The saved network belongs to the previous role and topology.
 ## Scope
 
 The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints, optional Relative Humidity Measurement clusters, custom
+sensor endpoints, optional Relative Humidity and Illuminance Measurement clusters, custom
 endpoint profiles, and custom scalar and short string attributes. Other
 standard cluster templates, additional nonscalar attribute types, security
 configuration, OTA, and application-managed sleep are further work.
@@ -256,3 +265,7 @@ keepalive; it does not enter low-power sleep itself.
 - The H2 sent Remove All Groups to the C6 light, then queried membership and
   received a list with zero groups. The full pair check passed with
   `--require-group-clear` alongside all earlier checks.
+- The C6 exposed Illuminance Measurement on its sensor endpoint. The H2
+  discovered it, read encoded value 20001, and received a changed report of
+  20101. The full pair check passed with `--require-illuminance` alongside
+  all earlier checks.

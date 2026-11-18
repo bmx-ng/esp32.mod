@@ -19,6 +19,7 @@
 #define ZB_MAX_CUSTOM_ATTRIBUTES 32u
 #define ZB_MAX_STRING_BYTES 64u
 #define ZB_MAX_HUMIDITY_CLUSTERS 18u
+#define ZB_MAX_ILLUMINANCE_CLUSTERS 18u
 #define ZB_CHANNEL_MASK 0x07fff800u
 #define ZB_EVENT_STARTED 1
 #define ZB_EVENT_STARTUP 2
@@ -73,6 +74,10 @@ typedef struct {
 } zb_humidity_cluster_t;
 
 typedef struct {
+    uint8_t endpoint, role;
+} zb_illuminance_cluster_t;
+
+typedef struct {
     uint8_t endpoint, type, access;
     uint16_t cluster, attribute;
     int32_t value;
@@ -95,6 +100,8 @@ static zb_custom_attribute_t custom_attributes[ZB_MAX_CUSTOM_ATTRIBUTES];
 static uint8_t custom_attribute_count;
 static zb_humidity_cluster_t humidity_clusters[ZB_MAX_HUMIDITY_CLUSTERS];
 static uint8_t humidity_cluster_count;
+static zb_illuminance_cluster_t illuminance_clusters[ZB_MAX_ILLUMINANCE_CLUSTERS];
+static uint8_t illuminance_cluster_count;
 
 static int endpoint_kind(int endpoint)
 {
@@ -486,6 +493,28 @@ static esp_err_t add_humidity_clusters(ezb_af_device_desc_t device)
     return ESP_OK;
 }
 
+static esp_err_t add_illuminance_clusters(ezb_af_device_desc_t device)
+{
+    for (unsigned i = 0; i < illuminance_cluster_count; ++i) {
+        const zb_illuminance_cluster_t *entry = &illuminance_clusters[i];
+        ezb_af_ep_desc_t endpoint = ezb_af_device_get_endpoint_desc(device, entry->endpoint);
+        if (!endpoint || ezb_af_endpoint_get_cluster_desc(endpoint,
+                EZB_ZCL_CLUSTER_ID_ILLUMINANCE_MEASUREMENT, entry->role))
+            return ESP_ERR_INVALID_ARG;
+        ezb_zcl_illuminance_measurement_cluster_server_config_t server = {
+            .measured_value = 0xffff, .min_measured_value = 1, .max_measured_value = 0xfffe};
+        ezb_zcl_cluster_desc_t cluster = ezb_zcl_illuminance_measurement_create_cluster_desc(
+                entry->role == EZB_ZCL_CLUSTER_SERVER ? &server : NULL, entry->role);
+        if (!cluster) return ESP_ERR_NO_MEM;
+        esp_err_t result = ezb_af_endpoint_add_cluster_desc(endpoint, cluster);
+        if (result != ESP_OK) {
+            ezb_zcl_free_cluster_desc(cluster);
+            return result;
+        }
+    }
+    return ESP_OK;
+}
+
 static esp_err_t add_custom_endpoints(ezb_af_device_desc_t device)
 {
     for (unsigned i = 0; i < custom_endpoint_count; ++i) {
@@ -529,6 +558,7 @@ static esp_err_t register_device(const zb_config_t *options)
                 extra_endpoints[i].endpoint);
     if (result == ESP_OK) result = add_custom_endpoints(device);
     if (result == ESP_OK) result = add_humidity_clusters(device);
+    if (result == ESP_OK) result = add_illuminance_clusters(device);
     if (result == ESP_OK) result = add_custom_clusters(device);
     if (result != ESP_OK) {
         ezb_af_free_device_desc(device);
@@ -711,6 +741,45 @@ int bmx_esp32_zigbee_core_clear_humidity_clusters(void)
         return ESP_ERR_INVALID_STATE;
     }
     humidity_cluster_count = 0;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_add_illuminance_cluster(int endpoint, int role)
+{
+    if (endpoint < 1 || endpoint > 240 ||
+            (role != EZB_ZCL_CLUSTER_SERVER && role != EZB_ZCL_CLUSTER_CLIENT))
+        return ESP_ERR_INVALID_ARG;
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    for (unsigned i = 0; i < illuminance_cluster_count; ++i) {
+        if (illuminance_clusters[i].endpoint == endpoint &&
+                illuminance_clusters[i].role == role) {
+            portEXIT_CRITICAL(&state_lock);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+    if (illuminance_cluster_count == ZB_MAX_ILLUMINANCE_CLUSTERS) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_NO_MEM;
+    }
+    illuminance_clusters[illuminance_cluster_count++] = (zb_illuminance_cluster_t){
+        .endpoint = (uint8_t)endpoint, .role = (uint8_t)role};
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_clear_illuminance_clusters(void)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    illuminance_cluster_count = 0;
     portEXIT_CRITICAL(&state_lock);
     return ESP_OK;
 }
@@ -1189,6 +1258,26 @@ int bmx_esp32_zigbee_core_set_local_humidity(int endpoint, int centi_percent)
     ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
             EZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, EZB_ZCL_CLUSTER_SERVER,
             EZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MEASURED_VALUE_ID,
+            EZB_ZCL_STD_MANUF_CODE, &value, false);
+    esp_zigbee_lock_release();
+    return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;
+}
+
+int bmx_esp32_zigbee_core_set_local_illuminance(int endpoint, int encoded_value)
+{
+    if (endpoint < 1 || endpoint > 240 || encoded_value < 0 || encoded_value > 0xfffe)
+        return ESP_ERR_INVALID_ARG;
+    bool server = false;
+    for (unsigned i = 0; i < illuminance_cluster_count; ++i)
+        if (illuminance_clusters[i].endpoint == endpoint &&
+                illuminance_clusters[i].role == EZB_ZCL_CLUSTER_SERVER) server = true;
+    if (!server) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    uint16_t value = (uint16_t)encoded_value;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_zcl_status_t result = ezb_zcl_set_attr_value((uint8_t)endpoint,
+            EZB_ZCL_CLUSTER_ID_ILLUMINANCE_MEASUREMENT, EZB_ZCL_CLUSTER_SERVER,
+            EZB_ZCL_ATTR_ILLUMINANCE_MEASUREMENT_MEASURED_VALUE_ID,
             EZB_ZCL_STD_MANUF_CODE, &value, false);
     esp_zigbee_lock_release();
     return result == EZB_ZCL_STATUS_SUCCESS ? ESP_OK : ESP_FAIL;

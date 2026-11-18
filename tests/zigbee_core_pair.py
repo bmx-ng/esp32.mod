@@ -54,6 +54,8 @@ def main():
                         help="also require a changed temperature attribute report")
     parser.add_argument("--require-humidity", action="store_true",
                         help="also require humidity discovery, readback and a changed report")
+    parser.add_argument("--require-illuminance", action="store_true",
+                        help="also require illuminance discovery, readback and a changed report")
     args = parser.parse_args()
     output = queue.Queue()
     stop = threading.Event()
@@ -70,6 +72,7 @@ def main():
     temperature_match = temperature_read = False
     temperature_report = False
     humidity_match = humidity_read = humidity_report = False
+    illuminance_match = illuminance_read = illuminance_report = False
     group_viewed = group_member = group_membership_complete = False
     group_clear_submission = group_empty = False
     print(f"Observing Zigbee core pair for up to {args.timeout} seconds", flush=True)
@@ -124,6 +127,9 @@ def main():
             if (name == "switch" and "Zigbee event 12" in line
                     and "endpoint=12 cluster=1029" in line):
                 humidity_match = True
+            if (name == "switch" and "Zigbee event 12" in line
+                    and "endpoint=12 cluster=1024" in line):
+                illuminance_match = True
             if name == "switch" and "Zigbee event 8 status=0" in line:
                 read = True
                 if "attribute=65533" in line and "type=33" in line and "size=2" in line:
@@ -152,6 +158,9 @@ def main():
                 if ("cluster=1029 attribute=0" in line and "type=33" in line
                         and "size=2" in line and "value=4550 " in line):
                     humidity_read = True
+                if ("cluster=1024 attribute=0" in line and "type=33" in line
+                        and "size=2" in line and "value=20001 " in line):
+                    illuminance_read = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=1026 attribute=0" in line and "type=41 size=2" in line
                     and "value=2355 " in line):
@@ -160,6 +169,10 @@ def main():
                     and "cluster=1029 attribute=0" in line and "type=33 size=2" in line
                     and "value=4560 " in line):
                 humidity_report = True
+            if (name == "switch" and "Zigbee event 15 status=0" in line
+                    and "cluster=1024 attribute=0" in line and "type=33 size=2" in line
+                    and "value=20101 " in line):
+                illuminance_report = True
             if (name == "switch" and "Zigbee event 15 status=0" in line
                     and "cluster=6 attribute=0" in line):
                 report = True
@@ -191,7 +204,9 @@ def main():
                     and (temperature_match and temperature_read or not args.require_temperature)
                     and (temperature_report or not args.require_temperature_report)
                     and (humidity_match and humidity_read and humidity_report
-                         or not args.require_humidity)):
+                         or not args.require_humidity)
+                    and (illuminance_match and illuminance_read and illuminance_report
+                         or not args.require_illuminance)):
                 print("PASS: switch toggled both light states, read the attribute"
                       + (", and received a report" if args.require_report else "")
                       + (", with a group toggle" if args.require_group else "")
@@ -207,7 +222,8 @@ def main():
                       + (", and read temperature" if args.require_temperature else "")
                       + (", and received a changed temperature report"
                          if args.require_temperature_report else "")
-                      + (", and read and received humidity" if args.require_humidity else ""), flush=True)
+                      + (", and read and received humidity" if args.require_humidity else "")
+                      + (", and read and received illuminance" if args.require_illuminance else ""), flush=True)
                 return 0
         print(f"TIMEOUT: light states={sorted(states)}, toggle={toggle}, read={read}, "
               f"report={report}, group={group}, group_change={group_change}, "
@@ -223,7 +239,8 @@ def main():
               f"custom_local={custom_local}, temperature_match={temperature_match}, "
               f"temperature_read={temperature_read}, temperature_report={temperature_report}, "
               f"humidity_match={humidity_match}, humidity_read={humidity_read}, "
-              f"humidity_report={humidity_report}",
+              f"humidity_report={humidity_report}, illuminance_match={illuminance_match}, "
+              f"illuminance_read={illuminance_read}, illuminance_report={illuminance_report}",
               flush=True)
         return 1
     finally:

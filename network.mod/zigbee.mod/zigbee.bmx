@@ -12,7 +12,7 @@ End Rem
 Module ESP32.Network.Zigbee
 ?esp32
 
-ModuleInfo "Version: 1.3"
+ModuleInfo "Version: 1.4"
 ModuleInfo "License: zlib/libpng"
 
 Private
@@ -101,6 +101,10 @@ Rem
 bbdoc: Relative Humidity Measurement cluster identifier.
 End Rem
 Const ZigbeeClusterRelativeHumidityMeasurement:Int = $0405
+Rem
+bbdoc: Illuminance Measurement cluster identifier.
+End Rem
+Const ZigbeeClusterIlluminanceMeasurement:Int = $0400
 
 Rem
 bbdoc: Zigbee stack is stopped.
@@ -378,6 +382,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_humidity_cluster"
 	Function _ZigbeeCoreClearHumidityClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_humidity_clusters"
+	Function _ZigbeeCoreAddIlluminanceCluster:Int(endpoint:Int, role:Int) = ..
+		"bmx_esp32_zigbee_core_add_illuminance_cluster"
+	Function _ZigbeeCoreClearIlluminanceClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_illuminance_clusters"
 	Function _ZigbeeCoreAddCustomCluster:Int(endpoint:Int, clusterId:Int, role:Int) = ..
 		"bmx_esp32_zigbee_core_add_custom_cluster"
 	Function _ZigbeeCoreAddCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -417,6 +425,8 @@ Extern "C"
 		"bmx_esp32_zigbee_core_set_local_temperature"
 	Function _ZigbeeCoreSetLocalHumidity:Int(endpoint:Int, centiPercent:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_humidity"
+	Function _ZigbeeCoreSetLocalIlluminance:Int(endpoint:Int, encodedValue:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_illuminance"
 	Function _ZigbeeCoreSetCustomScalar:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		value:Int) = "bmx_esp32_zigbee_core_set_custom_scalar"
 	Function _ZigbeeCoreSetCustomString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
@@ -512,6 +522,22 @@ bbdoc: Removes configured Relative Humidity Measurement clusters while stopped.
 End Rem
 Function ZigbeeClearHumidityClusters:Int()
 	Return _ZigbeeCoreClearHumidityClusters()
+End Function
+
+Rem
+bbdoc: Adds a standard Illuminance Measurement server or client cluster.
+about: Call before ZigbeeStart for a configured endpoint. A client can discover,
+read, and receive reports from a remote server.
+End Rem
+Function ZigbeeAddIlluminanceCluster:Int(endpoint:Int, role:Int)
+	Return _ZigbeeCoreAddIlluminanceCluster(endpoint, role)
+End Function
+
+Rem
+bbdoc: Removes configured Illuminance Measurement clusters while stopped.
+End Rem
+Function ZigbeeClearIlluminanceClusters:Int()
+	Return _ZigbeeCoreClearIlluminanceClusters()
 End Function
 
 Rem
@@ -740,6 +766,16 @@ zero can be read remotely and configured for reporting with ZigbeeTypeUInt16.
 End Rem
 Function ZigbeeSetLocalHumidity:Int(endpoint:Int, centiPercent:Int)
 	Return _ZigbeeCoreSetLocalHumidity(endpoint, centiPercent)
+End Function
+
+Rem
+bbdoc: Updates a local Illuminance Measurement server's encoded value.
+about: Pass the ZCL 16-bit MeasuredValue (0 to 65534); 65535 represents an
+invalid or unavailable measurement. Read attribute zero remotely as
+ZigbeeTypeUInt16 and configure reporting on the same attribute.
+End Rem
+Function ZigbeeSetLocalIlluminance:Int(endpoint:Int, encodedValue:Int)
+	Return _ZigbeeCoreSetLocalIlluminance(endpoint, encodedValue)
 End Function
 
 Rem

@@ -6,6 +6,7 @@ Import ESP32.Network.Zigbee
 If ZigbeeAddOnOffEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Second light endpoint failed"
 If ZigbeeAddEndpoint(ZigbeeDeviceTemperatureSensor, 12) Then RuntimeError "Temperature endpoint failed"
 If ZigbeeAddHumidityCluster(12, ZigbeeClusterServer) Then RuntimeError "Humidity cluster failed"
+If ZigbeeAddIlluminanceCluster(12, ZigbeeClusterServer) Then RuntimeError "Illuminance cluster failed"
 If ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1) Then RuntimeError "Custom endpoint failed"
 If ZigbeeAddCustomCluster(13, $fc01, ZigbeeClusterServer) Then RuntimeError "Custom profile cluster failed"
 If ZigbeeAddCustomScalar(13, $fc01, 1, ZigbeeTypeUInt16, ZigbeeAttributeRead, 77) Then
@@ -29,6 +30,7 @@ Local nextCustomUpdate:UInt = MilliSecs() + 20000
 Local nextTemperatureUpdate:UInt = MilliSecs() + 10000
 Local temperature:Int = 2345
 Local humidity:Int = 4550
+Local illuminance:Int = 20001
 While True
 	While ZigbeePollEvent(event)
 		Print "Zigbee event " + event.kind + " status=" + event.status + ..
@@ -48,6 +50,8 @@ While True
 			Print "Temperature update result=" + result
 			result = ZigbeeSetLocalHumidity(12, 4550) ' Simulated 45.50% reading.
 			Print "Humidity update result=" + result
+			result = ZigbeeSetLocalIlluminance(12, 20001) ' Simulated encoded illuminance.
+			Print "Illuminance update result=" + result
 		End If
 		If event.kind = ZigbeeEventDeviceAnnounced Then
 			result = ZigbeeBindCluster(10, event.shortAddress, 1, 6)
@@ -58,6 +62,8 @@ While True
 			Print "Temperature report binding result=" + result
 			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterRelativeHumidityMeasurement)
 			Print "Humidity report binding result=" + result
+			result = ZigbeeBindCluster(12, event.shortAddress, 1, ZigbeeClusterIlluminanceMeasurement)
+			Print "Illuminance report binding result=" + result
 		End If
 		If event.kind = ZigbeeEventFormed Or ..
 			(event.kind = ZigbeeEventStartup And Not event.factoryNew) Then
@@ -79,6 +85,9 @@ While True
 		If humidity = 4550 Then humidity = 4560 Else humidity = 4550
 		result = ZigbeeSetLocalHumidity(12, humidity)
 		Print "Humidity update result=" + result + " value=" + humidity
+		If illuminance = 20001 Then illuminance = 20101 Else illuminance = 20001
+		result = ZigbeeSetLocalIlluminance(12, illuminance)
+		Print "Illuminance update result=" + result + " value=" + illuminance
 		nextTemperatureUpdate = MilliSecs() + 10000
 	End If
 	Delay 20
