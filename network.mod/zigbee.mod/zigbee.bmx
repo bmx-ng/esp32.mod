@@ -74,9 +74,10 @@ bbdoc: Build-time Zigbee role for a non-routing end device.
 End Rem
 Const ZigbeeRoleEndDevice:Int = 3
 Rem
-bbdoc: End-device role prepared for low-power operation.
-about: This uses the end-device stack library. Application-managed sleep policy
-will be added after wake and polling behaviour has been tested on hardware.
+bbdoc: End-device role that allows automatic light sleep between Zigbee activity.
+about: Requires a zed stack build. The radio turns off while idle and ESP-IDF
+enters light sleep when all tasks are idle. Application tasks must yield for
+sleep to occur; wake sources may be configured through ESP32.System.Power.
 End Rem
 Const ZigbeeRoleSleepyEndDevice:Int = 4
 

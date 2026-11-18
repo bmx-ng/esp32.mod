@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "esp_err.h"
+#include "esp_pm.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -90,6 +91,8 @@ static portMUX_TYPE queue_lock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE state_lock = portMUX_INITIALIZER_UNLOCKED;
 static int32_t state; /* 0 stopped, 1 starting, 2 running, 3 stopping */
 static zb_config_t requested;
+static esp_pm_config_t previous_pm_config;
+static bool restore_pm_config;
 static zb_endpoint_config_t extra_endpoints[ZB_MAX_EXTRA_ENDPOINTS];
 static uint8_t extra_endpoint_count;
 static zb_custom_endpoint_t custom_endpoints[ZB_MAX_CUSTOM_ENDPOINTS];
@@ -595,6 +598,7 @@ static void stack_task(void *context)
     if (result != ESP_OK) goto failed;
     result = ezb_bdb_set_secondary_channel_set(requested.secondary_mask);
     if (result != ESP_OK) goto failed;
+    if (requested.role >= 3) ezb_nwk_set_rx_on_when_idle(requested.role != 4);
     result = ezb_app_signal_add_handler(signal_handler);
     if (result != ESP_OK) goto failed;
     result = register_device(&requested);
@@ -611,6 +615,10 @@ failed:
     if (result != ESP_OK) emit_status(ZB_EVENT_ERROR, result, 0);
     if (initialized) (void)esp_zigbee_deinit();
     (void)nvs_flash_deinit_partition("zb_storage");
+    if (restore_pm_config) {
+        (void)esp_pm_configure(&previous_pm_config);
+        restore_pm_config = false;
+    }
     portENTER_CRITICAL(&state_lock);
     state = 0;
     portEXIT_CRITICAL(&state_lock);
@@ -945,7 +953,22 @@ int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t pri
     portENTER_CRITICAL(&queue_lock);
     queue_read = queue_write = queue_dropped = 0;
     portEXIT_CRITICAL(&queue_lock);
-    esp_err_t result = nvs_flash_init_partition("zb_storage");
+    esp_err_t result = ESP_OK;
+    if (role == 4) {
+#if CONFIG_PM_ENABLE && CONFIG_FREERTOS_USE_TICKLESS_IDLE
+        result = esp_pm_get_configuration(&previous_pm_config);
+        if (result != ESP_OK) goto failed;
+        esp_pm_config_t sleepy_pm_config = previous_pm_config;
+        sleepy_pm_config.light_sleep_enable = true;
+        result = esp_pm_configure(&sleepy_pm_config);
+        if (result != ESP_OK) goto failed;
+        restore_pm_config = true;
+#else
+        result = ESP_ERR_NOT_SUPPORTED;
+        goto failed;
+#endif
+    }
+    result = nvs_flash_init_partition("zb_storage");
     if (result != ESP_OK) goto failed;
     if (xTaskCreate(stack_task, "zigbee_stack", 6144, NULL, 5, NULL) != pdPASS) {
         result = ESP_ERR_NO_MEM;
@@ -954,6 +977,10 @@ int bmx_esp32_zigbee_core_start(int role, int device, int endpoint, uint32_t pri
     }
     return ESP_OK;
 failed:
+    if (restore_pm_config) {
+        (void)esp_pm_configure(&previous_pm_config);
+        restore_pm_config = false;
+    }
     portENTER_CRITICAL(&state_lock);
     state = 0;
     portEXIT_CRITICAL(&state_lock);

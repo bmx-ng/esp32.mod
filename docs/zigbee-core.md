@@ -184,6 +184,8 @@ writes then reads back its IdentifyTime attribute.
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
 - `examples/zigbee_core_lifecycle.bmx`: two bounded start/stop cycles.
+- `examples/zigbee_sleepy_switch.bmx`: sleepy end-device switch that yields
+  between bound On/Off commands; run with a `zed` build on H2 or C6.
 
 Use each board's `ESPPORT` and the normal `bmk makeapp -a -r -x -l esp32 -g
 riscv32 -board <board> <example>` flow. The H2 may need a manual reset after
@@ -197,9 +199,22 @@ The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity and Illuminance Measurement clusters, custom
 endpoint profiles, and custom scalar and short string attributes. Other
 standard cluster templates, additional nonscalar attribute types, security
-configuration, OTA, and application-managed sleep are further work.
-`ZigbeeRoleSleepyEndDevice` currently configures an end device with a longer
-keepalive; it does not enter low-power sleep itself.
+configuration, OTA, and application-managed deep sleep are further work.
+`ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
+Zigbee receiver off while idle. A `zed` build enables power management and
+tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
+The application must yield between work, and may configure additional wake
+sources through `ESP32.System.Power`. The role uses an eight-second keepalive.
+Actual sleep current depends on the board and application peripherals and has
+not yet been measured.
+
+## Hardware checks on 18 November 2026
+
+- The H2 sleepy switch joined its saved network and sent two bound On/Off
+  toggles 15 seconds apart. The C6 coordinator/light observed both state
+  changes, from Off to On and back to Off, while the switch continued to
+  receive reports. Both the normal and sleepy end-device examples built with
+  the new `zed` power-management configuration.
 
 ## Hardware checks on 17 November 2026
 
