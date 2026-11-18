@@ -49,6 +49,22 @@ Rem
 bbdoc: Standard Home Automation temperature sensor endpoint template.
 End Rem
 Const ZigbeeDeviceTemperatureSensor:Int = 3
+Rem
+bbdoc: Standard Home Automation Door Lock endpoint template.
+End Rem
+Const ZigbeeDeviceDoorLock:Int = 4
+Rem
+bbdoc: Standard Home Automation Door Lock Controller endpoint template.
+End Rem
+Const ZigbeeDeviceDoorLockController:Int = 5
+Rem
+bbdoc: Standard Home Automation Window Covering endpoint template.
+End Rem
+Const ZigbeeDeviceWindowCovering:Int = 6
+Rem
+bbdoc: Standard Home Automation Window Covering Controller endpoint template.
+End Rem
+Const ZigbeeDeviceWindowCoveringController:Int = 7
 
 Rem
 bbdoc: Temperature Measurement cluster identifier.
@@ -101,6 +117,38 @@ End Rem
 Const ZigbeeClusterThermostat:Int = $0201
 Const ZigbeeThermostatLocalTemperatureAttribute:Int = $0000
 Const ZigbeeThermostatHeatingSetpointAttribute:Int = $0012
+Rem
+bbdoc: Door Lock cluster and lock-state attribute.
+End Rem
+Const ZigbeeClusterDoorLock:Int = $0101
+Const ZigbeeDoorLockStateAttribute:Int = $0000
+Const ZigbeeDoorLockNotFullyLocked:Int = 0
+Const ZigbeeDoorLockLocked:Int = 1
+Const ZigbeeDoorLockUnlocked:Int = 2
+Const ZigbeeDoorLockUndefined:Int = $ff
+Rem
+bbdoc: Window Covering cluster and current lift percentage attribute.
+End Rem
+Const ZigbeeClusterWindowCovering:Int = $0102
+Const ZigbeeWindowCoveringLiftPercentageAttribute:Int = $0008
+Const ZigbeeCoveringOpen:Int = 0
+Const ZigbeeCoveringClose:Int = 1
+Const ZigbeeCoveringStop:Int = 2
+Const ZigbeeCoveringGoToLiftValue:Int = 4
+Const ZigbeeCoveringGoToLiftPercentage:Int = 5
+Const ZigbeeCoveringGoToTiltValue:Int = 7
+Const ZigbeeCoveringGoToTiltPercentage:Int = 8
+Rem
+bbdoc: IAS Zone cluster and zone-status attribute.
+End Rem
+Const ZigbeeClusterIasZone:Int = $0500
+Const ZigbeeIasZoneStatusAttribute:Int = $0002
+Const ZigbeeIasZoneMotionSensor:Int = $000d
+Const ZigbeeIasZoneContactSwitch:Int = $0015
+Const ZigbeeIasZoneAlarm1:Int = $0001
+Const ZigbeeIasZoneAlarm2:Int = $0002
+Const ZigbeeIasZoneTamper:Int = $0004
+Const ZigbeeIasZoneBattery:Int = $0008
 Rem
 bbdoc: OTA Upgrade cluster identifier.
 End Rem
@@ -218,6 +266,8 @@ End Rem
 Const ZigbeeEventGroupRemoved:Int = 17
 Rem
 bbdoc: A remote Write Attribute request completed.
+about: A successful ZCL response may omit the attribute ID; attribute then
+contains 0xFFFF. Use status and request order to correlate those responses.
 End Rem
 Const ZigbeeEventWrite:Int = 18
 Rem
@@ -300,6 +350,14 @@ Rem
 bbdoc: ZCL length-prefixed UTF-8 character string data type.
 End Rem
 Const ZigbeeTypeString:Int = $42
+Rem
+bbdoc: ZCL long octet-string data type with a 16-bit byte count.
+End Rem
+Const ZigbeeTypeLongOctets:Int = $43
+Rem
+bbdoc: ZCL long UTF-8 string data type with a 16-bit byte count.
+End Rem
+Const ZigbeeTypeLongString:Int = $44
 
 Rem
 bbdoc: Maximum UTF-8 byte length handled by Zigbee string attributes.
@@ -309,6 +367,10 @@ Rem
 bbdoc: Maximum binary byte length handled by Zigbee octet-string attributes.
 End Rem
 Const ZigbeeOctetsMaxBytes:Int = 64
+Rem
+bbdoc: Maximum byte length handled by long string and long octet attributes.
+End Rem
+Const ZigbeeLongStringMaxBytes:Int = 256
 
 Rem
 bbdoc: Server role for a custom cluster.
@@ -386,15 +448,15 @@ Struct SZigbeeEvent
 	End Rem
 	Field dataType:Int
 	Rem
-	bbdoc: Number of value bytes copied; negative means a string exceeded 64 bytes.
+	bbdoc: Number of value bytes copied; negative means a string exceeded 256 bytes.
 	End Rem
 	Field valueSize:Int
 	Rem
-	bbdoc: Text for a ZigbeeTypeString attribute event.
+bbdoc: Text for a ZigbeeTypeString or ZigbeeTypeLongString attribute event.
 	End Rem
 	Field text:String
 	Rem
-	bbdoc: Binary data for a ZigbeeTypeOctets attribute event; Null for other types.
+bbdoc: Binary data for an octet or long octet attribute event; Null for other types.
 	End Rem
 	Field bytes:Byte[]
 End Struct
@@ -473,6 +535,10 @@ Extern "C"
 		"bmx_esp32_zigbee_core_add_thermostat_cluster"
 	Function _ZigbeeCoreClearThermostatClusters:Int() = ..
 		"bmx_esp32_zigbee_core_clear_thermostat_clusters"
+	Function _ZigbeeCoreAddIasZoneCluster:Int(endpoint:Int, role:Int, zoneType:Int) = ..
+		"bmx_esp32_zigbee_core_add_ias_zone_cluster"
+	Function _ZigbeeCoreClearIasZoneClusters:Int() = ..
+		"bmx_esp32_zigbee_core_clear_ias_zone_clusters"
 	Function _ZigbeeCoreAddOtaClient:Int(endpoint:Int, manufacturer:Int, imageType:Int, ..
 		version:UInt) = "bmx_esp32_zigbee_core_add_ota_client"
 	Function _ZigbeeCoreAddOtaServer:Int(endpoint:Int) = "bmx_esp32_zigbee_core_add_ota_server"
@@ -494,6 +560,10 @@ Extern "C"
 		access:Int, text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_string"
 	Function _ZigbeeCoreAddCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_octets"
+	Function _ZigbeeCoreAddCustomLongString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_long_string"
+	Function _ZigbeeCoreAddCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_add_custom_long_octets"
 	Function _ZigbeeCoreClearCustomClusters:Int() = "bmx_esp32_zigbee_core_clear_custom_clusters"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
@@ -529,6 +599,11 @@ Extern "C"
 		shortAddress:Int Var, channel:Int Var, extendedPanId:Long Var) = "bmx_esp32_zigbee_core_network"
 	Function _ZigbeeCoreOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_onoff"
+	Function _ZigbeeCoreDoorLockCommand:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, lock:Int) = "bmx_esp32_zigbee_core_door_lock_command"
+	Function _ZigbeeCoreWindowCoveringCommand:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, command:Int, value:Int) = ..
+		"bmx_esp32_zigbee_core_window_covering_command"
 	Function _ZigbeeCoreReadOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int) = "bmx_esp32_zigbee_core_read_onoff"
 	Function _ZigbeeCorePoll:Int(kind:Int Var, status:Int Var, signal:Int Var, endpoint:Int Var, ..
@@ -545,6 +620,12 @@ Extern "C"
 		destinationEndpoint:Int, clusterId:Int) = "bmx_esp32_zigbee_core_bind_cluster"
 	Function _ZigbeeCoreBoundOnOff:Int(sourceEndpoint:Int, command:Int) = "bmx_esp32_zigbee_core_bound_onoff"
 	Function _ZigbeeCoreSetLocalOnOff:Int(endpoint:Int, on:Int) = "bmx_esp32_zigbee_core_set_local_onoff"
+	Function _ZigbeeCoreSetLocalDoorLockState:Int(endpoint:Int, state:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_door_lock_state"
+	Function _ZigbeeCoreSetLocalCoveringLift:Int(endpoint:Int, percent:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_covering_lift"
+	Function _ZigbeeCoreSetLocalIasZoneStatus:Int(endpoint:Int, status:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_ias_zone_status"
 	Function _ZigbeeCoreSetLocalTemperature:Int(endpoint:Int, centiCelsius:Int) = ..
 		"bmx_esp32_zigbee_core_set_local_temperature"
 	Function _ZigbeeCoreSetLocalHumidity:Int(endpoint:Int, centiPercent:Int) = ..
@@ -585,12 +666,22 @@ Extern "C"
 		text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_string"
 	Function _ZigbeeCoreSetCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
 		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_octets"
+	Function _ZigbeeCoreSetCustomLongString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		text:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_long_string"
+	Function _ZigbeeCoreSetCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		bytes:Byte Ptr, length:Int) = "bmx_esp32_zigbee_core_set_custom_long_octets"
 	Function _ZigbeeCoreWriteString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int, text:Byte Ptr, ..
 		length:Int) = "bmx_esp32_zigbee_core_write_string"
 	Function _ZigbeeCoreWriteOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
 		length:Int) = "bmx_esp32_zigbee_core_write_octets"
+	Function _ZigbeeCoreWriteLongString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, text:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_long_string"
+	Function _ZigbeeCoreWriteLongOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, bytes:Byte Ptr, ..
+		length:Int) = "bmx_esp32_zigbee_core_write_long_octets"
 	Function _ZigbeeCoreConfigureOnOffReporting:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, minInterval:Int, maxInterval:Int) = ..
 		"bmx_esp32_zigbee_core_configure_onoff_reporting"
@@ -810,6 +901,22 @@ Function ZigbeeClearThermostatClusters:Int()
 End Function
 
 Rem
+bbdoc: Adds an IAS Zone server or client cluster to a configured endpoint.
+about: Register before ZigbeeStart. A server begins unenrolled with zero zone
+status. Enrollment and status notifications require further application support.
+End Rem
+Function ZigbeeAddIasZoneCluster:Int(endpoint:Int, role:Int, zoneType:Int = ZigbeeIasZoneContactSwitch)
+	Return _ZigbeeCoreAddIasZoneCluster(endpoint, role, zoneType)
+End Function
+
+Rem
+bbdoc: Removes IAS Zone clusters while the stack is stopped.
+End Rem
+Function ZigbeeClearIasZoneClusters:Int()
+	Return _ZigbeeCoreClearIasZoneClusters()
+End Function
+
+Rem
 bbdoc: Adds one OTA Upgrade client on a configured endpoint before ZigbeeStart.
 about: manufacturer and imageType identify firmware for this device. version is
 the running image's monotonically increasing file version. The client accepts
@@ -929,6 +1036,37 @@ Function ZigbeeAddCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 End Function
 
 Rem
+bbdoc: Adds a 16-bit-length UTF-8 string attribute to a custom server cluster.
+about: Register its cluster first. The encoded value is limited to 256 bytes.
+End Rem
+Function ZigbeeAddCustomLongString:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeLongStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreAddCustomLongString(endpoint, clusterId, attributeId, ..
+		access, bytes, Int(length))
+	MemFree(bytes)
+	Return result
+End Function
+
+Rem
+bbdoc: Adds a 16-bit-length binary octet attribute to a custom server cluster.
+about: Register its cluster first. The encoded value is limited to 256 bytes.
+End Rem
+Function ZigbeeAddCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, ..
+		access:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeLongStringMaxBytes Then Return -5
+	Return _ZigbeeCoreAddCustomLongOctets(endpoint, clusterId, attributeId, ..
+		access, value, value.length)
+End Function
+
+Rem
 bbdoc: Removes custom clusters and attributes while the stack is stopped.
 End Rem
 Function ZigbeeClearCustomClusters:Int()
@@ -938,7 +1076,7 @@ End Function
 Rem
 bbdoc: Starts the Zigbee stack with a supported standard endpoint.
 param: Coordinator, router, end-device or sleepy-end-device role.
-param: Standard On/Off light, On/Off switch, or temperature sensor device template.
+param: One of the standard device template constants.
 param: Zigbee endpoint number from 1 to 240.
 param: Primary channel bitmask; bit n selects IEEE 802.15.4 channel n (11 to 26).
 param: Secondary channel bitmask used after primary-channel scanning.
@@ -1145,6 +1283,28 @@ Function ZigbeeSendOnOff:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 End Function
 
 Rem
+bbdoc: Sends a secured Door Lock command from a controller endpoint.
+about: Pass one to lock or zero to unlock. A zero result means the SDK accepted
+the command for transmission, not that the remote lock changed state.
+End Rem
+Function ZigbeeSendDoorLock:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, lock:Int)
+	Return _ZigbeeCoreDoorLockCommand(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, lock)
+End Function
+
+Rem
+bbdoc: Sends a Window Covering movement command from a controller endpoint.
+about: Use a ZigbeeCovering command constant. Value is ignored for Open, Close
+and Stop; percentages are 0 to 100 and lift or tilt values are 0 to 65535.
+End Rem
+Function ZigbeeSendWindowCovering:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, command:Int, value:Int = 0)
+	Return _ZigbeeCoreWindowCoveringCommand(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, command, value)
+End Function
+
+Rem
 bbdoc: Requests the remote On/Off attribute value.
 about: Poll for a ZigbeeEventRead carrying cluster 6, attribute 0. The return
 value only reports whether the request was accepted for transmission.
@@ -1210,6 +1370,33 @@ the application is responsible for applying the state to its physical output.
 End Rem
 Function ZigbeeSetLocalOnOff:Int(endpoint:Int, on:Int)
 	Return _ZigbeeCoreSetLocalOnOff(endpoint, on)
+End Function
+
+Rem
+bbdoc: Reports a Door Lock server's observed physical lock state.
+about: Use the ZigbeeDoorLock state constants. Only update this after checking
+the actual mechanism; this function does not move a lock.
+End Rem
+Function ZigbeeSetLocalDoorLockState:Int(endpoint:Int, state:Int)
+	Return _ZigbeeCoreSetLocalDoorLockState(endpoint, state)
+End Function
+
+Rem
+bbdoc: Reports a Window Covering server's observed lift position.
+about: Percent is 0 for fully open to 100 for fully closed. This updates the
+attribute and does not operate a motor.
+End Rem
+Function ZigbeeSetLocalCoveringLift:Int(endpoint:Int, percent:Int)
+	Return _ZigbeeCoreSetLocalCoveringLift(endpoint, percent)
+End Function
+
+Rem
+bbdoc: Updates an IAS Zone server's status bitmap.
+about: Combine the ZigbeeIasZone status flags. The endpoint must host an IAS
+Zone server. Enrollment is required before peer notifications can be relied on.
+End Rem
+Function ZigbeeSetLocalIasZoneStatus:Int(endpoint:Int, status:Int)
+	Return _ZigbeeCoreSetLocalIasZoneStatus(endpoint, status)
 End Function
 
 Rem
@@ -1402,6 +1589,32 @@ Function ZigbeeSetCustomOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int,
 End Function
 
 Rem
+bbdoc: Updates a local custom long UTF-8 string attribute.
+End Rem
+Function ZigbeeSetCustomLongString:Int(endpoint:Int, clusterId:Int, attributeId:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeLongStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreSetCustomLongString(endpoint, clusterId, attributeId, ..
+		bytes, Int(length))
+	MemFree(bytes)
+	Return result
+End Function
+
+Rem
+bbdoc: Updates a local custom long binary octet attribute.
+End Rem
+Function ZigbeeSetCustomLongOctets:Int(endpoint:Int, clusterId:Int, attributeId:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeLongStringMaxBytes Then Return -5
+	Return _ZigbeeCoreSetCustomLongOctets(endpoint, clusterId, attributeId, value, value.length)
+End Function
+
+Rem
 bbdoc: Requests periodic and change-based On/Off reports from a remote light.
 about: Call on a switch endpoint after discovering a light. Intervals are in
 seconds; minimum may be zero, and maximum may be 65535 to disable periodic
@@ -1491,7 +1704,8 @@ bbdoc: Requests one attribute from any remote cluster.
 about: The response is a ZigbeeEventRead. Boolean, 8-bit, 16-bit and 32-bit
 integer, bitmap, enum and raw data types are copied into value with their
 ZCL dataType and valueSize. Character strings appear in text and octet strings
-in bytes. Other types report valueSize zero.
+in bytes, including 16-bit-length string forms up to 256 bytes. Other types
+report valueSize zero.
 End Rem
 Function ZigbeeReadAttribute:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 		destinationEndpoint:Int, clusterId:Int, attributeId:Int)
@@ -1544,24 +1758,57 @@ Function ZigbeeWriteOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
 End Function
 
 Rem
+bbdoc: Writes one remote 16-bit-length UTF-8 string attribute.
+about: At most 256 bytes are accepted. Poll for ZigbeeEventWrite.
+End Rem
+Function ZigbeeWriteLongString:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, value:String)
+	If value = Null Then Return -5
+	Local length:Size_T
+	Local bytes:Byte Ptr = value.ToUTF8String(length)
+	If length > ZigbeeLongStringMaxBytes Then
+		MemFree(bytes)
+		Return -5
+	End If
+	Local result:Int = _ZigbeeCoreWriteLongString(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, bytes, Int(length))
+	MemFree(bytes)
+	Return result
+End Function
+
+Rem
+bbdoc: Writes one remote 16-bit-length binary octet attribute.
+about: At most 256 bytes are accepted. Poll for ZigbeeEventWrite.
+End Rem
+Function ZigbeeWriteLongOctets:Int(sourceEndpoint:Int, destinationAddress:Int, ..
+		destinationEndpoint:Int, clusterId:Int, attributeId:Int, value:Byte[])
+	If Not value Then Return -5
+	If value.length > ZigbeeLongStringMaxBytes Then Return -5
+	Return _ZigbeeCoreWriteLongOctets(sourceEndpoint, destinationAddress, ..
+		destinationEndpoint, clusterId, attributeId, value, value.length)
+End Function
+
+Rem
 bbdoc: Removes the oldest event from the native Zigbee queue.
 returns: True if an event was returned; False if the queue is empty.
 about: Native callbacks copy bounded values into a queue. The
 application thread is the only place this function creates a BlitzMax value.
 End Rem
 Function ZigbeePollEvent:Int(event:SZigbeeEvent Var)
-	Local bytes:Byte[ZigbeeStringMaxBytes]
+	Local bytes:Byte[ZigbeeLongStringMaxBytes]
 	Local found:Int = _ZigbeeCorePoll(event.kind, event.status, event.signal, event.endpoint, ..
 		event.cluster, event.attribute, event.value, event.shortAddress, event.panId, ..
 		event.channel, event.factoryNew, event.dataType, event.valueSize, bytes, ..
-		ZigbeeStringMaxBytes)
+		ZigbeeLongStringMaxBytes)
 	If found Then
 		event.text = ""
 		event.bytes = Null
-		If event.dataType = ZigbeeTypeString And event.valueSize > 0 Then
+		If (event.dataType = ZigbeeTypeString Or event.dataType = ZigbeeTypeLongString) And ..
+				event.valueSize > 0 Then
 			event.text = String.FromUTF8Bytes(bytes, event.valueSize)
-		Else If event.dataType = ZigbeeTypeOctets And event.valueSize >= 0 And ..
-				event.valueSize <= ZigbeeOctetsMaxBytes Then
+		Else If (event.dataType = ZigbeeTypeOctets Or ..
+				event.dataType = ZigbeeTypeLongOctets) And event.valueSize >= 0 And ..
+				event.valueSize <= ZigbeeLongStringMaxBytes Then
 			event.bytes = New Byte[event.valueSize]
 			If event.valueSize > 0 Then MemCopy(Varptr event.bytes[0], Varptr bytes[0], ..
 				Size_T(event.valueSize))

@@ -211,6 +211,24 @@ discover and read them, and write the occupied heating setpoint with
 `ZigbeeWriteScalar` and `ZigbeeTypeInt16`. The light example simulates a
 23.00 °C room and a 21.00 °C setpoint; the switch requests 21.50 °C.
 
+`ZigbeeDeviceDoorLock`, `ZigbeeDeviceDoorLockController`,
+`ZigbeeDeviceWindowCovering`, and `ZigbeeDeviceWindowCoveringController`
+select standard Home Automation endpoint layouts through `ZigbeeStart` or
+`ZigbeeAddEndpoint`. A Door Lock controller sends an APS-secured Lock or Unlock
+command with `ZigbeeSendDoorLock`. A Window Covering controller sends Open,
+Close, Stop, or lift/tilt position commands with `ZigbeeSendWindowCovering`.
+The return value confirms SDK submission only. Server templates expose their
+standard attributes. `ZigbeeSetLocalDoorLockState` and
+`ZigbeeSetLocalCoveringLift` report observed physical state. These APIs do not
+drive a physical lock or motor or provide application command callbacks yet;
+applications must not advertise them as working actuators without that handling.
+
+`ZigbeeAddIasZoneCluster` attaches an IAS Zone server or client to an endpoint.
+The server starts unenrolled with zero status and the chosen zone type, such as
+`ZigbeeIasZoneContactSwitch` or `ZigbeeIasZoneMotionSensor`.
+`ZigbeeSetLocalIasZoneStatus` updates its status bitmap. Enrollment and
+status-change notification handling are still needed for a working alarm sensor.
+
 Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
 cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
 `ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
@@ -236,6 +254,14 @@ with `dataType` `ZigbeeTypeOctets` and `valueSize` set to the byte count.
 The public `ZigbeeTypeBitmap8`, `ZigbeeTypeBitmap16`, `ZigbeeTypeEnum8`, and
 `ZigbeeTypeEnum16` constants name types already accepted by the scalar read,
 write, and report paths.
+
+`ZigbeeAddCustomLongString` and `ZigbeeAddCustomLongOctets` register the ZCL
+16-bit-length forms. Their Set and Write counterparts update local and remote
+attributes, and read/report events use `text` or `bytes` with the corresponding
+`ZigbeeTypeLongString` or `ZigbeeTypeLongOctets`. Values are bounded to 256
+bytes in this module; a remote value beyond that limit produces a negative
+`valueSize`. The Zigbee transport or peer may impose a smaller practical
+message limit. Array and structure values are still unsupported.
 
 `ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
 ID, device ID, and four-bit version. It includes a Basic server; add other
@@ -375,6 +401,9 @@ activation, reboot, and rollback confirmation.
   between bound On/Off commands; run with a `zed` build on H2 or C6.
 - `examples/zigbee_ota_client_v1.bmx`, `zigbee_ota_client_v2.bmx`, and
   `zigbee_ota_server.bmx`: two-board OTA transfer and reboot proof.
+- `examples/zigbee_extended_smoke.bmx`: C6 coordinator smoke test for Door
+  Lock, Window Covering, IAS Zone, and long custom values. It loops read
+  requests back through the local Zigbee stack and prints the responses.
 
 Use each board's `ESPPORT` and the normal `bmk makeapp -a -r -x -l esp32 -g
 riscv32 -board <board> <example>` flow. The H2 may need a manual reset after
@@ -404,12 +433,14 @@ A coordinator or router should remain awake to serve other devices in the mesh.
 
 ## Scope
 
-The public API covers multiple standard On/Off light, switch, or temperature
-sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
-Occupancy Sensing, Power Configuration, Electrical Measurement, Level Control,
-Color Control, and Thermostat clusters, custom endpoint profiles, and custom
-scalar, short string, and octet-string attributes. Other standard
-cluster templates and additional nonscalar attribute types are further work.
+The public API covers multiple standard On/Off light, switch, temperature
+sensor, Door Lock, Door Lock Controller, Window Covering, and Window Covering
+Controller endpoints; optional Relative Humidity, Illuminance, Pressure
+Measurement, Occupancy Sensing, Power Configuration, Electrical Measurement,
+Level Control, Color Control, Thermostat, and IAS Zone clusters; custom
+endpoint profiles; and custom scalar, short string, long string, and octet
+attributes. Actuator command handling, IAS Zone enrollment and notifications,
+and array/structure values remain open.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
@@ -419,6 +450,16 @@ Actual sleep current depends on the board and application peripherals and has
 not yet been measured.
 
 ## Hardware checks on 18 November 2026
+
+The Door Lock, Window Covering, IAS Zone, and long-string additions compile for
+both the C6 `zczr` and H2 `zed` example builds. On the C6,
+`zigbee_extended_smoke` started with all three server layouts, updated their
+local state attributes, and read back the lock state (2), covering lift (42%),
+and IAS Zone status (1). It registered a 72-byte long string, read back its
+78-byte local update, and read back an 80-byte long octet value through the
+Zigbee event path. The same firmware wrote a 79-byte string and 80-byte
+octets through Zigbee and read both back with successful responses. These
+additions have not yet been exercised across the two physical boards.
 
 - The H2 deep-sleep sensor joined the C6 network, stopped Zigbee cleanly,
   woke on its ten-second timer, and restored the saved network on consecutive
