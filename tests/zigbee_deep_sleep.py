@@ -11,6 +11,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("port", help="USB serial port of the deep-sleep end device")
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--uart", action="store_true",
+                        help="keep an external UART bridge open during device sleep")
     args = parser.parse_args()
     deadline = time.monotonic() + args.timeout
     boots = restored = stopped = 0
@@ -21,6 +23,10 @@ def main():
             if connection is None:
                 try:
                     connection = serial.Serial(args.port, 115200, timeout=1)
+                    # The onboard UART bridge uses these lines for automatic
+                    # reset; keep them released while observing sleep cycles.
+                    connection.dtr = False
+                    connection.rts = False
                     last_line = time.monotonic()
                 except serial.SerialException:
                     time.sleep(0.5)
@@ -35,7 +41,7 @@ def main():
                 # The native USB serial device can disappear during deep sleep
                 # without raising an exception on macOS. Reopen a silent handle
                 # so the monitor follows its wake-up re-enumeration.
-                if time.monotonic() - last_line > 4:
+                if not args.uart and time.monotonic() - last_line > 4:
                     connection.close()
                     connection = None
                 continue

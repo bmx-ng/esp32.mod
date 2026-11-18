@@ -373,17 +373,23 @@ network. The saved network belongs to the previous role and topology.
 
 ## End-device deep sleep
 
-`examples/zigbee_deep_sleep_sensor.bmx` is an experimental timer-driven end
-device example. It
+`examples/zigbee_deep_sleep_sensor.bmx` is a timer-driven end-device example. It
 starts on the `zed` stack, restores or joins a network, updates a temperature
 attribute, requests `ZigbeeStop`, waits for `ZigbeeEventStopped`, and calls
 `ESP32.System.Power.DeepSleepForMilliseconds`. Deep sleep restarts the entire
 application. On wake, `ZigbeeStart` loads the saved Zigbee network state and
 the application must recreate its endpoints and attribute values. The example
-is intended to repeat this cycle every ten seconds of sleep. On the tested
-Waveshare H2, the USB serial monitor did not receive any boot or wake messages
-after flashing, so restoration across sleep remains unverified. A coordinator
-or router should remain awake to serve other devices in the mesh.
+repeats this cycle every ten seconds of sleep. On the tested Waveshare H2,
+native USB serial does not reliably reconnect after deep sleep. Select a UART
+console and use the board's CH343 bridge to observe the wake cycle. The
+`tests/zigbee_deep_sleep.py` monitor accepts `--uart` for a persistent bridge:
+
+```text
+python tests/zigbee_deep_sleep.py /dev/cu.usbmodem59710824031 --uart
+```
+
+The H2 restored its saved network on consecutive timer wakes in this setup.
+A coordinator or router should remain awake to serve other devices in the mesh.
 
 ## Scope
 
@@ -392,8 +398,8 @@ sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
 Occupancy Sensing, Power Configuration, Electrical Measurement, Level Control,
 Color Control, and Thermostat clusters, custom endpoint profiles, and custom
 scalar, short string, and octet-string attributes. Other standard
-cluster templates, additional nonscalar attribute types, verified network key
-rotation, and validated application-managed deep sleep are further work.
+cluster templates, additional nonscalar attribute types, and verified network
+key rotation are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
@@ -404,6 +410,14 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- The H2 deep-sleep sensor joined the C6 network, stopped Zigbee cleanly,
+  woke on its ten-second timer, and restored the saved network on consecutive
+  wakes. The UART bridge remained observable while native USB did not. The
+  `tests/zigbee_deep_sleep.py --uart` check passed.
+- The C6 exposed a heating-only Thermostat server on endpoint 12. The H2
+  discovered it, wrote the occupied heating setpoint to 21.50 °C, and read
+  back both that setpoint and the 23.00 °C local temperature. The full pair
+  regression passed with `--require-thermostat` and every earlier check.
 - The C6 exposed x/y Color Control on its light endpoint. The H2 discovered
   it, sent Move To Color for (20000, 30000), and read both coordinates back.
   The full pair regression passed with `--require-color` and all earlier checks.

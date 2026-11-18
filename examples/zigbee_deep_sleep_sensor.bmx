@@ -14,6 +14,7 @@ Print "Deep-sleep Zigbee start submitted"
 Local joined:Int
 Local stopping:Int
 Local sleepAt:UInt
+Local nextJoin:UInt
 Local event:SZigbeeEvent
 While True
 	While ZigbeePollEvent(event)
@@ -21,16 +22,16 @@ While True
 			" factoryNew=" + event.factoryNew + " endpoint=" + event.endpoint
 		If event.kind = ZigbeeEventJoined And event.status = 0 Then
 			joined = True
+			nextJoin = 0
 			Print "Deep-sleep network joined"
 		End If
 		If event.kind = ZigbeeEventStartup And event.status = 0 And Not event.factoryNew Then
 			joined = True
+			nextJoin = 0
 			Print "Deep-sleep saved network restored"
 		End If
-		If event.kind = ZigbeeEventStartup And event.status <> 0 Then
-			result = ZigbeeJoinNetwork()
-			Print "Deep-sleep retry join submission=" + result
-		End If
+		If event.kind = ZigbeeEventStartup And event.status <> 0 Then nextJoin = MilliSecs() + 1000
+		If event.kind = ZigbeeEventJoined And event.status <> 0 Then nextJoin = MilliSecs() + 15000
 		If event.kind = ZigbeeEventStopped Then
 			If event.status Then RuntimeError "Zigbee stop failed: " + event.status
 			Print "Deep-sleep Zigbee stopped"
@@ -39,6 +40,11 @@ While True
 			RuntimeError "Deep sleep failed: " + result
 		End If
 	Wend
+	If nextJoin And Not joined And MilliSecs() >= nextJoin Then
+		result = ZigbeeJoinNetwork()
+		Print "Deep-sleep retry join submission=" + result
+		nextJoin = MilliSecs() + 15000
+	End If
 	If joined And Not sleepAt Then
 		result = ZigbeeSetLocalTemperature(12, 2300)
 		If result Then RuntimeError "Temperature update failed: " + result

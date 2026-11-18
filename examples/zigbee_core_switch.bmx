@@ -20,6 +20,7 @@ If result Then RuntimeError "Zigbee start failed: " + result
 Print "Zigbee end-device/switch starting"
 
 Local joined:Int
+Local nextJoin:UInt
 Local bound:Int
 Local bindPending:Int
 Local reportingConfigured:Int
@@ -145,12 +146,16 @@ While True
 					End If
 			End Select
 		End If
-		If event.kind = ZigbeeEventJoined And event.status = 0 Then joined = True
-		If event.kind = ZigbeeEventStartup And event.status = 0 And Not event.factoryNew Then joined = True
-		If event.kind = ZigbeeEventStartup And event.status <> 0 Then
-			result = ZigbeeJoinNetwork()
-			Print "Retry join submission=" + result
+		If event.kind = ZigbeeEventJoined And event.status = 0 Then
+			joined = True
+			nextJoin = 0
 		End If
+		If event.kind = ZigbeeEventStartup And event.status = 0 And Not event.factoryNew Then
+			joined = True
+			nextJoin = 0
+		End If
+		If event.kind = ZigbeeEventStartup And event.status <> 0 Then nextJoin = MilliSecs() + 1000
+		If event.kind = ZigbeeEventJoined And event.status <> 0 Then nextJoin = MilliSecs() + 15000
 		If event.kind = ZigbeeEventMatch And event.cluster = 6 Then
 			If Not bound And Not bindPending Then
 				lightAddress = event.shortAddress
@@ -259,6 +264,11 @@ While True
 			awaitingEmptyGroups = False
 		End If
 	Wend
+	If nextJoin And Not joined And MilliSecs() >= nextJoin Then
+		result = ZigbeeJoinNetwork()
+		Print "Retry join submission=" + result
+		nextJoin = MilliSecs() + 15000
+	End If
 	If joined And MilliSecs() >= nextFind Then
 		result = ZigbeeFindServers(6)
 		Print "Find light submission=" + result
