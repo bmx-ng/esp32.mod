@@ -101,8 +101,11 @@ sleepy end devices, time to receive the update, call
 `ZigbeeBroadcastNetworkKeySwitch(sequence)` to request the switch, then
 `ZigbeeSwitchNetworkKey(key, sequence)` to switch the coordinator locally.
 The first two calls return the stack's submission status; they do not confirm
-every device has received the key. Key rotation has not yet been tested on the
-C6/H2 pair.
+every device has received the key. The C6 coordinator and H2 end device have
+completed a key rotation with a 30-second distribution interval: On/Off
+commands and attribute reads continued after the switch and after both devices
+restarted. This verifies the two-board path; a larger network should allow for
+its own sleepy-device polling intervals and verify each device resumes traffic.
 
 The native Zigbee task copies event values into a fixed 64-record queue.
 `ZigbeePollEvent` transfers one record to a BlitzMax value on the application
@@ -360,6 +363,14 @@ activation, reboot, and rollback confirmation.
   commands, reporting, groups, and custom attribute reads and writes; run with
   a `zed` build on H2 or C6.
 - `examples/zigbee_core_lifecycle.bmx`: two bounded start/stop cycles.
+- `examples/zigbee_key_rotation_light.bmx`: one-shot C6 coordinator key-rotation
+  test; run with `zigbee_core_switch.bmx` on H2 and monitor with
+  `tests/zigbee_key_rotation.py`. The sample generates a fresh key with the
+  hardware RNG after Zigbee starts, keeps the key out of logs, and records an
+  attempt in NVS before distribution so a reboot cannot trigger a second
+  rotation. It uses sequence 1, so run it only on a fresh test network whose
+  active sequence is 0. Clear the sample's `zb_key_test` NVS namespace and use
+  a fresh Zigbee network for another run.
 - `examples/zigbee_sleepy_switch.bmx`: sleepy end-device switch that yields
   between bound On/Off commands; run with a `zed` build on H2 or C6.
 - `examples/zigbee_ota_client_v1.bmx`, `zigbee_ota_client_v2.bmx`, and
@@ -398,8 +409,7 @@ sensor endpoints, optional Relative Humidity, Illuminance, Pressure Measurement,
 Occupancy Sensing, Power Configuration, Electrical Measurement, Level Control,
 Color Control, and Thermostat clusters, custom endpoint profiles, and custom
 scalar, short string, and octet-string attributes. Other standard
-cluster templates, additional nonscalar attribute types, and verified network
-key rotation are further work.
+cluster templates and additional nonscalar attribute types are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
