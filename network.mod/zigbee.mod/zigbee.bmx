@@ -397,6 +397,18 @@ Extern "C"
 	Function _ZigbeeCoreStart:Int(role:Int, device:Int, endpoint:Int, primaryMask:UInt, ..
 		secondaryMask:UInt, autoCommission:Int) = "bmx_esp32_zigbee_core_start"
 	Function _ZigbeeCoreState:Int() = "bmx_esp32_zigbee_core_state"
+	Function _ZigbeeCoreEnableInstallCodes:Int(enabled:Int) = ..
+		"bmx_esp32_zigbee_core_enable_install_codes"
+	Function _ZigbeeCoreIEEEAddress:Int(address:Long Var) = ..
+		"bmx_esp32_zigbee_core_ieee_address"
+	Function _ZigbeeCoreRequireInstallCodes:Int(required:Int) = ..
+		"bmx_esp32_zigbee_core_require_install_codes"
+	Function _ZigbeeCoreAddJoinerInstallCode:Int(address:Long, code:Byte Ptr, length:Int) = ..
+		"bmx_esp32_zigbee_core_add_joiner_install_code"
+	Function _ZigbeeCoreRemoveJoinerInstallCode:Int(address:Long) = ..
+		"bmx_esp32_zigbee_core_remove_joiner_install_code"
+	Function _ZigbeeCoreSetLocalInstallCode:Int(code:Byte Ptr, length:Int) = ..
+		"bmx_esp32_zigbee_core_set_local_install_code"
 	Function _ZigbeeCoreStop:Int() = "bmx_esp32_zigbee_core_stop"
 	Function _ZigbeeCoreForm:Int() = "bmx_esp32_zigbee_core_form"
 	Function _ZigbeeCoreJoin:Int() = "bmx_esp32_zigbee_core_join"
@@ -614,6 +626,71 @@ bbdoc: Returns the current local Zigbee stack state.
 End Rem
 Function ZigbeeState:Int()
 	Return _ZigbeeCoreState()
+End Function
+
+Rem
+bbdoc: Enables or disables install-code commissioning support for the next stack start.
+about: Call while stopped, before ZigbeeStart. The setting persists across
+stop/start cycles until changed. Both the trust center and a joining device
+must enable it to use install codes. The default is disabled.
+End Rem
+Function ZigbeeEnableInstallCodes:Int(enabled:Int = True)
+	Return _ZigbeeCoreEnableInstallCodes(enabled)
+End Function
+
+Rem
+bbdoc: Reads this device's 64-bit Zigbee IEEE address.
+about: Call after ZigbeeEventStarted. The result is returned in address; its
+bit pattern is the device EUI-64, even when Long prints as a negative number.
+End Rem
+Function ZigbeeGetIEEEAddress:Int(address:Long Var)
+	Return _ZigbeeCoreIEEEAddress(address)
+End Function
+
+Rem
+bbdoc: Makes a running coordinator require install codes from new joiners.
+about: First enable install codes before ZigbeeStart. For a new network,
+start with autoCommission=False, call this after ZigbeeEventStarted, and
+then form the network. Pass False to allow ordinary commissioning again.
+Existing network members are unaffected.
+End Rem
+Function ZigbeeRequireInstallCodes:Int(required:Int = True)
+	Return _ZigbeeCoreRequireInstallCodes(required)
+End Function
+
+Rem
+bbdoc: Provisions a joiner's install code in the running coordinator.
+param: Joiner's 64-bit Zigbee IEEE address, as returned by ZigbeeGetIEEEAddress.
+param: Install-code bytes including the two-byte CRC; length must be 8, 10, 14 or 18.
+about: Enable install codes before ZigbeeStart and call after
+ZigbeeEventStarted, before the joiner commissions. Supply the full code,
+including its CRC. Provision each device's own code; do not share a single
+code across devices.
+End Rem
+Function ZigbeeAddJoinerInstallCode:Int(address:Long, code:Byte[])
+	If Not code Then Return -5
+	Return _ZigbeeCoreAddJoinerInstallCode(address, code, code.length)
+End Function
+
+Rem
+bbdoc: Removes a joiner's install code from the running coordinator.
+about: This affects future commissioning attempts; it does not remove an
+already joined device from the network.
+End Rem
+Function ZigbeeRemoveJoinerInstallCode:Int(address:Long)
+	Return _ZigbeeCoreRemoveJoinerInstallCode(address)
+End Function
+
+Rem
+bbdoc: Sets this router or end device's install code for commissioning.
+param: Install-code bytes including the two-byte CRC; length must be 8, 10, 14 or 18.
+about: Enable install codes before ZigbeeStart, start with autoCommission=False,
+then call this after ZigbeeEventStarted and before ZigbeeJoinNetwork. Supply
+the full code, including its CRC.
+End Rem
+Function ZigbeeSetLocalInstallCode:Int(code:Byte[])
+	If Not code Then Return -5
+	Return _ZigbeeCoreSetLocalInstallCode(code, code.length)
 End Function
 
 Rem

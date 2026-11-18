@@ -55,6 +55,36 @@ wait for a successful `ZigbeeEventStartup` and call `ZigbeeFormNetwork` or
 `ZigbeeJoinNetwork` explicitly. `ZigbeePermitJoining` opens or closes joining.
 `ZigbeeGetNetworkInfo` returns current network details.
 
+## Install-code commissioning
+
+Install-code commissioning is optional and disabled by default. Both the
+coordinator and joiner must call `ZigbeeEnableInstallCodes()` while stopped,
+before `ZigbeeStart`. The setting persists across stop/start cycles until
+changed. This uses the Zigbee stack configuration; it is independent of the
+`bmk` stack-mode and partition options.
+
+For a new network, start the coordinator with `autoCommission=False` and wait
+for `ZigbeeEventStarted`. Then call
+`ZigbeeAddJoinerInstallCode(joinerIEEEAddress, code)` for each prospective
+joiner and `ZigbeeRequireInstallCodes()`. After those calls succeed, use
+`ZigbeeFormNetwork` and open joining with `ZigbeePermitJoining` once formation
+completes. For an existing network, provision and require codes before
+opening a joining window. `ZigbeeGetIEEEAddress`
+returns a running device's 64-bit IEEE address; obtain the joiner's address
+before provisioning it on the coordinator. `ZigbeeRemoveJoinerInstallCode`
+removes a provisioned code for future joins, and
+`ZigbeeRequireInstallCodes(False)` permits ordinary commissioning again.
+
+On a router or end device, start with `autoCommission=False`, wait for
+`ZigbeeEventStarted`, call `ZigbeeSetLocalInstallCode(code)`, then
+`ZigbeeJoinNetwork`. The API accepts 8, 10, 14, or 18 bytes, including the
+two-byte CCITT-16 CRC specified by Zigbee BDB. Keep each device's code private
+and provision its own code on the coordinator. Never embed production codes
+in an example or commit them to source control. Successful API calls return
+zero; check each result before opening or attempting a join. A device already
+on a saved network may not recommission; clear its Zigbee network state when
+testing a new joining policy.
+
 The native Zigbee task copies event values into a fixed 64-record queue.
 `ZigbeePollEvent` transfers one record to a BlitzMax value on the application
 thread. Check `ZigbeeDroppedEvents` if the application might be unable to poll
@@ -198,8 +228,8 @@ network. The saved network belongs to the previous role and topology.
 The public API covers multiple standard On/Off light, switch, or temperature
 sensor endpoints, optional Relative Humidity and Illuminance Measurement clusters, custom
 endpoint profiles, and custom scalar and short string attributes. Other
-standard cluster templates, additional nonscalar attribute types, security
-configuration, OTA, and application-managed deep sleep are further work.
+standard cluster templates, additional nonscalar attribute types, further
+security controls, OTA, and application-managed deep sleep are further work.
 `ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
 Zigbee receiver off while idle. A `zed` build enables power management and
 tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
@@ -210,6 +240,19 @@ not yet been measured.
 
 ## Hardware checks on 18 November 2026
 
+- With a fresh Zigbee storage partition on the H2 end device, the C6
+  coordinator accepted its provisioned 18-byte install code and the H2 joined
+  and sent bound On/Off toggles. The coordinator returned success from both
+  `ZigbeeAddJoinerInstallCode` and `ZigbeeRequireInstallCodes`.
+- With the same coordinator requiring install codes, an H2 flashed without
+  install-code setup and with fresh Zigbee storage reported `joined=0` on six
+  consecutive network checks. This verified the required-code policy blocked
+  ordinary joining in the test setup.
+- After restoring the normal examples and clearing saved Zigbee network state
+  on both boards, the C6 and H2 formed and joined an ordinary network. The
+  full `tests/zigbee_core_pair.py` regression passed, including On/Off,
+  reporting, groups, custom clusters and profiles, UTF-8 strings, and
+  temperature, humidity, and illuminance readings and reports.
 - The H2 sleepy switch joined its saved network and sent two bound On/Off
   toggles 15 seconds apart. The C6 coordinator/light observed both state
   changes, from Off to On and back to Off, while the switch continued to

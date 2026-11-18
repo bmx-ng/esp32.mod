@@ -91,6 +91,7 @@ static portMUX_TYPE queue_lock = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE state_lock = portMUX_INITIALIZER_UNLOCKED;
 static int32_t state; /* 0 stopped, 1 starting, 2 running, 3 stopping */
 static zb_config_t requested;
+static bool install_codes_enabled;
 static esp_pm_config_t previous_pm_config;
 static bool restore_pm_config;
 static zb_endpoint_config_t extra_endpoints[ZB_MAX_EXTRA_ENDPOINTS];
@@ -579,6 +580,7 @@ static void stack_task(void *context)
         .device_config = {
             .device_type = requested.role == 1 ? EZB_NWK_DEVICE_TYPE_COORDINATOR :
                     requested.role == 2 ? EZB_NWK_DEVICE_TYPE_ROUTER : EZB_NWK_DEVICE_TYPE_END_DEVICE,
+            .install_code_policy = install_codes_enabled,
         },
         .platform_config = {
             .storage_partition_name = "zb_storage",
@@ -993,6 +995,91 @@ int bmx_esp32_zigbee_core_state(void)
     int current = state;
     portEXIT_CRITICAL(&state_lock);
     return current;
+}
+
+int bmx_esp32_zigbee_core_enable_install_codes(int enabled)
+{
+    portENTER_CRITICAL(&state_lock);
+    if (state != 0) {
+        portEXIT_CRITICAL(&state_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+    install_codes_enabled = enabled != 0;
+    portEXIT_CRITICAL(&state_lock);
+    return ESP_OK;
+}
+
+static bool install_code_type(int length, ezb_secur_ic_type_t *type)
+{
+    switch (length) {
+        case 8: *type = EZB_SECUR_IC_TYPE_48; return true;
+        case 10: *type = EZB_SECUR_IC_TYPE_64; return true;
+        case 14: *type = EZB_SECUR_IC_TYPE_96; return true;
+        case 18: *type = EZB_SECUR_IC_TYPE_128; return true;
+        default: return false;
+    }
+}
+
+int bmx_esp32_zigbee_core_ieee_address(uint64_t *address)
+{
+    if (!address) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_extaddr_t ieee;
+    ezb_nwk_get_extended_address(&ieee);
+    *address = ieee.u64;
+    esp_zigbee_lock_release();
+    return ESP_OK;
+}
+
+int bmx_esp32_zigbee_core_require_install_codes(int required)
+{
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1)
+        return ESP_ERR_INVALID_STATE;
+    if (required && !install_codes_enabled) return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_set_ic_required(required != 0);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_add_joiner_install_code(uint64_t address,
+        const uint8_t *code, int length)
+{
+    ezb_secur_ic_type_t type;
+    if (!code || !install_code_type(length, &type) || address == 0 || address == UINT64_MAX)
+        return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1 || !install_codes_enabled)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_extaddr_t ieee = {.u64 = address};
+    ezb_err_t result = ezb_secur_ic_add(&ieee, type, code);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_remove_joiner_install_code(uint64_t address)
+{
+    if (address == 0 || address == UINT64_MAX) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role != 1 || !install_codes_enabled)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_extaddr_t ieee = {.u64 = address};
+    ezb_err_t result = ezb_secur_ic_remove(&ieee);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
+}
+
+int bmx_esp32_zigbee_core_set_local_install_code(const uint8_t *code, int length)
+{
+    ezb_secur_ic_type_t type;
+    if (!code || !install_code_type(length, &type)) return ESP_ERR_INVALID_ARG;
+    if (bmx_esp32_zigbee_core_state() != 2 || requested.role == 1 || !install_codes_enabled)
+        return ESP_ERR_INVALID_STATE;
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(1000))) return ESP_ERR_TIMEOUT;
+    ezb_err_t result = ezb_secur_ic_set(type, code);
+    esp_zigbee_lock_release();
+    return result == EZB_ERR_NONE ? ESP_OK : esp_zigbee_err_to_esp(result);
 }
 
 int bmx_esp32_zigbee_core_stop(void)
