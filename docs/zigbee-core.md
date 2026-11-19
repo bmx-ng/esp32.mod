@@ -1,624 +1,584 @@
-# Zigbee stack API
+# Build Zigbee applications with `ESP32.Network.Zigbee`
 
-`ESP32.Network.Zigbee` uses the pinned ESP Zigbee SDK 2.1.0 component with
-ESP-IDF 6.1. It currently provides a configurable stack lifecycle, network
-commissioning, a bounded event queue, and standard Home Automation On/Off
-light, switch, and temperature sensor endpoints. Importing the module adds
-the pinned Zigbee component only to applications that use it. The component
-manager downloads it on the first online build and caches it for later builds.
+This guide shows how to make an ESP32-C6 or ESP32-H2 application join a Zigbee
+network, expose a device, and exchange commands and attributes. Start with the
+two short programs below, then use the recipes for the features your device
+needs. The [module bbdocs](../network.mod/zigbee.mod/zigbee.bmx) describe every
+public function and constant; the [hardware test record](zigbee-validation.md)
+tracks what has been exercised on boards.
 
-## Build configuration
+For a first app, read [build setup](#before-you-build), run the
+[light](#a-minimal-coordinator-and-light) and
+[switch](#a-minimal-end-device-switch), then use the
+[event pattern](#the-event-and-result-pattern). The remaining sections are
+recipes you can consult as needed.
 
-The Zigbee import selects its own `sdkconfig.zigbee.<mode>` and partition table.
-Without the import, a normal application keeps its board configuration and may
-use any valid partition layout for that board. The Zigbee default partition
-layout includes `zb_storage` and `zb_fct`, alongside the normal NVS, OTA and
-LittleFS partitions. `esp32.zigbee.partitions` selects a custom table; its path
-may be absolute or relative to the application's source directory and must name
-a table containing `zb_storage` as `data,nvs`.
+The module uses ESP Zigbee SDK 2.1.0 with ESP-IDF 6.1. Importing it adds the
+pinned Zigbee component only to applications that use Zigbee. The first online
+build downloads the component; later builds use the cache.
 
-The build selects `zczr` (coordinator/router) on H2 and `zed` (end device) on
-C6 by default. Set `esp32.zigbee.stack` to `zczr` or `zed` in
-`bin/custom.bmk` for an installation default, or in `pre.bmk` beside the
-source for an application override. Use `<output-name>.pre.bmk` to target one
-application output. For example, a switch application's file can contain:
+## Before you build
+
+A coordinator forms a network and admits devices. A router forwards traffic.
+An end device joins an existing network; a sleepy end device may turn off its
+radio between activity. Choose the matching build mode:
+
+| Runtime role | `ZigbeeStart` role | `esp32.zigbee.stack` |
+| --- | --- | --- |
+| Coordinator | `ZigbeeRoleCoordinator` | `zczr` |
+| Router | `ZigbeeRoleRouter` | `zczr` |
+| End device | `ZigbeeRoleEndDevice` | `zed` |
+| Sleepy end device | `ZigbeeRoleSleepyEndDevice` | `zed` |
+
+The board default is `zczr` on H2 and `zed` on C6. Put the following beside an
+app as `pre.bmk`, or use `<output-name>.pre.bmk` to configure one output:
 
 ```bmk
-setoption esp32.zigbee.stack zed
+setoption esp32.zigbee.stack zczr
 ```
 
-The light and switch examples include their own app-specific `pre.bmk` files,
-so they choose the correct library on either board. Each mode has its own
-sdkconfig variant, so switching roles rebuilds the correct SDK
-library. A coordinator or router role requires `zczr`; an end-device role
-requires `zed`. `ZigbeeStart` rejects a role that does not match the linked
-library.
+Use `zed` for an end-device app. Set an installation default in
+`bin/custom.bmk` if useful. An app option overrides that default. The older
+`BMX_ESP32_ZIGBEE_STACK_MODE` environment setting remains supported, but the
+bmk option takes precedence. The [light](../examples/zigbee_core_light.bmx)
+and [switch](../examples/zigbee_core_switch.bmx) examples have app-specific
+configuration files for their roles. `ZigbeeStart` rejects a role that does
+not match the linked stack.
 
-Set a custom partition table in the same configuration file with
-`setoption esp32.zigbee.partitions "partitions.csv"`. The bmk options take
-precedence over the older `BMX_ESP32_ZIGBEE_STACK_MODE` and
-`BMX_ESP32_ZIGBEE_PARTITIONS` environment variables, which remain available
-for existing build scripts.
+A Zigbee import also selects a Zigbee partition table with `zb_storage`,
+`zb_fct`, NVS, OTA and LittleFS partitions. Other applications retain their
+normal board partition configuration. To supply a Zigbee table:
 
-## Application flow
+```bmk
+setoption esp32.zigbee.partitions "partitions.csv"
+```
 
-Call `ZigbeeStart(role, device, endpoint, primaryMask, secondaryMask,
-autoCommission)`. Call `ZigbeeAddEndpoint` before starting to register up
-to eight more standard light, switch, or temperature sensor endpoints. The
-extra endpoint list is retained across stop/start cycles;
-`ZigbeeClearExtraEndpoints` clears it while stopped. The default channel mask
-selects channel 15. Startup is
-asynchronous; process `ZigbeePollEvent` from the application thread. With
-auto commissioning enabled and no saved Zigbee network, a coordinator forms a
-network, while a router or end device attempts to join one. A coordinator
-starts network steering after formation. With auto commissioning disabled,
-wait for a successful `ZigbeeEventStartup` and call `ZigbeeFormNetwork` or
-`ZigbeeJoinNetwork` explicitly. `ZigbeePermitJoining` opens or closes joining.
-`ZigbeeGetNetworkInfo` returns current network details.
-
-## Install-code commissioning
-
-Install-code commissioning is optional and disabled by default. Both the
-coordinator and joiner must call `ZigbeeEnableInstallCodes()` while stopped,
-before `ZigbeeStart`. The setting persists across stop/start cycles until
-changed. This uses the Zigbee stack configuration; it is independent of the
-`bmk` stack-mode and partition options.
-
-For a new network, start the coordinator with `autoCommission=False` and wait
-for `ZigbeeEventStarted`. Then call
-`ZigbeeAddJoinerInstallCode(joinerIEEEAddress, code)` for each prospective
-joiner and `ZigbeeRequireInstallCodes()`. After those calls succeed, use
-`ZigbeeFormNetwork` and open joining with `ZigbeePermitJoining` once formation
-completes. For an existing network, provision and require codes before
-opening a joining window. `ZigbeeGetIEEEAddress`
-returns a running device's 64-bit IEEE address; obtain the joiner's address
-before provisioning it on the coordinator. `ZigbeeRemoveJoinerInstallCode`
-removes a provisioned code for future joins, and
-`ZigbeeRequireInstallCodes(False)` permits ordinary commissioning again.
-
-On a router or end device, start with `autoCommission=False`, wait for
-`ZigbeeEventStarted`, call `ZigbeeSetLocalInstallCode(code)`, then
-`ZigbeeJoinNetwork`. The API accepts 8, 10, 14, or 18 bytes, including the
-two-byte CCITT-16 CRC specified by Zigbee BDB. Keep each device's code private
-and provision its own code on the coordinator. Never embed production codes
-in an example or commit them to source control. Successful API calls return
-zero; check each result before opening or attempting a join. A device already
-on a saved network may not recommission; clear its Zigbee network state when
-testing a new joining policy.
-
-`ZigbeeRequireLinkKeyExchange(True)` makes the trust center and joining device
-require a link-key exchange during new commissioning. Call it after
-`ZigbeeEventStarted` on both devices and before forming or joining a network.
-On a running coordinator, `ZigbeeAllowWellKnownKeyRejoins(False)` rejects
-rejoins that rely on the Zigbee well-known link key. Apply that policy before
-opening a rejoin window. These controls do not retroactively remove members;
-test a new policy with fresh Zigbee network state.
-
-A running coordinator can distribute a new 16-byte network key with
-`ZigbeeBroadcastNetworkKey(key, sequence)`. Use a new sequence number from 0
-to 255 and a freshly generated key. After allowing all devices, especially
-sleepy end devices, time to receive the update, call
-`ZigbeeBroadcastNetworkKeySwitch(sequence)` to request the switch, then
-`ZigbeeSwitchNetworkKey(key, sequence)` to switch the coordinator locally.
-The first two calls return the stack's submission status; they do not confirm
-every device has received the key. The C6 coordinator and H2 end device have
-completed a key rotation with a 30-second distribution interval: On/Off
-commands and attribute reads continued after the switch and after both devices
-restarted. This verifies the two-board path; a larger network should allow for
-its own sleepy-device polling intervals and verify each device resumes traffic.
-
-The native Zigbee task copies event values into a fixed 64-record queue.
-`ZigbeePollEvent` transfers one record to a BlitzMax value on the application
-thread. Check `ZigbeeDroppedEvents` if the application might be unable to poll
-fast enough. `ZigbeeStop` requests an asynchronous shutdown; wait for
-`ZigbeeEventStopped` before restarting. `ZigbeeFactoryReset` clears saved
-Zigbee network state, while the SDK retains the outgoing frame counter.
-
-The On/Off switch template has a client cluster. `ZigbeeFindOnOffLights`
-broadcasts a match descriptor request. Each `ZigbeeEventOnOffMatch` supplies a
-light's short address and endpoint. `ZigbeeBindOnOff` binds the switch to that
-light, and `ZigbeeEventOnOffBound` confirms the result. `ZigbeeSendBoundOnOff`
-uses that binding for Off, On, or Toggle. `ZigbeeSendOnOff` also permits direct
-sending to a 16-bit network address; `ZigbeeReadOnOff` requests the remote
-On/Off attribute. A successful return means the SDK accepted the request,
-and a later `ZigbeeEventRead` carries a read response. The light template has
-an On/Off server and reports changes as `ZigbeeEventAttribute`.
-`ZigbeeSetLocalOnOff` lets the application update that server attribute when
-its own hardware controls the light. The application must also update its
-physical output.
-
-The temperature sensor template exposes the standard Temperature Measurement
-cluster (0x0402). Call `ZigbeeSetLocalTemperature` with a measurement in
-hundredths of a degree Celsius. Remote clients can discover it with
-`ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement)` and read attribute
-zero with `ZigbeeReadAttribute`; a successful read event has type `Int16`.
-For reports, bind the sensor's server cluster to the client's endpoint and
-request reporting with `ZigbeeConfigureReporting` using `ZigbeeTypeInt16`.
-The examples use a simulated value that alternates between 23.45 °C and
-23.55 °C; the switch receives those changes as `ZigbeeEventReport`.
-
-Call `ZigbeeAddHumidityCluster(endpoint, ZigbeeClusterServer)` before starting
-to add a Relative Humidity Measurement server to an existing endpoint. Add the
-client role on a remote reader's endpoint. `ZigbeeSetLocalHumidity` accepts a
-measurement from 0 to 10000 in hundredths of a percent. A client discovers
-cluster 0x0405 with `ZigbeeFindServers`, reads attribute zero as `UInt16`, and
-can request reports with `ZigbeeConfigureReporting`. The examples attach the
-server to the temperature endpoint and alternate between 45.50% and 45.60%.
-`ZigbeeClearHumidityClusters` removes these additions while stopped.
-
-Call `ZigbeeAddIlluminanceCluster(endpoint, role)` before starting to add an
-Illuminance Measurement server or client to an existing endpoint. Use
-`ZigbeeSetLocalIlluminance` with the ZCL encoded 16-bit MeasuredValue; 65535
-means unavailable, and the setter accepts 0 through 65534. Clients can
-discover cluster 0x0400, read attribute zero as `UInt16`, and request reports
-with `ZigbeeConfigureReporting`. The examples alternate encoded values 20001
-and 20101, and the switch checks both readback and a changed report.
-`ZigbeeClearIlluminanceClusters` removes these additions while stopped.
-
-Call `ZigbeeAddPressureCluster(endpoint, role)` before starting to add a
-Pressure Measurement server or client. `ZigbeeSetLocalPressure` updates its
-signed 16-bit MeasuredValue in whole kilopascals; -32768 means unavailable.
-A client can discover cluster 0x0403, read attribute zero as `Int16`, and
-configure reports on that attribute.
-
-Call `ZigbeeAddOccupancyCluster(endpoint, role, sensorType)` before starting
-to add an Occupancy Sensing server or client. The default sensor type is PIR;
-ultrasonic, combined, and physical-contact types are also supported.
-`ZigbeeSetLocalOccupancy` sets attribute zero to zero (unoccupied) or one
-(occupied). Clients can discover cluster 0x0406, read the `Bitmap8` attribute,
-and request reports. `ZigbeeClearPressureClusters` and
-`ZigbeeClearOccupancyClusters` remove their respective additions while stopped.
-
-`ZigbeeAddPowerConfigurationCluster(endpoint, role)` adds the standard Power
-Configuration cluster to any configured endpoint. A server exposes battery
-voltage (attribute 0x0020, tenths of a volt) and percentage remaining
-(attribute 0x0021, half-percent units). `ZigbeeSetLocalBatteryVoltage` accepts
-0 to 254 or 255 for unknown; `ZigbeeSetLocalBatteryPercentage` accepts 0 to
-200 or 255 for unknown. A client can discover the server, read both attributes
-as `UInt8`, and configure percentage reporting. The light example uses
-simulated 3.0 V and 74 to 75 percent readings.
-
-`ZigbeeAddElectricalMeasurementCluster(endpoint, role)` adds the standard AC
-Electrical Measurement cluster. A server exposes RMS voltage in volts, RMS
-current in milliamps, and signed active power in watts. The advertised AC
-current divisor is 1000; the other multipliers and divisors are one. Use
-`ZigbeeSetLocalRmsVoltage`, `ZigbeeSetLocalRmsCurrent`, and
-`ZigbeeSetLocalActivePower` to update the three readings. A client can discover
-the cluster, read attributes 0x0505, 0x0508, and 0x050B, and configure reports
-for active power. The light example simulates 230 V, 250 mA, and 58 to 60 W.
-
-`ZigbeeAddLevelControlCluster(endpoint, role)` adds a Level Control server or
-client. A server exposes CurrentLevel (attribute zero); `ZigbeeSetLocalLevel`
-sets it from 0 to 254. A client can discover the cluster and use
-`ZigbeeMoveToLevel` to request a level and transition time, optionally with the
-On/Off variant. The light example starts at level 30 and the switch requests
-level 180, then reads CurrentLevel back. Applications must apply the reported
-level to their physical output.
-
-`ZigbeeAddColorControlCluster` adds an x/y Color Control server or client.
-The server exposes CurrentX and CurrentY and declares x/y color support.
-`ZigbeeSetLocalColor` updates these attributes; `ZigbeeMoveToColor` sends a
-transition command from a client. Coordinates use the Zigbee unsigned
-16-bit representation of CIE 1931 x/y. The light example starts at
-(16384, 16384); the switch requests (20000, 30000) and reads both attributes
-back. Applications must translate the color state to their physical output.
-
-`ZigbeeAddThermostatCluster` adds a heating-only Thermostat server or a client.
-The server exposes LocalTemperature and OccupiedHeatingSetpoint, both in
-hundredths of a degree Celsius. `ZigbeeSetLocalThermostatTemperature` and
-`ZigbeeSetLocalHeatingSetpoint` update those values locally. A client may
-discover and read them, and write the occupied heating setpoint with
-`ZigbeeWriteScalar` and `ZigbeeTypeInt16`. The light example simulates a
-23.00 °C room and a 21.00 °C setpoint; the switch requests 21.50 °C.
-
-`ZigbeeDeviceDoorLock`, `ZigbeeDeviceDoorLockController`,
-`ZigbeeDeviceWindowCovering`, and `ZigbeeDeviceWindowCoveringController`
-select standard Home Automation endpoint layouts through `ZigbeeStart` or
-`ZigbeeAddEndpoint`. A Door Lock controller sends an APS-secured Lock or Unlock
-command with `ZigbeeSendDoorLock`. A Window Covering controller sends Open,
-Close, Stop, or lift/tilt position commands with `ZigbeeSendWindowCovering`.
-The return value confirms SDK submission only. Server templates expose their
-standard attributes. `ZigbeeSetLocalDoorLockState` and
-`ZigbeeSetLocalCoveringLift` report observed physical state. These APIs do not
-drive a physical lock or motor. Incoming commands arrive as
-`ZigbeeEventActuatorCommand` with `cluster`, `value` (lock/unlock or covering
-command), `attribute` (covering target), `shortAddress`, and `dataType` (source
-endpoint). The application must call `ZigbeeCompleteActuatorCommand` with the
-event's `signal` token and a `ZigbeeCommand` result within five seconds. The
-stack replies with failure if the application does not complete the command.
-The application should update the observed state only after its actuator has
-accepted the request. A Door Lock controller receives
-`ZigbeeEventDoorLockResponse` with the remote status. The C6 loopback smoke test
-exercised Lock and GoToLiftPercentage callbacks and successful acknowledgements.
-
-`ZigbeeAddIasZoneCluster` attaches an IAS Zone server or client to an endpoint.
-The server starts unenrolled with zero status and the chosen zone type, such as
-`ZigbeeIasZoneContactSwitch` or `ZigbeeIasZoneMotionSensor`.
-`ZigbeeRequestIasEnrollment` writes the CIE IEEE address and sends an Enroll
-Request. The CIE receives `ZigbeeEventIasEnrollRequest` and answers with
-`ZigbeeRespondIasEnrollment`, assigning a zone ID. The sensor receives
-`ZigbeeEventIasEnrollResponse`; on success, its ZoneState and ZoneId attributes
-are updated. `ZigbeeSetLocalIasZoneStatus` updates the status bitmap and sends
-a Zone Status Change Notification for an enrolled zone, which the CIE receives
-as `ZigbeeEventIasStatus`. SDK 2.1.0 exposes incoming enrollment responses as
-raw ZCL frames without invoking its documented IAS response callback, and does
-not automatically send a notification after a local status update. The module
-handles the response frame and sends the notification explicitly.
-
-Before starting, `ZigbeeAddCustomCluster` can attach a custom server or client
-cluster (ID 0x8000 through 0xFFFF) to any configured endpoint.
-`ZigbeeAddCustomScalar` adds a readable, optionally writable and reportable
-Boolean or 8/16/32-bit scalar attribute to a custom server cluster. Up to
-eight custom clusters and 32 custom attributes may be configured;
-`ZigbeeClearCustomClusters` clears them while stopped. The C6 light example
-adds cluster 0xFC00 on endpoint 11, with a writable 16-bit attribute. The H2
-switch discovers the cluster, writes the attribute, and reads it back.
-`ZigbeeSetCustomScalar` updates a local custom server attribute from the
-application, so a remote client can read its new value.
-`ZigbeeAddCustomString` registers a ZCL character string attribute with up to
-64 UTF-8 bytes. `ZigbeeSetCustomString` updates it locally, and
-`ZigbeeWriteString` writes a remote string attribute. The switch example writes
-`Zigbee é` and reads it back; the light then restores `ready` locally, which
-the switch reads again. `ZigbeeConfigureReporting` currently handles scalar
-types only.
-
-`ZigbeeAddCustomOctets` registers a binary octet-string attribute with up to
-64 bytes, including zero and non-UTF-8 byte values. `ZigbeeWriteOctets`
-writes a remote attribute and `ZigbeeSetCustomOctets` updates a local one.
-An incoming read or attribute event carries its bytes in `SZigbeeEvent.bytes`
-with `dataType` `ZigbeeTypeOctets` and `valueSize` set to the byte count.
-The public `ZigbeeTypeBitmap8`, `ZigbeeTypeBitmap16`, `ZigbeeTypeEnum8`, and
-`ZigbeeTypeEnum16` constants name types already accepted by the scalar read,
-write, and report paths.
-
-`ZigbeeAddCustomLongString` and `ZigbeeAddCustomLongOctets` register the ZCL
-16-bit-length forms. Their Set and Write counterparts update local and remote
-attributes, and read/report events use `text` or `bytes` with the corresponding
-`ZigbeeTypeLongString` or `ZigbeeTypeLongOctets`. Values are bounded to 256
-bytes in this module; a remote value beyond that limit produces a negative
-`valueSize`. The Zigbee transport or peer may impose a smaller practical
-message limit.
-
-`ZigbeeAddCustomArray` and `ZigbeeAddCustomStructure` register ZCL array and
-structure values on a custom server cluster. Pass complete ZCL value bytes:
-an array begins with its element type and a little-endian 16-bit element count;
-a structure begins with a little-endian 16-bit element count and then a type
-and value for each element. `ZigbeeSetCustomArray` and
-`ZigbeeSetCustomStructure` replace local values, and `ZigbeeWriteArray` and
-`ZigbeeWriteStructure` write one remote attribute. Reads and incoming writes
-arrive in `SZigbeeEvent.bytes` with `ZigbeeTypeArray` or
-`ZigbeeTypeStructure`; `valueSize` is the full encoded length. The module
-validates element lengths and nesting up to four levels, with a 256-byte
-encoded limit. Read and Write access are supported; ZCL does not allow
-reporting arrays or structures. SDK 2.1.0 rejects these types during normal
-attribute registration, so the module serves their read, write, and standard
-attribute-discovery frames through the documented raw ZCL and APS interfaces.
-Composite writes use one attribute per command. Structured element access and
-the separate ZCL set and bag types are outside this API.
-
-`ZigbeeAddCustomEndpoint` adds an endpoint with an application-chosen profile
-ID, device ID, and four-bit version. It includes a Basic server; add other
-clusters with `ZigbeeAddCustomCluster`. Up to eight custom endpoints can be
-registered before `ZigbeeStart`, alongside the eight extra standard endpoints.
-`ZigbeeClearCustomEndpoints` removes their identities while stopped; clear
-their custom clusters separately. To discover a non-HA endpoint, pass its
-profile ID as the second argument to `ZigbeeFindServers`. A source endpoint
-with the same profile and a matching client cluster can then read its remote
-attributes. The examples use profile `0xC0DE` on endpoints 13 and 2.
-
-`ZigbeeFindServers` broadcasts a match request for any server cluster and
-returns `ZigbeeEventMatch` records with address, endpoint, and cluster.
-`ZigbeeBindCluster` binds any local cluster to a remote endpoint, with a
-`ZigbeeEventBound` response. The On/Off functions remain convenience wrappers;
-the switch example uses the general discovery and binding calls.
-
-`ZigbeeConfigureOnOffReporting` requests change and periodic reports from a
-light. The response arrives as `ZigbeeEventReportingConfigured`; incoming
-reports arrive as `ZigbeeEventReport`. The light needs a binding from its On/Off
-server endpoint back to the switch's client endpoint so reports have a
-destination. The light example creates this binding when it sees the switch
-announce itself. `ZigbeeConfigureReporting` accepts any supported scalar
-attribute and its ZCL type, intervals, and numeric change threshold. The
-switch example uses that general form for the On/Off attribute.
-
-The light template includes a Groups server. The switch template adds a Groups
-client alongside its On/Off client. `ZigbeeAddGroup` and `ZigbeeRemoveGroup`
-manage a remote light's membership, with response events for the outcome.
-`ZigbeeViewGroup` checks one group and returns `ZigbeeEventGroupViewed` with its
-ID and status. `ZigbeeGetGroupMembership` lists all groups on one remote
-endpoint: zero or more `ZigbeeEventGroupMember` records are followed by
-`ZigbeeEventGroupMembershipComplete`, whose value is the number of groups and
-whose attribute field is the remaining group table capacity. The group query
-events identify the remote device with `shortAddress` and the local client
-endpoint with `endpoint`.
-`ZigbeeRemoveAllGroups` clears every group on one remote endpoint. It has no
-specific response; request its membership list afterward to confirm the table
-is empty.
-`ZigbeeSendGroupOnOff` sends an On/Off command to every endpoint in the group.
-The switch example adds group 4660, queries its membership, sends group
-toggles, clears the table, then adds the group again.
-
-`ZigbeeReadAttribute` reads one attribute from any remote cluster. A
-`ZigbeeEventRead` provides its ZCL `dataType`, `valueSize`, and `value` for
-Boolean, 8-bit, 16-bit, and 32-bit integer, bitmap, enum, and raw data types.
-Signed values are sign-extended in `value`; for a 32-bit unsigned value, use
-its raw bit pattern. For `ZigbeeTypeString`, `text` holds the decoded UTF-8
-value and `valueSize` counts its bytes. For `ZigbeeTypeOctets`, `bytes` holds
-the binary value. A string longer than 64 bytes has `valueSize` -1 and no
-`text` or `bytes`; an unsupported type has `valueSize` zero. The same
-fields are available on incoming attribute reports. `ZigbeeWriteScalar`
-writes one of those scalar types, with a `ZigbeeEventWrite` response carrying
-the remote status. The switch example reads the light's cluster revision and
-writes then reads back its IdentifyTime attribute.
-
-## Zigbee OTA firmware updates
-
-`ZigbeeAddOtaClient(endpoint, manufacturer, imageType, version)` adds the OTA
-Upgrade client cluster before `ZigbeeStart`. A matching server can notify the
-client, or the client can discover the server with `ZigbeeFindServers(0x0019)`
-and call `ZigbeeOtaQuery`. The native client checks the Zigbee OTA file header,
-requires a strictly newer version and one raw firmware sub-element, and streams
-that firmware into the inactive ESP32 OTA slot. ESP-IDF validates the firmware
-image before it becomes the boot partition. The client reboots after the
-server's upgrade response. This path requires an OTA partition layout. With
-bootloader rollback enabled, the updated application must call
-`OTAMarkRunningImageValid` after its startup checks; the reference client does
-so after Zigbee starts successfully.
-
-`ZigbeeAddOtaServer(endpoint)` adds an image server. Once running,
-`ZigbeeOtaServeImage` registers one complete Zigbee OTA file from stable memory
-such as `IncbinPtr`; retain that memory until `ZigbeeOtaRemoveImage` or
-`ZigbeeStop`. `ZigbeeOtaNotify` announces the image to a device. An
-`SZigbeeEvent` with kind `ZigbeeEventOta` reports client or server activity:
-`dataType` is the cluster role (client or server), `signal` is one of the
-`ZigbeeOta*` progress constants, `value` is a version for query responses or
-byte progress during transfer, and `attribute` is the total byte count when
-known. `status` is zero on successful progress. A query response uses signal
-`ZigbeeOtaQueryResponse` and its ZCL status in `status`.
-
-The reference H2 client has separate version 1 and version 2 examples. From
-`mod/esp32.mod`, build both client versions and package the version 2 application
-image:
+The path is absolute or relative to the app source directory. The table must
+contain `zb_storage` as `data,nvs`. The older
+`BMX_ESP32_ZIGBEE_PARTITIONS` setting is still supported. For example, from
+`mod/esp32.mod` build a light for the C6 with:
 
 ```sh
-../../bin/bmk makeapp -r -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v1.bmx
-../../bin/bmk makeapp -r -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v2.bmx
-python3 tests/zigbee_ota_pack.py examples/zigbee_ota_client_v2.bin \
-  examples/assets/zigbee_ota_update.ota \
-  --manufacturer 0x1234 --image-type 1 --version 2
+../../bin/bmk makeapp -r -l esp32 -g riscv32 -board xiao_esp32c6 examples/zigbee_core_light.bmx
 ```
 
-Flash the C6 server after packaging, then flash version 1 to the H2:
+Add `-x` to flash and run with the board's configured `ESPPORT`. The H2 may
+need a physical reset after flashing.
 
-```sh
-../../bin/bmk makeapp -r -x -l esp32 -g riscv32 -board xiao_esp32c6 examples/zigbee_ota_server.bmx
-../../bin/bmk makeapp -r -x -l esp32 -g riscv32 -board waveshare_h2_dev_kit_n4 examples/zigbee_ota_client_v1.bmx
+## A minimal coordinator and light
+
+This is a complete On/Off light with a simulated output. Replace the comment
+with the GPIO or driver call for your lamp. `ZigbeeStart` returns when startup
+has been **accepted**; events report the later network result.
+
+```bmx
+SuperStrict
+Framework BRL.StandardIO
+Import ESP32.Network.Zigbee
+
+If ZigbeeStart(ZigbeeRoleCoordinator, ZigbeeDeviceOnOffLight, 10) Then
+    RuntimeError "Could not start Zigbee"
+End If
+Local event:SZigbeeEvent
+While True
+    While ZigbeePollEvent(event)
+        Select event.kind
+            Case ZigbeeEventFormed
+                If event.status = 0 Then ZigbeePermitJoining(180)
+            Case ZigbeeEventAttribute
+                If event.endpoint = 10 And event.cluster = 6 And event.attribute = 0 Then
+                    Print "Light is on: " + event.value
+                    ' Set the physical output here.
+                End If
+        End Select
+    Wend
+    Delay 20
+Wend
 ```
 
-The server embeds the generated `.ota` package. The client discovers the server,
-queries for the newer image, downloads it, and boots version 2. Run
-`tests/zigbee_ota_pair.py` with `--server` and `--client` serial ports and
-`--require-mark-valid` to check the transfer and rollback confirmation. Start
-the monitor before flashing version 1 if you want the complete startup log. The
-monitor requires PySerial, available in the ESP-IDF Python environment. The
-generated package is ignored by Git.
+The default primary channel mask selects channel 15. `ZigbeeStart` can take a
+different primary mask, a secondary mask, and `autoCommission=False` if you
+want to call `ZigbeeFormNetwork` or `ZigbeeJoinNetwork` yourself after a
+successful `ZigbeeEventStartup`.
 
-This implementation accepts the mandatory 56-byte Zigbee OTA header without
-optional fields and a single uncompressed firmware element, without additional
-signature or delta sub-elements. Production deployments should use
-ESP32 secure boot and signed firmware as appropriate to their trust model.
+To expose a second light, register its endpoint before starting:
 
-Hardware validation on a XIAO ESP32-C6 server and Waveshare ESP32-H2 client
-completed the version 1 to version 2 transfer, image validation, boot slot
-activation, reboot, and rollback confirmation.
-
-## Examples
-
-- `examples/zigbee_core_light.bmx`: coordinator with two light endpoints, a
-  sensor endpoint with temperature, humidity, illuminance, pressure, and
-  occupancy measurements, custom scalar, text, and binary attributes, and a
-  custom-profile endpoint; run with a `zczr` build on H2 or C6.
-- `examples/zigbee_core_switch.bmx`: end-device switch with discovery, bound
-  commands, reporting, groups, and custom attribute reads and writes; run with
-  a `zed` build on H2 or C6.
-- `examples/zigbee_core_lifecycle.bmx`: two bounded start/stop cycles.
-- `examples/zigbee_key_rotation_light.bmx`: one-shot C6 coordinator key-rotation
-  test; run with `zigbee_core_switch.bmx` on H2 and monitor with
-  `tests/zigbee_key_rotation.py`. The sample generates a fresh key with the
-  hardware RNG after Zigbee starts, keeps the key out of logs, and records an
-  attempt in NVS before distribution so a reboot cannot trigger a second
-  rotation. It uses sequence 1, so run it only on a fresh test network whose
-  active sequence is 0. Clear the sample's `zb_key_test` NVS namespace and use
-  a fresh Zigbee network for another run.
-- `examples/zigbee_sleepy_switch.bmx`: sleepy end-device switch that yields
-  between bound On/Off commands; run with a `zed` build on H2 or C6.
-- `examples/zigbee_ota_client_v1.bmx`, `zigbee_ota_client_v2.bmx`, and
-  `zigbee_ota_server.bmx`: two-board OTA transfer and reboot proof.
-- `examples/zigbee_extended_smoke.bmx`: C6 coordinator smoke test for Door
-  Lock, Window Covering, IAS Zone, and long custom values. It loops read
-  requests back through the local Zigbee stack and prints the responses.
-
-Use each board's `ESPPORT` and the normal `bmk makeapp -a -r -x -l esp32 -g
-riscv32 -board <board> <example>` flow. The H2 may need a manual reset after
-flashing. If changing a board between coordinator and end-device roles, clear
-its saved Zigbee network state before attempting to form or join a new
-network. The saved network belongs to the previous role and topology.
-
-## End-device deep sleep
-
-`examples/zigbee_deep_sleep_sensor.bmx` is a timer-driven end-device example. It
-starts on the `zed` stack, restores or joins a network, updates a temperature
-attribute, requests `ZigbeeStop`, waits for `ZigbeeEventStopped`, and calls
-`ESP32.System.Power.DeepSleepForMilliseconds`. Deep sleep restarts the entire
-application. On wake, `ZigbeeStart` loads the saved Zigbee network state and
-the application must recreate its endpoints and attribute values. The example
-repeats this cycle every ten seconds of sleep. On the tested Waveshare H2,
-native USB serial does not reliably reconnect after deep sleep. Select a UART
-console and use the board's CH343 bridge to observe the wake cycle. The
-`tests/zigbee_deep_sleep.py` monitor accepts `--uart` for a persistent bridge:
-
-```text
-python tests/zigbee_deep_sleep.py /dev/cu.usbmodem59710824031 --uart
+```bmx
+If ZigbeeAddEndpoint(ZigbeeDeviceOnOffLight, 11) Then RuntimeError "Endpoint failed"
+' Then call ZigbeeStart(..., 10).
 ```
 
-The H2 restored its saved network on consecutive timer wakes in this setup.
-A coordinator or router should remain awake to serve other devices in the mesh.
+You can register up to eight extra standard endpoints. Endpoint numbers must
+be distinct. Their definitions survive stop/start cycles; call
+`ZigbeeClearExtraEndpoints` while stopped to remove them.
 
-## Scope
+## A minimal end-device switch
 
-The public API covers multiple standard On/Off light, switch, temperature
-sensor, Door Lock, Door Lock Controller, Window Covering, and Window Covering
-Controller endpoints; optional Relative Humidity, Illuminance, Pressure
-Measurement, Occupancy Sensing, Power Configuration, Electrical Measurement,
-Level Control, Color Control, Thermostat, and IAS Zone clusters; custom
-endpoint profiles; and custom scalar, short string, long string, octet, array,
-and structure attributes. Actuator command handling is implemented and
-C6 loopback tested. IAS Zone enrollment and status notifications, plus array
-and structure attribute exchange, are verified between C6 and H2.
-`ZigbeeRoleSleepyEndDevice` enables ESP-IDF automatic light sleep and turns the
-Zigbee receiver off while idle. A `zed` build enables power management and
-tickless idle, but a normal `ZigbeeRoleEndDevice` does not enable light sleep.
-The application must yield between work, and may configure additional wake
-sources through `ESP32.System.Power`. The role uses an eight-second keepalive.
-Actual sleep current depends on the board and application peripherals and has
-not yet been measured.
+Build this app with `esp32.zigbee.stack zed`. The switch finds a light, then
+sends one Toggle command to its discovered network address and endpoint.
+Store both fields from the match event; network addresses can change.
 
-## Hardware checks on 18 November 2026
+```bmx
+SuperStrict
+Framework BRL.StandardIO
+Import ESP32.Network.Zigbee
 
-The Door Lock, Window Covering, IAS Zone, and long-string additions compile for
-both the C6 `zczr` and H2 `zed` example builds. On the C6,
-`zigbee_extended_smoke` started with all three server layouts, updated their
-local state attributes, and read back the lock state (2), covering lift (42%),
-and IAS Zone status (1). It registered a 72-byte long string, read back its
-78-byte local update, and read back an 80-byte long octet value through the
-Zigbee event path. The same firmware wrote a 79-byte string and 80-byte
-octets through Zigbee and read both back with successful responses.
+If ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceOnOffSwitch, 1) Then
+    RuntimeError "Could not start Zigbee"
+End If
+Local event:SZigbeeEvent
+Local found:Int
+While True
+    While ZigbeePollEvent(event)
+        If event.kind = ZigbeeEventJoined And event.status = 0 Then
+            ZigbeeFindOnOffLights()
+        End If
+        If event.kind = ZigbeeEventOnOffMatch And Not found Then
+            found = True
+            ZigbeeSendOnOff(1, event.shortAddress, event.endpoint, 2) ' Toggle.
+        End If
+    Wend
+    Delay 20
+Wend
+```
 
-IAS Zone was also exercised across both physical boards: the H2 joined the C6,
-sent an enrollment request, accepted zone ID 3, and updated its status to
-Alarm1 plus Tamper. The C6 read the H2's enrolled state (1) and zone ID (3),
-and received a status notification with bitmap 5 and zone ID 3. Door Lock,
-Window Covering, and long custom values remain C6 loopback checks. A C6
-custom cluster served array and structure values to the H2. The H2 wrote both
-types and read their changed values back. A 153-byte encoded array also made
-the round trip, exercising Zigbee fragmentation in both directions.
+A saved network may produce a successful `ZigbeeEventStartup` without a new
+`ZigbeeEventJoined`; handle that path in a long-running app. If a join fails,
+retry `ZigbeeJoinNetwork` after a delay. The full
+[switch example](../examples/zigbee_core_switch.bmx) shows both cases.
 
-After the tests, the C6 light and H2 switch images were restored. The pair
-regression passed with typed scalar, custom cluster, and binary octet checks.
+## The event and result pattern
 
-- The H2 deep-sleep sensor joined the C6 network, stopped Zigbee cleanly,
-  woke on its ten-second timer, and restored the saved network on consecutive
-  wakes. The UART bridge remained observable while native USB did not. The
-  `tests/zigbee_deep_sleep.py --uart` check passed.
-- The C6 exposed a heating-only Thermostat server on endpoint 12. The H2
-  discovered it, wrote the occupied heating setpoint to 21.50 °C, and read
-  back both that setpoint and the 23.00 °C local temperature. The full pair
-  regression passed with `--require-thermostat` and every earlier check.
-- The C6 exposed x/y Color Control on its light endpoint. The H2 discovered
-  it, sent Move To Color for (20000, 30000), and read both coordinates back.
-  The full pair regression passed with `--require-color` and all earlier checks.
-- The C6 exposed Level Control on its light endpoint. The H2 discovered the
-  cluster, sent Move To Level With On/Off, and read back CurrentLevel 180.
-  The full pair regression passed with `--require-level` and all earlier checks.
-- The C6 exposed Electrical Measurement with 230 V, 250 mA (current divisor
-  1000), and 58 to 60 W. The H2 discovered the cluster, read all three values
-  and the divisor, and received a changed active-power report. The full pair
-  regression passed with `--require-electrical` alongside all earlier checks.
-- The C6 exposed Power Configuration battery voltage and percentage on its
-  sensor endpoint. The H2 discovered the cluster, read 3.0 V and 74 to 75
-  percent, and received a changed percentage report. The full pair regression
-  passed with `--require-battery` alongside all earlier checks.
-- The C6 exposed Pressure Measurement (0x0403) and Occupancy Sensing (0x0406)
-  on endpoint 12. The H2 discovered both, read pressure as `Int16` and
-  occupancy as `Bitmap8`, and received changed reports. A custom octet-string
-  attribute carried the binary sequence `01 00 FE FF` through a remote write
-  and readback; the light's local setter restored `00 80 FF`. The full
-  two-board regression passed with `--require-pressure --require-occupancy
-  --require-octets` alongside all earlier checks.
-- With a fresh Zigbee storage partition on the H2 end device, the C6
-  coordinator accepted its provisioned 18-byte install code and the H2 joined
-  and sent bound On/Off toggles. The coordinator returned success from both
-  `ZigbeeAddJoinerInstallCode` and `ZigbeeRequireInstallCodes`.
-- With the same coordinator requiring install codes, an H2 flashed without
-  install-code setup and with fresh Zigbee storage reported `joined=0` on six
-  consecutive network checks. This verified the required-code policy blocked
-  ordinary joining in the test setup.
-- After restoring the normal examples and clearing saved Zigbee network state
-  on both boards, the C6 and H2 formed and joined an ordinary network. The
-  full `tests/zigbee_core_pair.py` regression passed, including On/Off,
-  reporting, groups, custom clusters and profiles, UTF-8 strings, and
-  temperature, humidity, and illuminance readings and reports.
-- The H2 sleepy switch joined its saved network and sent two bound On/Off
-  toggles 15 seconds apart. The C6 coordinator/light observed both state
-  changes, from Off to On and back to Off, while the switch continued to
-  receive reports. Both the normal and sleepy end-device examples built with
-  the new `zed` power-management configuration.
+Calls returning zero usually mean local configuration succeeded or the SDK
+accepted an asynchronous request. For a remote operation, inspect its later
+event and `event.status`. Drain events often: the native queue holds 64
+records, and `ZigbeeDroppedEvents()` counts records lost when it fills.
 
-## Hardware checks on 17 November 2026
+```bmx
+Local event:SZigbeeEvent
+While ZigbeePollEvent(event)
+    If event.kind = ZigbeeEventRead And event.status = 0 Then
+        Print "Attribute " + event.attribute + " = " + event.value
+    End If
+Wend
+If ZigbeeDroppedEvents() Then Print "Zigbee events were dropped"
+```
 
-- The H2 coordinator/light and C6 end-device/switch pair toggled both states
-  and read back the remote On/Off attribute through the public API.
-- The H2 completed two start/stop cycles without rebooting.
-- Both reverse role builds succeeded: H2 with `zed`, C6 with `zczr`. After
-  clearing only their Zigbee storage partitions, the C6 coordinator/light and
-  H2 end-device/switch pair toggled both states and read back the attribute.
-- The H2 switch subsequently used match descriptor discovery and binding to
-  toggle the C6 light through the binding table, then read back its state.
-- The C6 light built and flashed with a local attribute initialization call.
-  The two-board bound-toggle and readback regression still passed.
-- After the C6 light bound its server endpoint back to the H2 switch,
-  `tests/zigbee_core_pair.py --require-report` passed with a received On/Off
-  report as well as toggles and a read response.
-- `tests/zigbee_core_pair.py --require-report --require-group` passed after the
-  H2 switch added the C6 light to a group and sent a group-addressed toggle.
-- `tests/zigbee_core_pair.py --require-report --require-group --require-scalar
-  --require-write` passed after the H2 switch read the C6 light's 16-bit
-  cluster revision, wrote its 16-bit IdentifyTime attribute, and read back
-  the changed value.
-- The same pair test passed after the switch moved to general reporting,
-  discovery, and binding calls.
-- With the C6 light exposing endpoints 10 and 11, the H2 switch discovered
-  both. `tests/zigbee_core_pair.py --require-extra-endpoint` passed alongside
-  the reporting, group, scalar read, and write checks.
-- With custom cluster 0xFC00 on endpoint 11, the H2 switch discovered the
-  cluster and wrote then read back the 16-bit value 43.
-- The C6 application then updated that local custom attribute to 44;
-  `tests/zigbee_core_pair.py --require-local-update` confirmed the H2 read
-  back 44 while the other pair checks still passed.
+`event.shortAddress` is a 16-bit network address. `event.endpoint` is an
+endpoint, and `event.cluster` and `event.attribute` identify a ZCL value.
+Scalar values use `event.value` with `dataType` and `valueSize`; strings use
+`text`; octet strings, arrays, and structures use `bytes`. A negative
+`valueSize` means a variable value was invalid or exceeded the module limit.
+Fields unrelated to an event kind are zero. `ZigbeePollEvent` creates managed
+values on the application thread, not in the native Zigbee callback.
 
-## Hardware check on 18 November 2026
+To stop and restart, wait for `ZigbeeEventStopped` after `ZigbeeStop`.
+`ZigbeeFactoryReset` leaves the network and clears saved Zigbee state; wait for
+`ZigbeeEventLeft` before recommissioning. The outgoing frame counter is kept.
 
-- The C6 coordinator/light exposed a temperature sensor on endpoint 12 and
-  set its measured value to 23.45 °C. The H2 end-device/switch discovered the
-  Temperature Measurement server and read attribute zero as a signed 16-bit
-  value of 2345. `tests/zigbee_core_pair.py --require-temperature` passed
-  alongside the reporting, group, scalar, write, extra endpoint, custom
-  cluster, and local update checks.
-- The C6 bound its temperature server to the H2 client, which configured
-  reporting. The H2 received a signed 16-bit report after the simulated
-  measurement changed to 23.55 °C.
-- With an optional Relative Humidity Measurement server on endpoint 12, the
-  H2 discovered cluster 0x0405, read 45.50% as an unsigned 16-bit value, and
-  received a report when the C6 changed its simulated value to 45.60%.
-  `tests/zigbee_core_pair.py --require-humidity` passed alongside all earlier
-  pair checks.
-- The H2 queried group 4660 with View Group and requested the light endpoint's
-  full membership list. Both responses confirmed membership; the list response
-  reported one group and 15 remaining slots. The full pair check passed with
-  `--require-group-query` alongside the earlier checks.
-- The C6 registered manufacturer profile `0xC0DE` on endpoint 13 with custom
-  cluster `0xFC01` and a 16-bit value of 77. The H2 registered a matching client
-  endpoint under the same profile, discovered the server, and read back 77.
-  `tests/zigbee_core_pair.py --require-custom-profile` passed alongside all
-  earlier pair checks.
-- The C6 custom cluster exposed a short string attribute. The H2 wrote
-  `Zigbee é`, read back its nine UTF-8 bytes, then read `ready` after the C6
-  changed the attribute locally. The full pair check passed with
-  `--require-string` alongside all earlier checks.
-- The H2 sent Remove All Groups to the C6 light, then queried membership and
-  received a list with zero groups. The full pair check passed with
-  `--require-group-clear` alongside all earlier checks.
-- The C6 exposed Illuminance Measurement on its sensor endpoint. The H2
-  discovered it, read encoded value 20001, and received a changed report of
-  20101. The full pair check passed with `--require-illuminance` alongside
-  all earlier checks.
+## Find, bind, read, and report
+
+The general discovery call finds any server cluster on a profile. Each match
+arrives as `ZigbeeEventMatch` with its address, endpoint, and cluster:
+
+```bmx
+ZigbeeFindServers(ZigbeeClusterTemperatureMeasurement) ' HA profile 0x0104.
+' In the event loop:
+If event.kind = ZigbeeEventMatch And ..
+        event.cluster = ZigbeeClusterTemperatureMeasurement Then
+    ZigbeeReadAttribute(1, event.shortAddress, event.endpoint, ..
+        ZigbeeClusterTemperatureMeasurement, 0)
+End If
+```
+
+Pass a second profile ID for a custom profile. `ZigbeeFindOnOffLights` and
+`ZigbeeReadOnOff` are shortcuts for common On/Off use.
+
+A binding gives the stack a destination for commands or reports. Bind the
+switch client to a light server for bound commands:
+
+```bmx
+ZigbeeBindOnOff(1, lightAddress, lightEndpoint)
+' After ZigbeeEventOnOffBound reports status zero:
+ZigbeeSendBoundOnOff(1, 2) ' Toggle.
+```
+
+For reports, bind the **server** endpoint back to the client's endpoint, then
+configure reporting from the client. For example, after a temperature sensor
+has announced itself to a coordinator, the sensor application can call:
+
+```bmx
+ZigbeeBindCluster(12, clientAddress, clientEndpoint, ..
+    ZigbeeClusterTemperatureMeasurement)
+```
+
+The client can then request reports on the measured-value attribute:
+
+```bmx
+ZigbeeConfigureReporting(1, sensorAddress, 12, ..
+    ZigbeeClusterTemperatureMeasurement, 0, ZigbeeTypeInt16, 1, 300, 10)
+' The final 10 means a change of 0.10 °C in this attribute's raw units.
+```
+
+Watch `ZigbeeEventReportingConfigured` and `ZigbeeEventReport`. Intervals are
+seconds; a maximum of 65535 disables periodic reports. Reporting currently
+supports scalar values. `ZigbeeConfigureOnOffReporting` is a convenience
+wrapper for the On/Off attribute.
+
+A remote write has two outcomes: the immediate submission result and a later
+`ZigbeeEventWrite` containing the remote status. A successful ZCL write
+response may carry attribute ID `0xFFFF`, so correlate by request order too:
+
+```bmx
+ZigbeeWriteScalar(1, address, endpoint, ZigbeeClusterThermostat, ..
+    ZigbeeThermostatHeatingSetpointAttribute, ZigbeeTypeInt16, 2150)
+' 2150 represents 21.50 °C.
+```
+
+## Standard cluster recipes
+
+Register optional server or client clusters **before** `ZigbeeStart` on an
+existing endpoint. The same `ZigbeeClusterServer` and `ZigbeeClusterClient`
+constants select cluster roles. Clear functions remove registrations while
+stopped. The examples below show the calls relevant to each feature; lines
+marked "after startup" belong in a successful `ZigbeeEventStartup` handler.
+
+### Measurements and battery
+
+A temperature sensor template already has Temperature Measurement. Update it
+from a sensor reading in hundredths of a degree Celsius:
+
+```bmx
+ZigbeeStart(ZigbeeRoleEndDevice, ZigbeeDeviceTemperatureSensor, 12)
+' In the event loop, after startup succeeds:
+If event.kind = ZigbeeEventStartup And event.status = 0 Then
+    ZigbeeSetLocalTemperature(12, 2345) ' 23.45 °C.
+End If
+```
+
+Other measurement clusters attach to a configured endpoint:
+
+```bmx
+ZigbeeAddHumidityCluster(12, ZigbeeClusterServer)
+ZigbeeAddIlluminanceCluster(12, ZigbeeClusterServer)
+ZigbeeAddPressureCluster(12, ZigbeeClusterServer)
+ZigbeeAddOccupancyCluster(12, ZigbeeClusterServer, ZigbeeOccupancySensorPIR)
+' Start Zigbee, then update readings:
+ZigbeeSetLocalHumidity(12, 4550)     ' 45.50%.
+ZigbeeSetLocalIlluminance(12, 20001) ' ZCL encoded illuminance, not raw lux.
+ZigbeeSetLocalPressure(12, 101)      ' Whole kilopascals.
+ZigbeeSetLocalOccupancy(12, 1)       ' Occupied; zero means unoccupied.
+```
+
+Read each server's attribute zero using its cluster constant. Humidity is
+hundredths of a percent (`UInt16`); pressure is whole kPa (`Int16`);
+occupancy is a `Bitmap8`. Illuminance uses the Zigbee encoded `UInt16`
+MeasuredValue, and 65535 represents unavailable; the setter accepts 0–65534.
+Pressure `-32768` also represents unavailable.
+
+Battery and AC electrical measurements use different units:
+
+```bmx
+ZigbeeAddPowerConfigurationCluster(12, ZigbeeClusterServer)
+ZigbeeAddElectricalMeasurementCluster(12, ZigbeeClusterServer)
+' After startup:
+ZigbeeSetLocalBatteryVoltage(12, 30)     ' 3.0 V (tenths).
+ZigbeeSetLocalBatteryPercentage(12, 150) ' 75% (half-percent units).
+ZigbeeSetLocalRmsVoltage(12, 230)        ' Volts.
+ZigbeeSetLocalRmsCurrent(12, 250)        ' Milliamps; divisor is 1000.
+ZigbeeSetLocalActivePower(12, 60)        ' Watts.
+```
+
+Battery voltage 255 and percentage 255 mean unknown. The battery attribute
+IDs are `ZigbeeBatteryVoltageAttribute` and
+`ZigbeeBatteryPercentageAttribute`; the electrical IDs are
+`ZigbeeRmsVoltageAttribute`, `ZigbeeRmsCurrentAttribute`, and
+`ZigbeeActivePowerAttribute`.
+
+### Light level, color, and heating
+
+A light endpoint can expose Level and x/y Color Control:
+
+```bmx
+ZigbeeAddLevelControlCluster(10, ZigbeeClusterServer)
+ZigbeeAddColorControlCluster(10, ZigbeeClusterServer)
+' After startup, publish the actual output state:
+ZigbeeSetLocalLevel(10, 180)         ' 0–254.
+ZigbeeSetLocalColor(10, 20000, 30000) ' CIE x/y scaled to 0–65535.
+```
+
+A matching client sends a movement request. `transitionTenths` is in tenths
+of a second; `True` selects the Level command variant that also changes On/Off:
+
+```bmx
+ZigbeeMoveToLevel(1, lightAddress, 10, 180, 10, True)
+ZigbeeMoveToColor(1, lightAddress, 10, 20000, 30000, 10)
+```
+
+The server data model does not drive LEDs. Apply the requested state to the
+output and publish the observed state. The Thermostat template is heating only:
+
+```bmx
+ZigbeeAddThermostatCluster(12, ZigbeeClusterServer)
+' After startup:
+ZigbeeSetLocalThermostatTemperature(12, 2300) ' 23.00 °C.
+ZigbeeSetLocalHeatingSetpoint(12, 2100)     ' 21.00 °C.
+```
+
+The occupied heating setpoint is writable with `ZigbeeWriteScalar` and
+`ZigbeeTypeInt16`, as shown above. Both thermostat values use hundredths of a
+degree Celsius.
+
+### Door locks and window coverings
+
+Select the standard server or controller device template at startup. Incoming
+commands on a server appear as `ZigbeeEventActuatorCommand`. The application
+must respond within five seconds; otherwise the stack replies with failure:
+
+```bmx
+If event.kind = ZigbeeEventActuatorCommand Then
+    ' Check event.cluster and event.value, then ask the physical actuator.
+    ZigbeeCompleteActuatorCommand(event.signal, ZigbeeCommandSuccess)
+    ' Publish observed state only after the actuator accepted the action.
+End If
+```
+
+`event.cluster` selects Door Lock or Window Covering. For covering commands,
+`event.value` is the command ID and `event.attribute` is its target. The
+sender's endpoint is in `event.dataType`. A controller can send:
+
+```bmx
+ZigbeeSendDoorLock(1, lockAddress, lockEndpoint, 1) ' Lock; zero unlocks.
+ZigbeeSendWindowCovering(1, shadeAddress, shadeEndpoint, ..
+    ZigbeeCoveringGoToLiftPercentage, 50)
+```
+
+These calls confirm submission, not physical motion. Publish the resulting
+state with `ZigbeeSetLocalDoorLockState` or `ZigbeeSetLocalCoveringLift`.
+Door Lock controller responses arrive as `ZigbeeEventDoorLockResponse`.
+
+### IAS Zone enrollment and alarms
+
+A contact or motion sensor needs an IAS Zone server. The coordinator/CIE needs
+an IAS Zone client on its chosen endpoint:
+
+```bmx
+ZigbeeAddIasZoneCluster(12, ZigbeeClusterServer, ZigbeeIasZoneContactSwitch)
+ZigbeeAddIasZoneCluster(13, ZigbeeClusterClient)
+```
+
+The sensor obtains the CIE's IEEE address and requests enrollment. On the CIE,
+respond to each request with an assigned zone ID:
+
+```bmx
+ZigbeeRequestIasEnrollment(12, cieAddress, 13, cieIeee)
+' CIE event loop:
+If event.kind = ZigbeeEventIasEnrollRequest Then
+    ZigbeeRespondIasEnrollment(event.endpoint, event.shortAddress, ..
+        event.dataType, 0, 3)
+End If
+```
+
+After `ZigbeeEventIasEnrollResponse` reports success, the sensor can notify
+Alarm1 and Tamper together. The CIE receives `ZigbeeEventIasStatus`:
+
+```bmx
+ZigbeeSetLocalIasZoneStatus(12, ZigbeeIasZoneAlarm1 | ZigbeeIasZoneTamper)
+```
+
+## Custom attributes and profiles
+
+Use a custom server cluster ID from `0x8000` to `0xFFFF`. Register the cluster
+before its attributes and before `ZigbeeStart`. The limits are eight custom
+clusters and 32 custom attributes:
+
+```bmx
+ZigbeeAddCustomCluster(10, $fc00, ZigbeeClusterServer)
+ZigbeeAddCustomScalar(10, $fc00, 1, ZigbeeTypeUInt16, ..
+    ZigbeeAttributeRead | ZigbeeAttributeWrite | ZigbeeAttributeReport, 42)
+' After startup, publish a changed local value:
+ZigbeeSetCustomScalar(10, $fc00, 1, 43)
+```
+
+A client registers the same cluster with `ZigbeeClusterClient`, discovers it
+with `ZigbeeFindServers($fc00)`, and can read or write the attribute. Scalar
+values include Boolean, integer, bitmap, and enum types up to 32 bits.
+
+Use a short string for up to 64 UTF-8 bytes, or octets for binary data:
+
+```bmx
+ZigbeeAddCustomString(10, $fc00, 2, ZigbeeAttributeRead | ZigbeeAttributeWrite, "ready")
+Local payload:Byte[] = [Byte($00), Byte($80), Byte($ff)]
+ZigbeeAddCustomOctets(10, $fc00, 3, ZigbeeAttributeRead | ZigbeeAttributeWrite, payload)
+' From a client after discovery:
+ZigbeeWriteString(1, address, 10, $fc00, 2, "hello")
+ZigbeeWriteOctets(1, address, 10, $fc00, 3, payload)
+```
+
+`ZigbeeAddCustomLongString` and `ZigbeeAddCustomLongOctets`, plus their Set
+and Write counterparts, handle up to 256 bytes. Incoming text is in
+`event.text`; octets are in `event.bytes`. Remote peers or the transport may
+impose a smaller practical limit.
+
+Arrays and structures take **complete ZCL-encoded value bytes**, not a
+BlitzMax array of typed elements. An array starts with element type and a
+little-endian 16-bit count. A structure starts with a 16-bit count, followed
+by type/value pairs:
+
+```bmx
+Local values:Byte[] = [Byte(ZigbeeTypeUInt16), Byte(2), Byte(0), ..
+    Byte(11), Byte(0), Byte(13), Byte(0)] ' UInt16 array [11, 13].
+ZigbeeAddCustomArray(10, $fc00, 4, ..
+    ZigbeeAttributeRead | ZigbeeAttributeWrite, values)
+' From the client: one attribute per write command.
+ZigbeeWriteArray(1, address, 10, $fc00, 4, values)
+```
+
+`ZigbeeAddCustomStructure`, `ZigbeeSetCustomStructure`, and
+`ZigbeeWriteStructure` use the corresponding structure encoding. Both forms
+allow up to 256 encoded bytes and four nesting levels. Reads and incoming
+writes deliver the encoding in `event.bytes`. ZCL does not permit reporting
+these types. Structured element access and ZCL set/bag types are outside this
+API.
+
+For a non-Home-Automation profile, create a custom endpoint, then add its
+clusters. Both ends need the same profile ID for discovery and exchange:
+
+```bmx
+ZigbeeAddCustomEndpoint(13, $c0de, $1234, 1)
+ZigbeeAddCustomCluster(13, $fc01, ZigbeeClusterServer)
+' After startup, on a client with a matching profile:
+ZigbeeFindServers($fc01, $c0de)
+```
+
+## Groups
+
+A light endpoint includes a Groups server; a switch includes a Groups client.
+Group IDs are 1–65527. Add a light endpoint to a group, then address the group:
+
+```bmx
+ZigbeeAddGroup(1, lightAddress, lightEndpoint, 4660)
+' After ZigbeeEventGroupAdded reports success:
+ZigbeeSendGroupOnOff(1, 4660, 2) ' Toggle all group members.
+```
+
+`ZigbeeViewGroup` checks one ID. `ZigbeeGetGroupMembership` yields zero or
+more `ZigbeeEventGroupMember` events followed by
+`ZigbeeEventGroupMembershipComplete`; its `value` is the count and
+`attribute` is remaining capacity. `ZigbeeRemoveGroup` removes one membership.
+`ZigbeeRemoveAllGroups` has no specific response, so query membership to
+verify removal. Group commands have no individual device responses.
+
+## Security and key rotation
+
+Install-code commissioning is optional. Enable it **while stopped** on both
+coordinator and joiner. For a new network, start with `autoCommission=False`
+and provision the joiner's own IEEE address and install code after
+`ZigbeeEventStarted`, before forming or joining:
+
+```bmx
+ZigbeeEnableInstallCodes()
+ZigbeeStart(ZigbeeRoleCoordinator, ZigbeeDeviceOnOffLight, 10, ..
+    1 Shl 15, 0, False)
+' After ZigbeeEventStarted, with the joiner's IEEE address and code:
+ZigbeeAddJoinerInstallCode(joinerIeee, installCode)
+ZigbeeRequireInstallCodes()
+ZigbeeFormNetwork()
+```
+
+On the joiner, call `ZigbeeSetLocalInstallCode(installCode)` after its
+`ZigbeeEventStarted`, then `ZigbeeJoinNetwork()`. An install code is 8, 10,
+14, or 18 bytes **including** the two-byte CCITT-16 CRC. Obtain a running
+device's IEEE address with `ZigbeeGetIEEEAddress`. Keep production codes out
+of source control. `ZigbeeRequireLinkKeyExchange(True)` can require a link-key
+exchange on both sides before commissioning;
+`ZigbeeAllowWellKnownKeyRejoins(False)` tightens rejoin policy on a
+coordinator. Saved network members are unaffected by a new joining policy.
+
+To rotate a network key on a running coordinator, generate a fresh 16-byte key
+and choose a new sequence number from 0–255:
+
+```bmx
+ZigbeeBroadcastNetworkKey(newKey, sequence)
+' Allow all devices, especially sleepy ones, time to receive the update.
+ZigbeeBroadcastNetworkKeySwitch(sequence)
+ZigbeeSwitchNetworkKey(newKey, sequence)
+```
+
+The broadcast calls confirm stack submission, not receipt by every device.
+Verify traffic from every member after the switch and after restart. See the
+[key rotation example](../examples/zigbee_key_rotation_light.bmx) for a
+one-shot test with a hardware-generated key.
+
+## Firmware updates over Zigbee
+
+Register an OTA client or server cluster before startup. A client identifies
+its currently running firmware by manufacturer, image type, and increasing
+version number:
+
+```bmx
+ZigbeeAddOtaClient(12, $1234, 1, 1) ' Version 1.
+' After finding an OTA server:
+ZigbeeOtaQuery(12, serverAddress, serverEndpoint)
+```
+
+The server supplies a complete Zigbee OTA file from memory that stays valid
+until removal or shutdown, then may notify the client:
+
+```bmx
+ZigbeeAddOtaServer(10)
+' After startup; imagePtr points to a complete OTA file:
+ZigbeeOtaServeImage(10, imagePtr, imageSize)
+ZigbeeOtaNotify(10, clientAddress, clientEndpoint, $1234, 1, 2)
+```
+
+The client checks a matching, newer file, writes its raw firmware element to
+the inactive ESP32 OTA slot, validates it, and reboots after the upgrade
+response. Use an OTA partition layout. With rollback enabled, the new app must
+call `OTAMarkRunningImageValid` after its startup checks. Monitor
+`ZigbeeEventOta`: `signal` gives the progress stage, `value` gives a version
+or transferred byte count, and `attribute` gives the total when known.
+The supported package is the mandatory 56-byte header without optional fields
+and one uncompressed firmware element. The [OTA client and server
+examples](../examples/zigbee_ota_server.bmx) include packaging and a two-board
+test; use secure boot and signed firmware according to the product's trust
+model.
+
+## Sleep and network persistence
+
+`ZigbeeRoleSleepyEndDevice` uses a `zed` build, turns off the receiver while
+idle, and allows ESP-IDF light sleep. Yield between application work. The
+normal `ZigbeeRoleEndDevice` does not enable light sleep. The sleepy role uses
+an eight-second keepalive; actual current depends on the board and attached
+peripherals and has not been measured. A router or coordinator should remain
+awake to serve the mesh.
+
+For deep sleep, stop Zigbee, wait for `ZigbeeEventStopped`, then call
+`ESP32.System.Power.DeepSleepForMilliseconds`. Wake restarts the app, so
+re-register endpoints and attributes before `ZigbeeStart`; the saved network
+state is restored. See the [deep-sleep sensor
+example](../examples/zigbee_deep_sleep_sensor.bmx). On the tested Waveshare
+H2, native USB serial did not reliably reconnect after deep sleep; a UART
+console through its CH343 bridge remained observable.
+
+## Complete examples and tested behavior
+
+- [Coordinator light](../examples/zigbee_core_light.bmx): endpoints, sensors,
+  reports, groups, and custom values.
+- [End-device switch](../examples/zigbee_core_switch.bmx): discovery, bindings,
+  reads, writes, and reports.
+- [Lifecycle](../examples/zigbee_core_lifecycle.bmx): two start/stop cycles.
+- [IAS sensor](../examples/zigbee_ias_zone_sensor.bmx): enrollment, status, and
+  array/structure exchange.
+- [Door Lock, covering, and IAS smoke test](../examples/zigbee_extended_smoke.bmx):
+  local loopback for actuator commands and long values.
+- [OTA client](../examples/zigbee_ota_client_v1.bmx) and
+  [OTA server](../examples/zigbee_ota_server.bmx): two-board firmware update.
+- [Sleepy switch](../examples/zigbee_sleepy_switch.bmx) and
+  [deep-sleep sensor](../examples/zigbee_deep_sleep_sensor.bmx): power modes.
+
+The [validation record](zigbee-validation.md) distinguishes two-board checks
+from C6 loopback checks. Door Lock, Window Covering, and long custom values
+have loopback coverage; IAS enrollment and notifications, composite values,
+OTA, and key rotation have C6/H2 two-board coverage. Third-party device
+interoperability and actual sleep current remain to be measured.
