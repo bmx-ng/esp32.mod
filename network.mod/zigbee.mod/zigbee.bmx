@@ -4,7 +4,7 @@
 SuperStrict
 
 Rem
-bbdoc: ESP32 Zigbee v2 stack and standard-device support for ESP32-H2 and ESP32-C6.
+bbdoc: BlitzMax Zigbee support, currently enabled for ESP32-H2 and ESP32-C6.
 about: This module provides a configurable stack lifecycle, a safe native event
 queue, commissioning and key-rotation controls, OTA updates, standard device
 clusters, custom attributes, and sleepy end-device support. See the Zigbee

@@ -1,7 +1,9 @@
 # Build Zigbee applications with `ESP32.Network.Zigbee`
 
 This guide shows how to make an ESP32-C6 or ESP32-H2 application join a Zigbee
-network, expose a device, and exchange commands and attributes. Start with the
+network, expose a device, and exchange commands and attributes. Those are the
+two targets currently enabled by this BlitzMax module's build integration;
+other Espressif chips also have Zigbee-capable 802.15.4 radios. Start with the
 two short programs below, then use the recipes for the features your device
 needs. The [module bbdocs](../network.mod/zigbee.mod/zigbee.bmx) describe every
 public function and constant; the [hardware test record](zigbee-validation.md)
