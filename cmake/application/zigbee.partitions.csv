@@ -1,4 +1,4 @@
-# Zigbee variant of the 4 MiB H2/C6 OTA layout.
+# Zigbee variant of the 4 MiB H2/C6/C5 OTA layout (also fits larger flash).
 # Name, Type, SubType, Offset, Size, Flags
 nvs,        data, nvs,      0x9000,   0x6000,
 phy_init,   data, phy,      0xf000,   0x1000,

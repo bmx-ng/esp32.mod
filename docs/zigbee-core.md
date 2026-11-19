@@ -1,9 +1,9 @@
 # Build Zigbee applications with `ESP32.Network.Zigbee`
 
-This guide shows how to make an ESP32-C6 or ESP32-H2 application join a Zigbee
-network, expose a device, and exchange commands and attributes. Those are the
-two targets currently enabled by this BlitzMax module's build integration;
-other Espressif chips also have Zigbee-capable 802.15.4 radios. Start with the
+This guide shows how to make an ESP32-C5, ESP32-C6, or ESP32-H2 application join
+a Zigbee network, expose a device, and exchange commands and attributes. These
+are the targets enabled by this BlitzMax module's build integration; other
+Espressif chips also have Zigbee-capable 802.15.4 radios. Start with the
 two short programs below, then use the recipes for the features your device
 needs. The [module bbdocs](../network.mod/zigbee.mod/zigbee.bmx) describe every
 public function and constant; the [hardware test record](zigbee-validation.md)
@@ -32,8 +32,8 @@ radio between activity. Choose the matching build mode:
 | End device | `ZigbeeRoleEndDevice` | `zed` |
 | Sleepy end device | `ZigbeeRoleSleepyEndDevice` | `zed` |
 
-The board default is `zczr` on H2 and `zed` on C6. Put the following beside an
-app as `pre.bmk`, or use `<output-name>.pre.bmk` to configure one output:
+The board default is `zczr` on H2 and `zed` on C5 and C6. Put the following
+beside an app as `pre.bmk`, or use `<output-name>.pre.bmk` to configure one output:
 
 ```bmk
 setoption esp32.zigbee.stack zczr
@@ -66,6 +66,19 @@ contain `zb_storage` as `data,nvs`. The older
 
 Add `-x` to flash and run with the board's configured `ESPPORT`. The H2 may
 need a physical reset after flashing.
+
+The same examples can be built for the C5 board profile:
+
+```sh
+../../bin/bmk makeapp -r -l esp32 -g riscv32 -board xiao_esp32c5 examples/zigbee_core_light.bmx
+../../bin/bmk makeapp -r -l esp32 -g riscv32 -board xiao_esp32c5 examples/zigbee_core_switch.bmx
+```
+
+Their app-specific `pre.bmk` files select `zczr` for the light and `zed` for
+the switch. Without an override, C5 defaults to `zed`. The default Zigbee
+partition table uses the first 4 MiB of flash. The XIAO C5's 8 MiB flash can
+use a larger custom table if the application needs it. C5 support has been
+build-checked but awaits a device test.
 
 ## A minimal coordinator and light
 

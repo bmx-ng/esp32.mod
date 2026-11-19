@@ -2,6 +2,14 @@
 
 This is the dated hardware test record for [the Zigbee developer guide](zigbee-core.md).
 
+## C5 build checks on 19 November 2026
+
+The XIAO ESP32-C5 profile built the coordinator/light example with the `zczr`
+stack and the end-device/switch example with the `zed` stack. Both produced
+ESP32-C5 firmware images within the default Zigbee OTA partitions. A separate
+end-device build without an app-specific stack option selected the C5 `zed`
+default and completed. No C5 board was flashed or run for these checks.
+
 ## Hardware checks on 18 November 2026
 
 The Door Lock, Window Covering, IAS Zone, and long-string additions compile for
